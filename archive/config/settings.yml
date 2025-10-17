@@ -1,0 +1,32 @@
+update_frequency: daily
+embedding:
+  provider: openai
+  model: text-embedding-3-large
+
+similarity:
+  method: cosine-numpy   # options: cosine-numpy, faiss
+  top_k: 5
+  min_score: 0.80
+
+clustering:
+  method: kmeans         # options: kmeans, hdbscan
+  k: 20
+
+summaries:
+  max_tokens: 200
+
+synthesis:
+  max_tokens: 350
+
+exports:
+  github:
+    enabled: true
+    repo: yourname/obsidian-kb
+    branch: main
+
+email:
+  enabled: true
+  to: you@example.com
+
+runtime:
+  vector_store: s3-dynamodb   # opensearch entfernt

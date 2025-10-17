@@ -1,0 +1,16 @@
+{
+  "name": "pkb-cdk",
+  "version": "0.1.0",
+  "bin": {
+    "pkb-cdk": "bin/app.js"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.154.0",
+    "constructs": "10.3.0",
+    "source-map-support": "^0.5.21"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  }
+}

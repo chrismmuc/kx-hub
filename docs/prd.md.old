@@ -1,0 +1,112 @@
+# PRD (V2) – Personal KI-Knowledge Base (AWS + Multi-Provider AI)
+
+## 1. Ziel & Nutzen
+- **Ziel**: Tägliche Verarbeitung von Readwise/Reader-Highlights/Artikeln, automatische **Semantik-Verarbeitung**, **Cluster/Verknüpfungen**, **TL;DR-Karten**, **Ideen-Synthesen**, **On-Demand Query-Retrieval**, Export nach **GitHub → Obsidian**, plus **wöchentlicher E-Mail-Digest**.
+- **Nicht-Ziele (V1)**: Team-Multiuser, Web-UI (nur CLI/API), Bedrock/On-Prem.
+
+## 2. Kern-Use-Cases
+1. Täglicher Ingest neuer Artikel/Highlights via API.
+2. Semantische Ähnlichkeit & Cluster (K-Means; optional HDBSCAN).
+3. Knowledge Cards (kurze TL;DR + Takeaways).
+4. Ideen-Synthesen je Cluster/Thema.
+5. Export (Markdown + graph.json) → GitHub → Obsidian Sync.
+6. E-Mail-Digest (neu, resurfacings, Synthese der Woche).
+7. **Query-Driven Retrieval**: Natural Language Query → semantische Suche → ranked Results mit relevanten Artikeln/Highlights/Buchsektionen.
+8. Manueller Trigger für Testläufe/Prompt-Tuning.
+
+## 3. Architektur-Leitlinien
+- Einfach & erweiterbar, **Serverless**, **Pay-per-Use** (MVP ohne Vector-DB).
+- **Multi-Provider AI**: Konfigurierbare Auswahl zwischen OpenAI, Anthropic für verschiedene Tasks.
+- Konfigurierbar via Repo (`/config/settings.yml`).
+- Delta-Verarbeitung (nur neue/geänderte Items).
+- Sicher (Secrets Manager, IAM Least-Privilege, private Repo).
+
+## 4. Datenflüsse
+
+### Batch Processing Pipeline (täglich)
+1) Ingest (Readwise/Reader APIs) → **S3 raw**
+2) Normalize → **S3 markdown** (+ Frontmatter)
+3) Embed (OpenAI text-embedding-3-small) → **S3 embeddings** (parquet/ndjson) + **DynamoDB metadata**
+4) Cluster & Link (hybrid cosine + heuristics) → **DynamoDB links** + **S3 graph.json**
+5) Summaries & Synthesis (Multi-Provider: Claude Haiku 4.5/Sonnet 4.5) → **S3 /content/cards**
+6) Export → **GitHub** (Commit/PR)
+7) Weekly Digest → **SES E-Mail**
+
+### On-Demand Query Flow (User-initiated)
+8) User Query (CLI/API) → **Lambda Query Handler**
+9) Query Embedding (OpenAI text-embedding-3-small) → **Cosine Similarity Search** (DynamoDB + S3)
+10) Ranked Results → **Return**: Artikel/Highlights mit Context + Knowledge Cards
+
+## 5. Datenmodell (Kurz)
+**DynamoDB `kb_items`**: `pk=id`, `sk=type#date`, attrs: title, url, tags, authors, created_at, updated_at, cluster_id[], similar_ids[], scores[].  
+**DynamoDB `kb_clusters`**: `pk=cluster_id`, attrs: label, members[], parent_cluster?, related_clusters[], label_version.  
+**S3**: `/raw/*.json`, `/markdown/notes/{id}.md`, `/embeddings/{date}.parquet`, `/cards/{id}.md`, `/graphs/graph.json`.  
+
+## 6. Konfiguration
+
+### `/config/settings.yml` – AI Provider & Model Configuration
+
+```yaml
+ai_providers:
+  # Embeddings: OpenAI required (Anthropic bietet keine Embeddings)
+  embeddings:
+    provider: openai
+    model: text-embedding-3-small  # $0.02/M tokens
+    fallback_model: text-embedding-3-large  # Falls Präzision unzureichend
+
+  # Summaries: High-volume, cost-sensitive
+  summaries:
+    primary_provider: anthropic
+    primary_model: claude-haiku-4.5  # $1/$5/M tokens, 2x faster
+    fallback_provider: openai
+    fallback_model: gpt-5-mini  # $0.25/$2/M tokens
+
+  # Synthesis: Complex reasoning, wöchentlich
+  synthesis:
+    primary_provider: anthropic
+    primary_model: claude-sonnet-4.5  # $3/$15/M tokens, best reasoning
+    fallback_provider: openai
+    fallback_model: gpt-5  # $1.25/$10/M tokens
+
+  # Query Understanding: User-facing, speed critical
+  query:
+    primary_provider: openai
+    primary_model: gpt-5-mini  # $0.25/$2/M tokens, sehr schnell
+    fallback_model: gpt-5-nano  # $0.05/$0.40/M tokens, ultra-cheap
+    # Alternative: anthropic/claude-haiku-4.5 für Testing
+
+cost_optimization:
+  enable_prompt_caching: true  # 90% savings on cached inputs
+  enable_batch_api: true  # 50% discount für non-time-sensitive tasks
+  batch_processing_schedule: "0 2 * * *"  # 2am täglich
+
+readwise:
+  api_key_secret: /kx-hub/readwise/api-key
+  sync_interval_hours: 24
+
+github:
+  repo: user/obsidian-vault
+  branch: main
+  commit_author: kx-hub-bot
+
+email:
+  from: noreply@kx-hub.example.com
+  digest_schedule: "0 9 * * MON"  # Montags 9am
+```
+
+### Geschätzte Monatliche Kosten
+- **Embeddings**: $0.02 (500 items/month)
+- **Summaries**: $1.75 (Claude Haiku 4.5)
+- **Synthesis**: $0.42 (Claude Sonnet 4.5, wöchentlich)
+- **Query**: $0.10 (GPT-5-mini, 20 queries/week)
+- **Total**: **~$2.29/month** (mit Caching/Batch: **~$1.50/month**)
+✅ **Ziel: <$5/month erreicht**
+
+## 7. Erfolgskriterien
+- **Präzision**: ≥80% sinnvolle „similar"-Vorschläge.
+- **Abdeckung**: 100% neue Items ≤ 24h verarbeitet.
+- **Query Response Time**: <2s für semantische Suche (P95).
+- **Query Relevanz**: ≥80% der Top-10 Results als „relevant" bewertet.
+- **Kostenkontrolle**: Monatliche Kosten <$5 für typical usage (500 items/month, 20 queries/week).
+- **GitHub Export**: ≥98% erfolgreiche Commits ohne Konflikte.
+- **Email Deliverability**: ≥95% Inbox-Zustellung (not spam).

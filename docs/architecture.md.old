@@ -1,0 +1,249 @@
+# Architektur – AWS + Multi-Provider AI (MVP: Pay-per-Use, ohne Vector-DB)
+
+## Übersicht
+
+Das System nutzt AWS Serverless-Komponenten mit konfigurierbarer Multi-Provider AI-Unterstützung (OpenAI + Anthropic).
+
+---
+
+## System-Architektur
+
+### Batch Processing Pipeline (Täglich)
+
+```mermaid
+flowchart TB
+  RW[Readwise API] -->|pull| L1[Lambda Ingest]
+  RR[Reader API]   -->|pull| L1
+
+  L1 --> S3_RAW[(S3: raw-json)]
+  L1 --> EV[EventBridge: daily trigger]
+
+  EV --> SF[Step Functions: Pipeline]
+  SF --> L2[Lambda Normalize/Markdown]
+  L2 --> S3_MD[(S3: markdown-normalized)]
+
+  SF --> L3[Lambda Embeddings]
+  L3 -->|OpenAI text-embedding-3-small| AI_EMB[AI Provider: OpenAI]
+  AI_EMB --> S3_EMB[(S3: embeddings parquet)]
+  L3 --> META[(DynamoDB: metadata/links)]
+
+  SF --> L4[Lambda Cluster & Link]
+  L4 --> META
+  L4 --> S3_GRAPH[(S3: graph.json)]
+
+  SF --> L5[Lambda Summaries & Synthesis]
+  L5 -->|Config-driven| AI_PROV[AI Provider Abstraction]
+  AI_PROV -->|Summaries| CLAUDE_H[Anthropic: Claude Haiku 4.5]
+  AI_PROV -->|Synthesis| CLAUDE_S[Anthropic: Claude Sonnet 4.5]
+  AI_PROV -->|Fallback| GPT[OpenAI: GPT-5/GPT-5-mini]
+  L5 --> S3_KC[(S3: knowledge-cards md)]
+
+  SF --> L6[Lambda Export → GitHub]
+  S3_MD --> L6
+  S3_KC --> L6
+  S3_GRAPH --> L6
+
+  SF --> L7[Lambda Email Digest]
+  META --> L7
+  L7 --> SES[AWS SES]
+```
+
+### On-Demand Query Flow (User-Initiated)
+
+```mermaid
+flowchart LR
+  USER[User CLI/API] -->|Natural Language Query| APIGW[API Gateway]
+  APIGW --> L8[Lambda Query Handler]
+
+  L8 -->|Embed Query| AI_EMB[OpenAI: text-embedding-3-small]
+  AI_EMB --> L8
+
+  L8 -->|Cosine Search| META[(DynamoDB: metadata)]
+  L8 -->|Fetch Embeddings| S3_EMB[(S3: embeddings)]
+
+  META --> L8
+  S3_EMB --> L8
+
+  L8 -->|Fetch Content| S3_MD[(S3: markdown)]
+  L8 -->|Fetch Cards| S3_KC[(S3: knowledge-cards)]
+
+  L8 -->|Ranked Results| USER
+```
+
+---
+
+## AI Provider Abstraction Layer
+
+### Architektur-Komponenten
+
+```
+/src/services/ai/
+├── base_provider.py          # Abstract Interface für alle Providers
+├── openai_provider.py        # OpenAI API Implementation
+├── anthropic_provider.py     # Anthropic API Implementation
+├── provider_factory.py       # Factory Pattern: Config → Provider Instance
+└── provider_config.py        # Config Parser für settings.yml
+```
+
+### Provider Selection Logic
+
+```python
+# Simplified Flow
+config = load_config('/config/settings.yml')
+
+# Embeddings: Always OpenAI (Anthropic bietet keine)
+embedding_provider = OpenAIProvider(model='text-embedding-3-small')
+
+# Summaries: Config-driven mit Fallback
+summary_provider = ProviderFactory.create(
+    primary='anthropic/claude-haiku-4.5',
+    fallback='openai/gpt-5-mini'
+)
+
+# Synthesis: Config-driven
+synthesis_provider = ProviderFactory.create(
+    primary='anthropic/claude-sonnet-4.5',
+    fallback='openai/gpt-5'
+)
+
+# Query Understanding: Config-driven
+query_provider = ProviderFactory.create(
+    primary='openai/gpt-5-mini',
+    fallback='openai/gpt-5-nano'
+)
+```
+
+### Secrets Management
+
+```
+AWS Secrets Manager:
+├── /kx-hub/ai-providers/openai-api-key
+├── /kx-hub/ai-providers/anthropic-api-key
+├── /kx-hub/readwise/api-key
+└── /kx-hub/github/token
+```
+
+---
+
+## Datenfluss Details
+
+### Batch Pipeline (Step Functions Orchestration)
+
+1. **Ingest**: EventBridge (täglich 2am) → Lambda Ingest → S3 raw JSON
+2. **Normalize**: Step Function → Lambda Normalize → S3 Markdown (+ Frontmatter)
+3. **Embed**: Lambda Embeddings → OpenAI API → S3 Parquet + DynamoDB metadata
+4. **Cluster**: Lambda Cluster & Link → Hybrid Cosine + Heuristics → DynamoDB + S3 graph.json
+5. **Summarize**: Lambda Summaries (Claude Haiku 4.5) → S3 knowledge-cards
+6. **Synthesize**: Lambda Synthesis (Claude Sonnet 4.5) → wöchentlich → S3 insights
+7. **Export**: Lambda Export → GitHub Commit/PR
+8. **Digest**: Lambda Email (wöchentlich Montags) → SES
+
+### Query Flow (Synchronous API)
+
+1. **User Query**: CLI/API → API Gateway → Lambda Query Handler
+2. **Query Embedding**: OpenAI text-embedding-3-small → 1536-dim vector
+3. **Similarity Search**: Brute-force cosine similarity gegen alle Embeddings in DynamoDB
+4. **Ranking**: Top-N results nach Score sortiert
+5. **Context Enrichment**: Fetch Markdown + Knowledge Cards aus S3
+6. **Response**: JSON mit ranked results + context + highlights
+   - Response time target: <2s (P95)
+
+---
+
+## Kostenoptimierung
+
+### Strategie-Komponenten
+
+#### 1. Prompt Caching (90% Savings)
+- System prompts cachen (täglich wiederverwendet)
+- Template prompts für Summaries
+- Geschätzte Einsparung: ~$0.80/month → $0.08/month
+
+#### 2. Batch API (50% Discount)
+- Alle nicht-zeitkritischen Tasks:
+  - Daily ingestion pipeline
+  - Weekly synthesis generation
+  - Nightly clustering updates
+- Geschätzte Einsparung: ~$1.00/month → $0.50/month
+
+#### 3. Model Tiering
+- Simple queries → GPT-5-nano ($0.05/$0.40)
+- Complex queries → GPT-5-mini ($0.25/$2.00)
+- Sehr complex → Haiku 4.5 ($1/$5)
+
+#### 4. Delta Processing
+- Nur neue/geänderte Items verarbeiten
+- Verhindert redundante Embedding-Kosten
+
+### Geschätzte Monatliche Kosten
+
+| Komponente | Model | Monatlich | Optimiert |
+|-----------|-------|-----------|-----------|
+| Embeddings | text-embedding-3-small | $0.02 | $0.02 |
+| Summaries | Claude Haiku 4.5 | $1.75 | $0.88 (Batch) |
+| Synthesis | Claude Sonnet 4.5 | $0.42 | $0.21 (Batch) |
+| Query | GPT-5-mini | $0.10 | $0.05 (Tiering) |
+| **Total** | | **$2.29** | **~$1.16** |
+
+✅ **Ziel erreicht: <$5/month (sogar <$2/month mit Optimierungen)**
+
+---
+
+## Skalierung & Upgrade-Pfade
+
+### MVP: Brute-Force Cosine (Current)
+- **Geeignet für**: <50,000 items
+- **Latenz**: <2s für queries (acceptable)
+- **Kosten**: Minimal (nur Lambda compute)
+
+### Phase 2: FAISS ANN Index
+- **Trigger**: >50,000 items ODER query latency >5s
+- **Implementation**:
+  - ECS Fargate Task (on-demand)
+  - Nightly FAISS index rebuild
+  - Index stored in S3
+  - Lambda loads index from S3 for queries
+- **Kosten**: $0 fixed cost (Fargate on-demand), ~$10-20/month bei heavy usage
+
+### Phase 3: Vector Database
+- **Trigger**: >500,000 items ODER multi-user deployment
+- **Options**:
+  - Pinecone ($70/month für 10M vectors)
+  - Qdrant self-hosted (ECS + RDS Aurora, ~$50/month)
+  - OpenSearch Serverless (~$30/month)
+- **Nur wenn MVP-Ansatz nicht mehr skaliert**
+
+---
+
+## Security & Best Practices
+
+### IAM Least-Privilege
+- Jede Lambda hat spezifische Role mit minimalen Permissions
+- S3: Bucket policies restrict access per Lambda
+- Secrets Manager: Rotation enabled für API keys
+
+### Monitoring & Alerting
+- CloudWatch Metrics:
+  - Lambda execution times (P50, P95, P99)
+  - API Gateway latency
+  - Query response times
+  - Cost per 1000 items processed
+- CloudWatch Alarms:
+  - Pipeline failures
+  - Query latency >5s
+  - Monthly cost >$5
+
+### Deployment
+- AWS CDK / SAM für Infrastructure as Code
+- CI/CD via GitHub Actions
+- Separate Stacks: dev, staging, prod
+
+---
+
+## Hinweise
+
+**Für Korpora bis ~50k Items**: Brute-force Cosine in Batches ausreichend, keine zusätzliche Infrastruktur nötig.
+
+**Upgrade-Pfad**: **FAISS** (ANN) als on-demand ECS Task mit Index-Persistenz in S3 (keine Fixkosten bis usage).
+
+**Multi-Provider Benefit**: Flexibilität für Performance-Testing und Cost-Optimization ohne Architektur-Changes.
