@@ -26,15 +26,15 @@
 ### Batch Processing Pipeline (daily)
 1) Ingest (Readwise/Reader APIs) → **Cloud Storage (raw)**
 2) Normalize → **Cloud Storage (markdown)** (+ Frontmatter)
-3) Embed & Store (Vertex AI `text-embedding-004`) → **Vertex AI Vector Search** + **Firestore metadata**
+3) Embed & Store (Vertex AI `gemini-embedding-001`) → **Vertex AI Vector Search** + **Firestore metadata**
 4) Cluster & Link → **Firestore links** + **Cloud Storage graph.json**
-5) Summaries & Synthesis (Vertex AI `Gemini 1.5 Flash`) → **Cloud Storage /content/cards**
+5) Summaries & Synthesis (Vertex AI `Gemini 2.5 Flash`) → **Cloud Storage /content/cards**
 6) Export → **GitHub** (Commit/PR)
 7) Weekly Digest → **SendGrid Email**
 
 ### On-Demand Query Flow (User-initiated)
 8) User Query (CLI/API) → **Cloud Function Query Handler**
-9) Query Embedding (Vertex AI `text-embedding-004`) → **Vertex AI Vector Search**
+9) Query Embedding (Vertex AI `gemini-embedding-001`) → **Vertex AI Vector Search**
 10) Ranked Results → **Return**: Articles/highlights with context + Knowledge Cards
 
 ## 5. Data Model (Brief)
@@ -50,8 +50,8 @@
 vertex_ai:
   project_id: "your-gcp-project-id"
   location: "europe-west4"
-  embeddings_model: "text-embedding-004"
-  generative_model: "gemini-1.5-flash-001"
+  embeddings_model: "gemini-embedding-001"
+  generative_model: "gemini-2.5-flash-001"
 
 readwise:
   api_key_secret: "/kx-hub/readwise/api-key" # Path in Google Secret Manager
@@ -71,7 +71,7 @@ email:
 
 ### Estimated Monthly Costs
 - **Embeddings & Vector Search**: ~$3.10 (Vertex AI)
-- **Generative Models**: ~$1.50 (Vertex AI Gemini 1.5 Flash)
+- **Generative Models**: ~$1.50 (Vertex AI Gemini 2.5 Flash)
 - **Cloud Functions, Storage, Firestore**: ~$0.50
 - **Total**: **~$5.10/month**
 ✅ **Goal: ~$5/month achieved. Complexity and maintenance effort are drastically reduced compared to the V2 architecture.**

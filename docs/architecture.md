@@ -24,7 +24,7 @@ flowchart TB
   F2 --> GCS_MD[(Cloud Storage: markdown-normalized)]
 
   WF --> F3[Cloud Function: Embed & Store]
-  F3 -->|text-embedding-004| V_EMB[Vertex AI: Embeddings API]
+  F3 -->|gemini-embedding-001| V_EMB[Vertex AI: Embeddings API]
   V_EMB --> F3
   F3 --> V_VS[Vertex AI Vector Search]
   F3 --> FS_META[(Firestore: metadata/links)]
@@ -34,7 +34,7 @@ flowchart TB
   F4 --> GCS_GRAPH[(Cloud Storage: graph.json)]
 
   WF --> F5[Cloud Function: Summaries & Synthesis]
-  F5 -->|Gemini 1.5 Flash| V_GEN[Vertex AI: Generative AI]
+  F5 -->|Gemini 2.5 Flash| V_GEN[Vertex AI: Generative AI]
   F5 --> GCS_KC[(Cloud Storage: knowledge-cards md)]
 
   WF --> F6[Cloud Function: Export → GitHub]
@@ -77,8 +77,8 @@ flowchart LR
 
 All AI functionality is handled via Vertex AI. No abstraction layer for multiple providers is necessary, which significantly simplifies the architecture.
 
-- **Embeddings**: `text-embedding-004` model via Vertex AI API.
-- **Generative Models**: `Gemini 1.5 Flash` for summaries and synthesis.
+- **Embeddings**: `gemini-embedding-001` model via Vertex AI API.
+- **Generative Models**: `Gemini 2.5 Flash` for summaries and synthesis.
 - **Vector Search**: Vertex AI Vector Search for storage and similarity search.
 
 ### Secrets Management
@@ -100,14 +100,14 @@ Google Secret Manager:
 2. **Normalize**: Cloud Workflow → Cloud Function Normalize → GCS Markdown (+ Frontmatter)
 3. **Embed & Store**: Cloud Function → Vertex AI Embeddings API → Vertex AI Vector Search + Firestore metadata
 4. **Cluster**: Cloud Function Cluster & Link → Firestore + GCS graph.json
-5. **Summarize/Synthesize**: Cloud Function (Gemini 1.5 Flash) → GCS knowledge-cards
+5. **Summarize/Synthesize**: Cloud Function (Gemini 2.5 Flash) → GCS knowledge-cards
 6. **Export**: Cloud Function Export → GitHub Commit/PR
 7. **Digest**: Cloud Function Email (weekly on Mondays) → SendGrid
 
 ### Query Flow (Synchronous API)
 
 1. **User Query**: CLI/API → API Gateway → Cloud Function Query Handler
-2. **Query Embedding**: Vertex AI `text-embedding-004`
+2. **Query Embedding**: Vertex AI `gemini-embedding-001`
 3. **Similarity Search**: Vertex AI Vector Search `FindNeighbors`
 4. **Context Enrichment**: Fetch Metadata from Firestore, Content from GCS
 5. **Response**: JSON with ranked results + context + highlights
@@ -131,7 +131,7 @@ The use of Vertex AI and Google Cloud Serverless components significantly simpli
 |-----------|-------|-----------|
 | Embeddings | Vertex AI Embeddings API | $0.10 |
 | Vector Search | Vertex AI Vector Search | $3.00 (base index) |
-| Generative | Vertex AI (Gemini 1.5 Flash) | $1.50 |
+| Generative | Vertex AI (Gemini 2.5 Flash) | $1.50 |
 | Functions/Storage | Google Cloud | $0.50 |
 | **Total** | | **~$5.10** |
 
