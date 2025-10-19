@@ -320,3 +320,11 @@ resource "google_eventarc_trigger" "workflow_trigger" {
     google_workflows_workflow.batch_pipeline
   ]
 }
+
+# Grant workflow service account permission to invoke the normalize function
+resource "google_cloud_run_service_iam_member" "normalize_function_workflow_invoker" {
+  location = google_cloudfunctions2_function.normalize_function.location
+  service  = google_cloudfunctions2_function.normalize_function.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.workflow_sa.email}"
+}

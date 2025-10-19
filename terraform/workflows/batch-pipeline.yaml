@@ -39,7 +39,7 @@ main:
             - log_normalize_error:
                 call: sys.log
                 args:
-                  text: ${"Normalize function failed - " + string(e)}
+                  text: Normalize function failed - check logs for details
                   severity: ERROR
             - fail_workflow:
                 raise: ${e}
