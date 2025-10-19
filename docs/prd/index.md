@@ -14,3 +14,8 @@
     - [ – Vertex AI & App Configuration](./6-configuration.md#vertex-ai-app-configuration)
     - [Estimated Monthly Costs](./6-configuration.md#estimated-monthly-costs)
   - [7. Success Criteria](./7-success-criteria.md)
+  - [8. Future Features & Backlog](./8-future-features.md)
+    - [8.1 Additional Data Sources](./8-future-features.md#81-additional-data-sources)
+      - [8.1.1 DayOne Journal Import](./8-future-features.md#811-dayone-journal-import)
+    - [8.2 Intelligent Content Discovery](./8-future-features.md#82-intelligent-content-discovery)
+      - [8.2.1 Current Article Recommendations & Follow-ups](./8-future-features.md#821-current-article-recommendations--follow-ups)

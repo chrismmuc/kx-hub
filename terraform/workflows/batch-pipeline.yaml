@@ -13,7 +13,7 @@ main:
     - log_start:
         call: sys.log
         args:
-          text: ${"Starting batch pipeline workflow - triggered by event"}
+          text: Starting batch pipeline workflow - triggered by event
           severity: INFO
 
     # Step 1: Call normalize function to transform JSON → Markdown
@@ -39,7 +39,7 @@ main:
             - log_normalize_error:
                 call: sys.log
                 args:
-                  text: ${"Normalize function failed: " + e.message}
+                  text: ${"Normalize function failed - " + string(e)}
                   severity: ERROR
             - fail_workflow:
                 raise: ${e}
@@ -47,7 +47,7 @@ main:
     - log_normalize_success:
         call: sys.log
         args:
-          text: ${"Normalize function completed successfully"}
+          text: Normalize function completed successfully
           severity: INFO
 
     # Placeholder for Story 1.3: Embed & Store

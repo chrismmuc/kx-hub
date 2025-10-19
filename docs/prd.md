@@ -84,3 +84,8 @@ email:
 - **Cost Control**: Monthly costs <$10 for typical usage.
 - **GitHub Export**: ≥98% successful commits without conflicts.
 - **Email Deliverability**: ≥95% inbox delivery (not spam).
+
+## 8. Future Features & Backlog
+See [8-future-features.md](./prd/8-future-features.md) for detailed feature ideas beyond MVP:
+- **DayOne Journal Import**: Local file upload integration for personal journal entries
+- **Current Article Recommendations**: AI-powered discovery of follow-up articles and cross-topic connections
