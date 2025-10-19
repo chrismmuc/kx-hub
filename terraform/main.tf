@@ -1,6 +1,26 @@
+# Enable required GCP APIs
+resource "google_project_service" "required_apis" {
+  for_each = toset([
+    "cloudfunctions.googleapis.com",
+    "secretmanager.googleapis.com",
+    "storage.googleapis.com",
+    "pubsub.googleapis.com",
+    "cloudscheduler.googleapis.com",
+    "eventarc.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "run.googleapis.com",
+    "workflows.googleapis.com"
+  ])
+
+  service            = each.value
+  disable_on_destroy = false
+}
+
 # Pub/Sub topic to trigger the daily ingest workflow
 resource "google_pubsub_topic" "daily_trigger" {
   name = "daily-trigger"
+
+  depends_on = [google_project_service.required_apis]
 }
 
 # Cloud Scheduler job to publish to the daily-trigger topic every day at 2am
@@ -9,11 +29,14 @@ resource "google_cloud_scheduler_job" "daily_ingest_trigger" {
   description = "Triggers the daily data ingest pipeline"
   schedule    = "0 2 * * *"
   time_zone   = "UTC"
+  region      = "europe-west3" # Cloud Scheduler only supports specific regions
 
   pubsub_target {
     topic_name = google_pubsub_topic.daily_trigger.id
     data       = base64encode("Go!")
   }
+
+  depends_on = [google_project_service.required_apis]
 }
 
 # Pub/Sub topic for the ingest function to publish to upon completion
@@ -43,10 +66,11 @@ resource "google_project_iam_member" "ingest_sa_secret_accessor" {
   member  = "serviceAccount:${google_service_account.ingest_function_sa.email}"
 }
 
-resource "google_project_iam_member" "ingest_sa_storage_creator" {
-  project = var.project_id
-  role    = "roles/storage.objectCreator"
-  member  = "serviceAccount:${google_service_account.ingest_function_sa.email}"
+# Grant the service account admin access to the raw-json bucket
+resource "google_storage_bucket_iam_member" "ingest_sa_raw_bucket_admin" {
+  bucket = google_storage_bucket.raw_json.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.ingest_function_sa.email}"
 }
 
 resource "google_project_iam_member" "ingest_sa_pubsub_publisher" {
@@ -55,11 +79,24 @@ resource "google_project_iam_member" "ingest_sa_pubsub_publisher" {
   member  = "serviceAccount:${google_service_account.ingest_function_sa.email}"
 }
 
+# Grant Eventarc permission to invoke the Cloud Function
+resource "google_project_iam_member" "ingest_sa_eventarc_receiver" {
+  project = var.project_id
+  role    = "roles/run.invoker"
+  member  = "serviceAccount:${google_service_account.ingest_function_sa.email}"
+}
+
 # Archive the source code for the Cloud Function
 data "archive_file" "ingest_source" {
   type        = "zip"
   source_dir  = "../src/ingest"
   output_path = "/tmp/ingest_source.zip"
+  excludes = [
+    "__pycache__",
+    "**/__pycache__",
+    "*.pyc",
+    ".DS_Store"
+  ]
 }
 
 # Cloud Storage bucket to store the function's source code
@@ -95,9 +132,12 @@ resource "google_cloudfunctions2_function" "ingest_function" {
   }
 
   service_config {
-    max_instance_count = 1
-    service_account_email = google_service_account.ingest_function_sa.email
+    max_instance_count             = 1
+    service_account_email          = google_service_account.ingest_function_sa.email
     all_traffic_on_latest_revision = true
+    environment_variables = {
+      GCP_PROJECT = var.project_id
+    }
   }
 
   event_trigger {
@@ -106,4 +146,177 @@ resource "google_cloudfunctions2_function" "ingest_function" {
     pubsub_topic   = google_pubsub_topic.daily_trigger.id
     retry_policy   = "RETRY_POLICY_RETRY"
   }
+
+  depends_on = [
+    google_project_service.required_apis,
+    google_project_iam_member.ingest_sa_secret_accessor,
+    google_storage_bucket_iam_member.ingest_sa_raw_bucket_admin,
+    google_project_iam_member.ingest_sa_pubsub_publisher,
+    google_project_iam_member.ingest_sa_eventarc_receiver
+  ]
+}
+
+# ============================================================================
+# Phase 2: Normalize Function & Cloud Workflow Resources (Story 1.2)
+# ============================================================================
+
+# Cloud Storage bucket for normalized Markdown files
+resource "google_storage_bucket" "markdown_normalized" {
+  name          = "${var.project_id}-markdown-normalized"
+  location      = var.region
+  force_destroy = true // Note: Set to false in production
+
+  uniform_bucket_level_access = true
+}
+
+# IAM Service Account for the Normalize Cloud Function
+resource "google_service_account" "normalize_function_sa" {
+  account_id   = "normalize-function-sa"
+  display_name = "Service Account for Normalize Cloud Function"
+}
+
+# Grant normalize function read access to raw-json bucket
+resource "google_storage_bucket_iam_member" "normalize_sa_raw_bucket_viewer" {
+  bucket = google_storage_bucket.raw_json.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.normalize_function_sa.email}"
+}
+
+# Grant normalize function write access to markdown-normalized bucket
+resource "google_storage_bucket_iam_member" "normalize_sa_markdown_bucket_creator" {
+  bucket = google_storage_bucket.markdown_normalized.name
+  role   = "roles/storage.objectCreator"
+  member = "serviceAccount:${google_service_account.normalize_function_sa.email}"
+}
+
+# Grant logging permissions
+resource "google_project_iam_member" "normalize_sa_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.normalize_function_sa.email}"
+}
+
+# Grant run.invoker permission for workflow to invoke function
+resource "google_project_iam_member" "normalize_sa_run_invoker" {
+  project = var.project_id
+  role    = "roles/run.invoker"
+  member  = "serviceAccount:${google_service_account.normalize_function_sa.email}"
+}
+
+# Archive the source code for the Normalize Cloud Function
+data "archive_file" "normalize_source" {
+  type        = "zip"
+  source_dir  = "../src/normalize"
+  output_path = "/tmp/normalize_source.zip"
+  excludes = [
+    "__pycache__",
+    "**/__pycache__",
+    "*.pyc",
+    ".DS_Store"
+  ]
+}
+
+# Upload the normalize function source code
+resource "google_storage_bucket_object" "normalize_source_zip" {
+  name   = "normalize_source.zip#${data.archive_file.normalize_source.output_md5}"
+  bucket = google_storage_bucket.function_source.name
+  source = data.archive_file.normalize_source.output_path
+}
+
+# Cloud Function (2nd gen) for normalization (JSON → Markdown)
+resource "google_cloudfunctions2_function" "normalize_function" {
+  name     = "normalize-function"
+  location = var.region
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "normalize"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.function_source.name
+        object = google_storage_bucket_object.normalize_source_zip.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count    = 3
+    timeout_seconds       = 540 // 9 minutes for large batches
+    service_account_email = google_service_account.normalize_function_sa.email
+    environment_variables = {
+      GCP_PROJECT = var.project_id
+    }
+  }
+
+  depends_on = [
+    google_project_service.required_apis,
+    google_storage_bucket_iam_member.normalize_sa_raw_bucket_viewer,
+    google_storage_bucket_iam_member.normalize_sa_markdown_bucket_creator,
+    google_project_iam_member.normalize_sa_log_writer,
+    google_project_iam_member.normalize_sa_run_invoker
+  ]
+}
+
+# Service Account for Cloud Workflow
+resource "google_service_account" "workflow_sa" {
+  account_id   = "batch-pipeline-workflow-sa"
+  display_name = "Service Account for Batch Pipeline Workflow"
+}
+
+# Grant workflow permission to invoke Cloud Functions
+resource "google_project_iam_member" "workflow_sa_function_invoker" {
+  project = var.project_id
+  role    = "roles/cloudfunctions.invoker"
+  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
+# Grant workflow permission to write logs
+resource "google_project_iam_member" "workflow_sa_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
+# Cloud Workflow for batch processing pipeline
+resource "google_workflows_workflow" "batch_pipeline" {
+  name            = "batch-pipeline"
+  region          = var.region
+  description     = "Orchestrates the daily batch processing pipeline: normalize → embed → store"
+  service_account = google_service_account.workflow_sa.id
+  source_contents = file("${path.module}/workflows/batch-pipeline.yaml")
+
+  depends_on = [
+    google_project_service.required_apis,
+    google_cloudfunctions2_function.normalize_function,
+    google_project_iam_member.workflow_sa_function_invoker,
+    google_project_iam_member.workflow_sa_log_writer
+  ]
+}
+
+# Eventarc trigger to start workflow when daily-ingest Pub/Sub message is published
+resource "google_eventarc_trigger" "workflow_trigger" {
+  name     = "workflow-trigger-daily-ingest"
+  location = var.region
+
+  matching_criteria {
+    attribute = "type"
+    value     = "google.cloud.pubsub.topic.v1.messagePublished"
+  }
+
+  destination {
+    workflow = google_workflows_workflow.batch_pipeline.id
+  }
+
+  transport {
+    pubsub {
+      topic = google_pubsub_topic.daily_ingest.id
+    }
+  }
+
+  service_account = google_service_account.workflow_sa.email
+
+  depends_on = [
+    google_project_service.required_apis,
+    google_workflows_workflow.batch_pipeline
+  ]
 }
