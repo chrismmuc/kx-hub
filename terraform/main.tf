@@ -79,13 +79,6 @@ resource "google_project_iam_member" "ingest_sa_pubsub_publisher" {
   member  = "serviceAccount:${google_service_account.ingest_function_sa.email}"
 }
 
-# Grant Eventarc permission to invoke the Cloud Function
-resource "google_project_iam_member" "ingest_sa_eventarc_receiver" {
-  project = var.project_id
-  role    = "roles/run.invoker"
-  member  = "serviceAccount:${google_service_account.ingest_function_sa.email}"
-}
-
 # Archive the source code for the Cloud Function
 data "archive_file" "ingest_source" {
   type        = "zip"
@@ -151,8 +144,7 @@ resource "google_cloudfunctions2_function" "ingest_function" {
     google_project_service.required_apis,
     google_project_iam_member.ingest_sa_secret_accessor,
     google_storage_bucket_iam_member.ingest_sa_raw_bucket_admin,
-    google_project_iam_member.ingest_sa_pubsub_publisher,
-    google_project_iam_member.ingest_sa_eventarc_receiver
+    google_project_iam_member.ingest_sa_pubsub_publisher
   ]
 }
 
@@ -277,6 +269,13 @@ resource "google_project_iam_member" "workflow_sa_log_writer" {
   member  = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
+# Grant workflow service account permission to invoke workflows (needed for Eventarc trigger)
+resource "google_project_iam_member" "workflow_sa_workflows_invoker" {
+  project = var.project_id
+  role    = "roles/workflows.invoker"
+  member  = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
 # Cloud Workflow for batch processing pipeline
 resource "google_workflows_workflow" "batch_pipeline" {
   name            = "batch-pipeline"
@@ -289,7 +288,8 @@ resource "google_workflows_workflow" "batch_pipeline" {
     google_project_service.required_apis,
     google_cloudfunctions2_function.normalize_function,
     google_project_iam_member.workflow_sa_function_invoker,
-    google_project_iam_member.workflow_sa_log_writer
+    google_project_iam_member.workflow_sa_log_writer,
+    google_project_iam_member.workflow_sa_workflows_invoker
   ]
 }
 
@@ -317,7 +317,9 @@ resource "google_eventarc_trigger" "workflow_trigger" {
 
   depends_on = [
     google_project_service.required_apis,
-    google_workflows_workflow.batch_pipeline
+    google_workflows_workflow.batch_pipeline,
+    google_project_iam_member.workflow_sa_workflows_invoker,
+    google_project_iam_member.eventarc_sa_workflows_invoker
   ]
 }
 
@@ -327,4 +329,16 @@ resource "google_cloud_run_service_iam_member" "normalize_function_workflow_invo
   service  = google_cloudfunctions2_function.normalize_function.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.workflow_sa.email}"
+}
+
+# Grant Eventarc service agent permission to invoke workflows
+resource "google_project_iam_member" "eventarc_sa_workflows_invoker" {
+  project = var.project_id
+  role    = "roles/workflows.invoker"
+  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-eventarc.iam.gserviceaccount.com"
+}
+
+# Data source to get project number
+data "google_project" "project" {
+  project_id = var.project_id
 }
