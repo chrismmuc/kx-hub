@@ -9,17 +9,20 @@ flowchart TB
 
   F1 --> GCS_RAW[(Cloud Storage: raw-json)]
   F1 --> PS_TOPIC[Pub/Sub Topic: daily-ingest]
+  F1 --> MANIFEST[(Cloud Storage: pipeline manifests)]
 
   PS_TOPIC --> WF[Cloud Workflows: Pipeline]
 
   WF --> F2[Cloud Function: Normalize/Markdown]
   F2 --> GCS_MD[(Cloud Storage: markdown-normalized)]
+  F2 --> PIPESTATE[(Firestore: pipeline_items)]
 
   WF --> F3[Cloud Function: Embed & Store]
   F3 -->|gemini-embedding-001| V_EMB[Vertex AI: Embeddings API]
   V_EMB --> F3
   F3 --> V_VS[Vertex AI Vector Search]
   F3 --> FS_META[(Firestore: metadata/links)]
+  F3 --> PIPESTATE
 
   WF --> F4[Cloud Function: Cluster & Link]
   F4 --> FS_META
@@ -38,6 +41,8 @@ flowchart TB
   FS_META --> F7
   F7 --> SENDGRID[SendGrid API]
 ```
+
+The manifest bucket (`pipeline manifests`) captures each ingest run’s item IDs and timestamps, while the shared `pipeline_items` Firestore collection records `normalize_status`, `embedding_status`, hashes, and retry metadata so downstream stages can resume safely and avoid duplicate work.
 
 ## On-Demand Query Flow (User-Initiated)
 

@@ -225,170 +225,153 @@ class TestMarkdownTransformer(unittest.TestCase):
 
 
 class TestNormalizeCloudFunction(unittest.TestCase):
-    """Test the Cloud Function handler."""
+    """Test the manifest-aware normalize handler."""
 
     def setUp(self):
-        """Import the normalize module."""
-        # Import here to ensure module is available for patching
         import normalize.main
-        self.main_module = normalize.main
+        self.module = normalize.main
 
-    @patch('normalize.main.PROJECT_ID', 'test-project')
-    @patch('normalize.main._get_storage_client')
-    def test_handler_reads_all_json_files(self, mock_get_storage):
-        """Test that handler processes all JSON files from bucket."""
+    def test_requires_run_id(self):
         from normalize.main import normalize_handler
 
-        # Mock storage client
-        mock_client = MagicMock()
-        mock_bucket = MagicMock()
-        mock_client.bucket.return_value = mock_bucket
+        class MockRequest:
+            def get_json(self, silent=False):
+                return {}
 
-        # Mock blobs
-        mock_blob_1 = MagicMock()
-        mock_blob_1.name = "readwise-book-123.json"
-        mock_blob_1.download_as_text.return_value = json.dumps({
+        body, status = normalize_handler(MockRequest())
+        self.assertEqual(status, 400)
+        self.assertIn('run_id is required', body)
+
+    @patch('normalize.main._load_manifest', side_effect=FileNotFoundError('missing'))
+    def test_manifest_missing_returns_404(self, mock_manifest):
+        from normalize.main import normalize_handler
+
+        class MockRequest:
+            def get_json(self, silent=False):
+                return {'run_id': 'run-404'}
+
+        body, status = normalize_handler(MockRequest())
+        self.assertEqual(status, 404)
+        self.assertIn('missing', body)
+
+    @patch('normalize.main.PIPELINE_BUCKET', 'test-pipeline')
+    @patch('normalize.main.PROJECT_ID', 'test-project')
+    @patch('normalize.main._get_firestore_client')
+    @patch('normalize.main._get_storage_client')
+    @patch('normalize.main._load_manifest')
+    def test_processes_manifest_items(self, mock_manifest, mock_storage, mock_firestore):
+        from normalize.main import normalize_handler
+
+        mock_manifest.return_value = {
+            'run_id': 'run-1',
+            'items': [
+                {
+                    'id': '123',
+                    'raw_uri': 'gs://test-raw/readwise-book-123.json',
+                    'raw_checksum': 'sha256:raw1',
+                    'updated_at': '2024-10-20T00:00:00Z'
+                }
+            ]
+        }
+
+        # Storage mocks
+        raw_blob = MagicMock()
+        raw_blob.download_as_text.return_value = json.dumps({
             "user_book_id": 123,
-            "title": "Test Book 1",
-            "author": "Author 1",
-            "source": "kindle",
-            "highlights": []
-        })
-
-        mock_blob_2 = MagicMock()
-        mock_blob_2.name = "readwise-book-456.json"
-        mock_blob_2.download_as_text.return_value = json.dumps({
-            "user_book_id": 456,
-            "title": "Test Book 2",
-            "author": "Author 2",
-            "source": "kindle",
-            "highlights": []
-        })
-
-        mock_bucket.list_blobs.return_value = [mock_blob_1, mock_blob_2]
-        mock_get_storage.return_value = mock_client
-
-        # Execute handler
-        request = MagicMock()
-        response = normalize_handler(request)
-
-        # Verify both files processed
-        self.assertEqual(response[1], 200)
-        response_data = json.loads(response[0])
-        self.assertEqual(response_data["files_processed"], 2)
-
-    @patch('normalize.main.PROJECT_ID', 'test-project')
-    @patch('normalize.main._get_storage_client')
-    def test_handler_writes_markdown_to_output_bucket(self, mock_get_storage):
-        """Test that handler writes transformed Markdown to output bucket."""
-        from normalize.main import normalize_handler
-
-        # Mock storage client
-        mock_client = MagicMock()
-        mock_raw_bucket = MagicMock()
-        mock_output_bucket = MagicMock()
-
-        def get_bucket(name):
-            if "raw-json" in name:
-                return mock_raw_bucket
-            elif "markdown-normalized" in name:
-                return mock_output_bucket
-
-        mock_client.bucket.side_effect = get_bucket
-
-        # Mock input blob
-        mock_blob = MagicMock()
-        mock_blob.name = "readwise-book-999.json"
-        mock_blob.download_as_text.return_value = json.dumps({
-            "user_book_id": 999,
             "title": "Test Book",
-            "author": "Test Author",
-            "source": "kindle",
-            "highlights": []
-        })
-        mock_raw_bucket.list_blobs.return_value = [mock_blob]
-
-        mock_get_storage.return_value = mock_client
-
-        # Execute handler
-        request = MagicMock()
-        normalize_handler(request)
-
-        # Verify markdown file written
-        mock_output_bucket.blob.assert_called_once_with("notes/999.md")
-
-    @patch('normalize.main.PROJECT_ID', 'test-project')
-    @patch('normalize.main._get_storage_client')
-    def test_handler_handles_malformed_json(self, mock_get_storage):
-        """Test error handling for malformed JSON files."""
-        from normalize.main import normalize_handler
-
-        # Mock storage client
-        mock_client = MagicMock()
-        mock_bucket = MagicMock()
-        mock_client.bucket.return_value = mock_bucket
-
-        # Mock blob with invalid JSON
-        mock_blob = MagicMock()
-        mock_blob.name = "readwise-book-bad.json"
-        mock_blob.download_as_text.return_value = "{ invalid json"
-
-        mock_bucket.list_blobs.return_value = [mock_blob]
-        mock_get_storage.return_value = mock_client
-
-        # Execute handler - should not crash
-        request = MagicMock()
-        response = normalize_handler(request)
-
-        # Verify graceful handling
-        self.assertEqual(response[1], 200)
-        response_data = json.loads(response[0])
-        self.assertEqual(response_data["files_processed"], 0)
-        self.assertEqual(response_data["errors"], 1)
-
-    @patch('normalize.main.PROJECT_ID', 'test-project')
-    @patch('normalize.main._get_storage_client')
-    def test_handler_sets_content_type_metadata(self, mock_get_storage):
-        """Test that markdown files have correct content-type metadata."""
-        from normalize.main import normalize_handler
-
-        # Mock storage
-        mock_client = MagicMock()
-        mock_raw_bucket = MagicMock()
-        mock_output_bucket = MagicMock()
-        mock_output_blob = MagicMock()
-
-        def get_bucket(name):
-            if "raw-json" in name:
-                return mock_raw_bucket
-            elif "markdown-normalized" in name:
-                return mock_output_bucket
-
-        mock_client.bucket.side_effect = get_bucket
-        mock_output_bucket.blob.return_value = mock_output_blob
-
-        # Mock input
-        mock_blob = MagicMock()
-        mock_blob.name = "readwise-book-111.json"
-        mock_blob.download_as_text.return_value = json.dumps({
-            "user_book_id": 111,
-            "title": "Test",
             "author": "Author",
             "source": "kindle",
             "highlights": []
         })
-        mock_raw_bucket.list_blobs.return_value = [mock_blob]
+        raw_bucket = MagicMock()
+        raw_bucket.blob.return_value = raw_blob
 
-        mock_get_storage.return_value = mock_client
+        markdown_blob = MagicMock()
+        markdown_bucket = MagicMock()
+        markdown_bucket.blob.return_value = markdown_blob
 
-        # Execute
-        request = MagicMock()
-        normalize_handler(request)
+        storage_client = MagicMock()
+        storage_client.bucket.side_effect = lambda name: raw_bucket if name == 'test-raw' else markdown_bucket
+        mock_storage.return_value = storage_client
 
-        # Verify content-type set
-        mock_output_blob.upload_from_string.assert_called_once()
-        call_args = mock_output_blob.upload_from_string.call_args
-        self.assertEqual(call_args[1]["content_type"], "text/markdown; charset=utf-8")
+        # Firestore mocks
+        doc_ref = MagicMock()
+        snapshot = MagicMock()
+        snapshot.exists = False
+        snapshot.to_dict.return_value = {}
+        doc_ref.get.return_value = snapshot
+
+        collection = MagicMock()
+        collection.document.return_value = doc_ref
+        firestore_client = MagicMock()
+        firestore_client.collection.return_value = collection
+        mock_firestore.return_value = firestore_client
+
+        class MockRequest:
+            def get_json(self, silent=False):
+                return {'run_id': 'run-1'}
+
+        body, status = normalize_handler(MockRequest())
+        self.assertEqual(status, 200)
+        stats = json.loads(body)
+        self.assertEqual(stats['processed'], 1)
+
+        # Markdown written with correct content type
+        markdown_blob.upload_from_string.assert_called_once()
+        self.assertEqual(markdown_blob.upload_from_string.call_args.kwargs['content_type'], 'text/markdown; charset=utf-8')
+
+        # Firestore updated to complete
+        success_update = doc_ref.set.call_args_list[-1].args[0]
+        self.assertEqual(success_update['embedding_status'], 'pending')
+        self.assertEqual(success_update['normalize_status'], 'complete')
+
+    @patch('normalize.main.PROJECT_ID', 'test-project')
+    @patch('normalize.main._get_firestore_client')
+    @patch('normalize.main._get_storage_client')
+    @patch('normalize.main._load_manifest')
+    def test_skips_when_checksum_matches(self, mock_manifest, mock_storage, mock_firestore):
+        from normalize.main import normalize_handler
+
+        mock_manifest.return_value = {
+            'run_id': 'run-2',
+            'items': [
+                {
+                    'id': '123',
+                    'raw_uri': 'gs://test-raw/readwise-book-123.json',
+                    'raw_checksum': 'sha256:raw1',
+                    'updated_at': '2024-10-20T00:00:00Z'
+                }
+            ]
+        }
+
+        storage_client = MagicMock()
+        mock_storage.return_value = storage_client
+
+        snapshot = MagicMock()
+        snapshot.exists = True
+        snapshot.to_dict.return_value = {
+            'normalize_status': 'complete',
+            'raw_checksum': 'sha256:raw1'
+        }
+
+        doc_ref = MagicMock()
+        doc_ref.get.return_value = snapshot
+        collection = MagicMock()
+        collection.document.return_value = doc_ref
+        firestore_client = MagicMock()
+        firestore_client.collection.return_value = collection
+        mock_firestore.return_value = firestore_client
+
+        class MockRequest:
+            def get_json(self, silent=False):
+                return {'run_id': 'run-2'}
+
+        body, status = normalize_handler(MockRequest())
+        self.assertEqual(status, 200)
+        stats = json.loads(body)
+        self.assertEqual(stats['skipped'], 1)
+        called_buckets = [call.args[0] for call in storage_client.bucket.call_args_list]
+        self.assertNotIn('test-raw', called_buckets)
 
 
 if __name__ == "__main__":

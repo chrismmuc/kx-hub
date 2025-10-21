@@ -1,0 +1,3 @@
+# Requirements for initial-import.py
+google-cloud-storage
+requests

@@ -1,9 +1,11 @@
+import hashlib
 import json
 import logging
 import os
 import time
 import requests
 from datetime import datetime, timezone, timedelta
+from uuid import uuid4
 
 from google.cloud import secretmanager, storage, pubsub_v1
 
@@ -12,6 +14,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.environ.get("GCP_PROJECT")
+PIPELINE_BUCKET = os.environ.get("PIPELINE_BUCKET")
+PIPELINE_MANIFEST_PREFIX = os.environ.get("PIPELINE_MANIFEST_PREFIX", "manifests")
 
 # Lazy initialization - clients created on first use to avoid auth errors during import
 secret_client = None
@@ -47,6 +51,27 @@ def get_raw_json_bucket():
     if not PROJECT_ID:
         raise ValueError("GCP_PROJECT environment variable must be set")
     return f"{PROJECT_ID}-raw-json"
+
+
+def get_pipeline_bucket():
+    """Return the pipeline bucket name from environment configuration."""
+    if not PIPELINE_BUCKET:
+        raise ValueError("PIPELINE_BUCKET environment variable must be set")
+    return PIPELINE_BUCKET
+
+
+def get_manifest_blob_path(run_id: str) -> str:
+    """Compute the object path for a run manifest."""
+    prefix = (PIPELINE_MANIFEST_PREFIX or "manifests").strip("/")
+    if prefix:
+        return f"{prefix}/{run_id}.json"
+    return f"{run_id}.json"
+
+
+def generate_run_id() -> str:
+    """Generate a deterministic run identifier: timestamp + short uuid."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    return f"{timestamp}-{uuid4().hex[:8]}"
 
 
 def get_secret(secret_id, version_id="latest"):
@@ -136,22 +161,35 @@ def fetch_readwise_highlights(api_key, last_fetch_date, max_retries=3, timeout=3
     logger.info(f"Fetched {len(full_data)} books from Readwise")
     return full_data
 
-def store_raw_json(bucket_name, file_name, data):
+def store_raw_json(bucket_name, file_name, json_payload):
     """Store data as a JSON file in Google Cloud Storage."""
     client = _get_storage_client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(file_name)
     blob.upload_from_string(
-        data=json.dumps(data, indent=2),
+        data=json_payload,
         content_type="application/json"
     )
     logger.info(f"Successfully uploaded {file_name} to {bucket_name}")
 
-def publish_completion_message(topic_name, message):
+def write_manifest(bucket_name: str, blob_path: str, manifest: dict) -> None:
+    """Persist the manifest JSON to Cloud Storage."""
+    client = _get_storage_client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_path)
+    blob.upload_from_string(
+        data=json.dumps(manifest, indent=2),
+        content_type="application/json"
+    )
+    logger.info(f"Stored manifest {blob_path} in bucket {bucket_name}")
+
+
+def publish_completion_message(topic_name, message_dict):
     """Publish a message to a Pub/Sub topic."""
     publisher = _get_pubsub_publisher()
     topic_path = publisher.topic_path(PROJECT_ID, topic_name)
-    future = publisher.publish(topic_path, message.encode("utf-8"))
+    payload = json.dumps(message_dict).encode("utf-8")
+    future = publisher.publish(topic_path, payload)
     logger.info(f"Published message to {topic_path}")
 
 def handler(event, context):
@@ -173,9 +211,13 @@ def handler(event, context):
         # Note: Reader API would be a separate function call here
         books = fetch_readwise_highlights(readwise_api_key, last_run)
 
-        # 4. Store each book (with nested highlights) in GCS
+        # 4. Store each book (with nested highlights) in GCS + build manifest
         raw_bucket = get_raw_json_bucket()
+        pipeline_bucket = get_pipeline_bucket()
+        run_id = generate_run_id()
+        manifest_items = []
         count = 0
+
         for book in books:
             # Validate book structure
             if "user_book_id" not in book:
@@ -184,11 +226,34 @@ def handler(event, context):
 
             book_id = book["user_book_id"]
             file_name = f"readwise-book-{book_id}.json"
-            store_raw_json(raw_bucket, file_name, book)
+            raw_json_payload = json.dumps(book, indent=2, sort_keys=True)
+            raw_checksum = hashlib.sha256(raw_json_payload.encode("utf-8")).hexdigest()
+
+            store_raw_json(raw_bucket, file_name, raw_json_payload)
             count += 1
 
-        # 5. Publish completion message
-        completion_message = f"{count} new books ingested successfully"
+            manifest_items.append({
+                "id": str(book_id),
+                "raw_uri": f"gs://{raw_bucket}/{file_name}",
+                "updated_at": book.get("updated"),
+                "raw_checksum": f"sha256:{raw_checksum}"
+            })
+
+        manifest_blob_path = get_manifest_blob_path(run_id)
+        manifest_payload = {
+            "run_id": run_id,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "item_count": count,
+            "items": manifest_items
+        }
+        write_manifest(pipeline_bucket, manifest_blob_path, manifest_payload)
+
+        # 5. Publish completion message with run metadata
+        completion_message = {
+            "run_id": run_id,
+            "item_count": count,
+            "manifest_uri": f"gs://{pipeline_bucket}/{manifest_blob_path}"
+        }
         publish_completion_message(COMPLETED_TOPIC, completion_message)
 
         logger.info(f"Ingest function completed successfully - {count} books processed")

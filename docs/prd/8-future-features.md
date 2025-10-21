@@ -176,6 +176,66 @@ content_discovery:
       → Builds on your existing highlights, published 6 months later
    ```
 
+3. **Push to Readwise Reader:**
+   - Automatically add recommended articles to Readwise Reader queue
+   - Use Readwise Reader API to save URLs
+   - Tag recommendations with: `kx-hub-recommended`, `follow-up`, or `cross-topic`
+   - Batch save to avoid API rate limits
+   - User can read/highlight in Reader, which feeds back into the pipeline
+
+**Readwise Reader API Integration:**
+
+The recommendations can be pushed directly to your Readwise Reader queue, creating a closed-loop system where:
+1. You highlight articles in Reader
+2. System finds follow-up articles
+3. System pushes recommendations back to Reader
+4. You read and highlight recommended articles
+5. Cycle continues with deeper knowledge building
+
+**API Configuration:**
+```yaml
+readwise_reader:
+  api_key_secret: "/kx-hub/readwise-reader/api-key"
+  auto_push_recommendations: true
+  max_push_per_week: 10
+  tags: ["kx-hub-recommended"]
+```
+
+**Reader API Endpoint:**
+```
+POST https://readwise.io/api/v3/save/
+Headers:
+  Authorization: Token {api_key}
+Body:
+  {
+    "url": "https://article-url.com",
+    "tags": ["kx-hub-recommended", "follow-up"],
+    "category": "article",
+    "location": "new"  // Adds to "New" section
+  }
+```
+
+**Flow:**
+```
+Weekly Discovery Job
+    ↓
+Generate Recommendations
+    ↓
+Store in Firestore (kb_recommendations)
+    ↓
+[Optional] Push to Readwise Reader API
+    ↓
+User reads in Reader app
+    ↓
+User highlights → Readwise API
+    ↓
+Daily Ingest picks up highlights
+    ↓
+Cycle continues
+```
+
+This creates a **self-reinforcing knowledge loop** where the system actively feeds you relevant content in your existing reading workflow.
+
 **API Costs Estimate:**
 - Google Custom Search API: $5/1000 queries, ~100 queries/week = ~$2/month
 - Article content fetching: Web scraping (free) or diffbot.com API ($0.25/1000 pages)

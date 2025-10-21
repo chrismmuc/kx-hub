@@ -1,3 +1,43 @@
 # BMAD (local only)
 .bmad-core/
 .bmad-*/
+
+# Secrets and sensitive configuration
+setup-secrets.sh
+initial-import.py
+.import-checkpoint.json
+terraform/terraform.tfvars
+terraform/*.tfvars
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfplan
+terraform/.terraform.tfstate.lock.info
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+.env

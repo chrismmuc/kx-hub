@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import patch, MagicMock
 import os
@@ -9,11 +10,15 @@ from src.ingest import main
 
 class TestIngestFunction(unittest.TestCase):
 
+    @patch('src.ingest.main.PIPELINE_MANIFEST_PREFIX', 'manifests')
+    @patch('src.ingest.main.PIPELINE_BUCKET', 'test-project-pipeline')
+    @patch('src.ingest.main.PIPELINE_BUCKET', 'test-project-pipeline')
     @patch('src.ingest.main.PROJECT_ID', 'test-project')
+    @patch('src.ingest.main.generate_run_id', return_value='2025-10-20T02-00-00Z-test1234')
     @patch('src.ingest.main._get_pubsub_publisher')
     @patch('src.ingest.main._get_storage_client')
     @patch('src.ingest.main._get_secret_client')
-    def test_handler_success(self, mock_get_secret, mock_get_storage, mock_get_pubsub):
+    def test_handler_success(self, mock_get_secret, mock_get_storage, mock_get_pubsub, mock_run_id):
         # Setup mocks returned by lazy getters
         mock_secret_client = MagicMock()
         mock_storage_client = MagicMock()
@@ -42,10 +47,21 @@ class TestIngestFunction(unittest.TestCase):
             mock_requests_get.return_value = mock_response
 
             # Mock GCS
-            mock_bucket = MagicMock()
-            mock_blob = MagicMock()
-            mock_storage_client.bucket.return_value = mock_bucket
-            mock_bucket.blob.return_value = mock_blob
+            mock_raw_bucket = MagicMock()
+            mock_manifest_bucket = MagicMock()
+            mock_raw_blob = MagicMock()
+            mock_manifest_blob = MagicMock()
+
+            def bucket_side_effect(name):
+                if name == 'test-project-raw-json':
+                    return mock_raw_bucket
+                elif name == 'test-project-pipeline':
+                    return mock_manifest_bucket
+                return MagicMock()
+
+            mock_storage_client.bucket.side_effect = bucket_side_effect
+            mock_raw_bucket.blob.return_value = mock_raw_blob
+            mock_manifest_bucket.blob.return_value = mock_manifest_blob
 
             # Mock Pub/Sub
             mock_future = MagicMock()
@@ -60,9 +76,19 @@ class TestIngestFunction(unittest.TestCase):
             self.assertEqual(result, 'OK')
             mock_secret_client.access_secret_version.assert_called_once()
             mock_requests_get.assert_called_once()
-            mock_storage_client.bucket.assert_called_once()
-            mock_blob.upload_from_string.assert_called_once()
+            self.assertEqual(mock_storage_client.bucket.call_count, 2)
+            mock_raw_blob.upload_from_string.assert_called_once()
+            mock_manifest_blob.upload_from_string.assert_called_once()
             mock_pubsub_client.publish.assert_called_once()
+            published_payload = mock_pubsub_client.publish.call_args.args[1]
+            message = json.loads(published_payload.decode("utf-8"))
+            self.assertEqual(message["run_id"], '2025-10-20T02-00-00Z-test1234')
+            self.assertEqual(message["item_count"], 1)
+            manifest_kwargs = mock_manifest_blob.upload_from_string.call_args.kwargs
+            manifest_body = json.loads(manifest_kwargs["data"])
+            self.assertEqual(manifest_body["run_id"], '2025-10-20T02-00-00Z-test1234')
+            self.assertEqual(manifest_body["item_count"], 1)
+            self.assertEqual(manifest_body["items"][0]["id"], '123')
 
     @patch('src.ingest.main.PROJECT_ID', 'test-project')
     @patch('src.ingest.main._get_secret_client')

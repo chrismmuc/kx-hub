@@ -2,9 +2,9 @@
 
 ## Batch Pipeline (Cloud Workflows Orchestration)
 
-1. **Ingest**: Pub/Sub (daily 2am) → Cloud Function Ingest → GCS raw JSON
-2. **Normalize**: Cloud Workflow → Cloud Function Normalize → GCS Markdown (+ Frontmatter)
-3. **Embed & Store**: Cloud Function → Vertex AI Embeddings API → Vertex AI Vector Search + Firestore metadata
+1. **Ingest**: Pub/Sub (daily 2am) → Cloud Function Ingest → GCS raw JSON + manifest (`gs://.../pipeline/manifests/{run_id}.json`) detailing item IDs + raw timestamps
+2. **Normalize**: Cloud Workflow passes `run_id` → Cloud Function Normalize → reads manifest → writes only new/changed markdown to GCS, updates Firestore `pipeline_items` (`normalize_status`, `content_hash`)
+3. **Embed & Store**: Cloud Workflow passes `run_id` → Cloud Function Embed → queries `pipeline_items` where `embedding_status` ≠ `complete` or `content_hash` dirty → Vertex AI Embeddings API → Vector Search upsert + Firestore metadata update (`embedding_status`, `last_embedded_at`, `last_error`)
 4. **Cluster**: Cloud Function Cluster & Link → Firestore + GCS graph.json
 5. **Summarize/Synthesize**: Cloud Function (Gemini 2.5 Flash) → GCS knowledge-cards
 6. **Export**: Cloud Function Export → GitHub Commit/PR
