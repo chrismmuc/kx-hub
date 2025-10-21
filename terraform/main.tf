@@ -420,6 +420,7 @@ resource "google_vertex_ai_index" "kb_vector_index" {
       dimensions                  = 768
       approximate_neighbors_count = 150
       distance_measure_type       = "COSINE_DISTANCE"
+      feature_norm_type           = "UNIT_L2_NORM"
       algorithm_config {
         tree_ah_config {
           leaf_node_embedding_count    = 1000
@@ -443,9 +444,10 @@ resource "google_storage_bucket" "vector_search_staging" {
 
 # Initial empty embedding file for Vector Search index creation
 resource "google_storage_bucket_object" "initial_embeddings" {
-  name    = "initial/embeddings_0.json"
-  bucket  = google_storage_bucket.vector_search_staging.name
-  content = "{}"
+  name   = "initial/embedding_seed.jsonl"
+  bucket = google_storage_bucket.vector_search_staging.name
+  source = "${path.module}/templates/embedding_seed.jsonl"
+  content_type = "application/json"
 }
 
 # Vertex AI Index Endpoint
