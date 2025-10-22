@@ -206,7 +206,7 @@ resource "google_storage_bucket_iam_member" "normalize_sa_raw_bucket_viewer" {
 # Grant normalize function write access to markdown-normalized bucket
 resource "google_storage_bucket_iam_member" "normalize_sa_markdown_bucket_creator" {
   bucket = google_storage_bucket.markdown_normalized.name
-  role   = "roles/storage.objectCreator"
+  role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.normalize_function_sa.email}"
 }
 
