@@ -375,6 +375,14 @@ data "google_project" "project" {
   project_id = var.project_id
 }
 
+# Allow Pub/Sub service agent to invoke ingest Cloud Run service (2nd gen function trigger)
+resource "google_cloud_run_service_iam_member" "ingest_function_pubsub_invoker" {
+  location = google_cloudfunctions2_function.ingest_function.location
+  service  = google_cloudfunctions2_function.ingest_function.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
 # ============================================================================
 # Phase 3: Embed Function & Vector Search + Firestore Resources (Story 1.3)
 # ============================================================================
