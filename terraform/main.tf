@@ -142,6 +142,7 @@ resource "google_cloudfunctions2_function" "ingest_function" {
     event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic   = google_pubsub_topic.daily_trigger.id
     retry_policy   = "RETRY_POLICY_RETRY"
+    service_account_email = google_service_account.ingest_function_sa.email
   }
 
   depends_on = [
@@ -388,6 +389,13 @@ resource "google_cloud_run_service_iam_member" "ingest_function_eventarc_invoker
   service  = google_cloudfunctions2_function.ingest_function.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-eventarc.iam.gserviceaccount.com"
+}
+
+resource "google_cloud_run_service_iam_member" "ingest_function_service_account_invoker" {
+  location = google_cloudfunctions2_function.ingest_function.location
+  service  = google_cloudfunctions2_function.ingest_function.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.ingest_function_sa.email}"
 }
 
 # ============================================================================
