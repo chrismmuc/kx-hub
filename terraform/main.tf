@@ -217,6 +217,13 @@ resource "google_project_iam_member" "normalize_sa_log_writer" {
   member  = "serviceAccount:${google_service_account.normalize_function_sa.email}"
 }
 
+# Grant Firestore access for pipeline state updates
+resource "google_project_iam_member" "normalize_sa_datastore_user" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.normalize_function_sa.email}"
+}
+
 # Grant run.invoker permission for workflow to invoke function
 resource "google_project_iam_member" "normalize_sa_run_invoker" {
   project = var.project_id
