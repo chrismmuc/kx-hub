@@ -228,23 +228,39 @@ class TestVectorSearchWriter(unittest.TestCase):
 
     @patch('src.embed.main.UpsertDatapointsRequest')
     @patch('src.embed.main.IndexDatapoint')
-    @patch('src.embed.main.get_index_endpoint_client')
+    @patch('src.embed.main.get_index_service_client')
     def test_upsert_embedding_success(self, mock_get_client, mock_index_datapoint, mock_upsert_request):
         """AC 2: Upsert embedding to Vector Search index."""
         from src.embed.main import upsert_to_vector_search
 
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        datapoint_instance = MagicMock()
-        mock_index_datapoint.return_value = datapoint_instance
+        created_datapoints = []
+
+        class StubIndexDatapoint:
+            class CrowdingTag:
+                def __init__(self, crowding_attribute=None):
+                    self.crowding_attribute = crowding_attribute
+
+            def __init__(self, datapoint_id=None, feature_vector=None, crowding_tag=None, **kwargs):
+                self.datapoint_id = datapoint_id
+                self.feature_vector = feature_vector
+                self.crowding_tag = crowding_tag
+
+        def factory(*args, **kwargs):
+            dp = StubIndexDatapoint(*args, **kwargs)
+            created_datapoints.append(dp)
+            return dp
+
+        mock_index_datapoint.side_effect = factory
+        mock_index_datapoint.CrowdingTag = StubIndexDatapoint.CrowdingTag
         request_instance = MagicMock()
         mock_upsert_request.return_value = request_instance
         import os
         import src.embed.main as embed_main
         embed_main.GCP_PROJECT = "test-project"
         os.environ['GCP_PROJECT'] = "test-project"
-        embed_main.VECTOR_SEARCH_INDEX_ENDPOINT = "1838928799408848896"
-        embed_main.VECTOR_SEARCH_DEPLOYED_INDEX_ID = "test-index"
+        embed_main.VECTOR_SEARCH_INDEX = "projects/test-project/locations/europe-west4/indexes/123"
         embed_main.GCP_REGION = "europe-west4"
 
         item_id = "41094950"
@@ -253,18 +269,19 @@ class TestVectorSearchWriter(unittest.TestCase):
         result = upsert_to_vector_search(item_id, embedding_vector, run_id="run-123")
 
         self.assertTrue(result)
-        mock_index_datapoint.assert_called_once_with(datapoint_id=item_id, feature_vector=embedding_vector)
-        self.assertEqual(datapoint_instance.crowding_tag, "run-123")
+        self.assertEqual(len(created_datapoints), 1)
+        self.assertEqual(created_datapoints[0].datapoint_id, item_id)
+        self.assertEqual(created_datapoints[0].feature_vector, embedding_vector)
+        self.assertEqual(created_datapoints[0].crowding_tag.crowding_attribute, "run-123")
         args, kwargs = mock_upsert_request.call_args
-        self.assertEqual(kwargs['deployed_index_id'], "test-index")
-        self.assertEqual(kwargs['datapoints'], [datapoint_instance])
-        self.assertIn("projects/test-project/locations/europe-west4/indexEndpoints", kwargs['index_endpoint'])
+        self.assertEqual(kwargs['datapoints'], [created_datapoints[0]])
+        self.assertEqual(kwargs['index'], "projects/test-project/locations/europe-west4/indexes/123")
         mock_client.upsert_datapoints.assert_called_once_with(request=request_instance)
 
     @patch('src.embed.main.UpsertDatapointsRequest')
     @patch('src.embed.main.IndexDatapoint')
     @patch('src.embed.main.logger')
-    @patch('src.embed.main.get_index_endpoint_client')
+    @patch('src.embed.main.get_index_service_client')
     def test_upsert_embedding_failure_logged(self, mock_get_client, mock_logger, mock_index_datapoint, mock_upsert_request):
         """AC 8: Log error on Vector Search upsert failure, continue processing."""
         from src.embed.main import upsert_to_vector_search
@@ -272,15 +289,25 @@ class TestVectorSearchWriter(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.upsert_datapoints.side_effect = exceptions.GoogleAPICallError("Unavailable")
         mock_get_client.return_value = mock_client
-        datapoint_instance = MagicMock()
-        mock_index_datapoint.return_value = datapoint_instance
+
+        class StubIndexDatapoint:
+            class CrowdingTag:
+                def __init__(self, crowding_attribute=None):
+                    self.crowding_attribute = crowding_attribute
+
+            def __init__(self, datapoint_id=None, feature_vector=None, crowding_tag=None, **kwargs):
+                self.datapoint_id = datapoint_id
+                self.feature_vector = feature_vector
+                self.crowding_tag = crowding_tag
+
+        mock_index_datapoint.side_effect = lambda *args, **kwargs: StubIndexDatapoint(*args, **kwargs)
+        mock_index_datapoint.CrowdingTag = StubIndexDatapoint.CrowdingTag
         mock_upsert_request.return_value = MagicMock()
         import os
         import src.embed.main as embed_main
         embed_main.GCP_PROJECT = "test-project"
         os.environ['GCP_PROJECT'] = "test-project"
-        embed_main.VECTOR_SEARCH_INDEX_ENDPOINT = "1838928799408848896"
-        embed_main.VECTOR_SEARCH_DEPLOYED_INDEX_ID = "test-index"
+        embed_main.VECTOR_SEARCH_INDEX = "projects/test-project/locations/europe-west4/indexes/123"
         embed_main.GCP_REGION = "europe-west4"
 
         item_id = "41094950"
@@ -293,23 +320,39 @@ class TestVectorSearchWriter(unittest.TestCase):
 
     @patch('src.embed.main.UpsertDatapointsRequest')
     @patch('src.embed.main.IndexDatapoint')
-    @patch('src.embed.main.get_index_endpoint_client')
+    @patch('src.embed.main.get_index_service_client')
     def test_upsert_batch_embeddings(self, mock_get_client, mock_index_datapoint, mock_upsert_request):
         """AC 2: Batch upsert multiple embeddings (up to 100 datapoints)."""
         from src.embed.main import upsert_batch_to_vector_search
 
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        datapoint_instances = [MagicMock() for _ in range(50)]
-        mock_index_datapoint.side_effect = datapoint_instances
+        datapoint_instances = []
+
+        class StubIndexDatapoint:
+            class CrowdingTag:
+                def __init__(self, crowding_attribute=None):
+                    self.crowding_attribute = crowding_attribute
+
+            def __init__(self, datapoint_id=None, feature_vector=None, crowding_tag=None, **kwargs):
+                self.datapoint_id = datapoint_id
+                self.feature_vector = feature_vector
+                self.crowding_tag = crowding_tag
+
+        def factory(*args, **kwargs):
+            dp = StubIndexDatapoint(*args, **kwargs)
+            datapoint_instances.append(dp)
+            return dp
+
+        mock_index_datapoint.side_effect = factory
+        mock_index_datapoint.CrowdingTag = StubIndexDatapoint.CrowdingTag
         request_instance = MagicMock()
         mock_upsert_request.return_value = request_instance
         import os
         import src.embed.main as embed_main
         embed_main.GCP_PROJECT = "test-project"
         os.environ['GCP_PROJECT'] = "test-project"
-        embed_main.VECTOR_SEARCH_INDEX_ENDPOINT = "1838928799408848896"
-        embed_main.VECTOR_SEARCH_DEPLOYED_INDEX_ID = "test-index"
+        embed_main.VECTOR_SEARCH_INDEX = "projects/test-project/locations/europe-west4/indexes/123"
         embed_main.GCP_REGION = "europe-west4"
 
         batch = [
@@ -321,7 +364,7 @@ class TestVectorSearchWriter(unittest.TestCase):
 
         self.assertEqual(results['success'], 50)
         self.assertEqual(results['failed'], 0)
-        self.assertEqual(mock_index_datapoint.call_count, 50)
+        self.assertEqual(len(datapoint_instances), 50)
         mock_upsert_request.assert_called_once()
         mock_client.upsert_datapoints.assert_called_once_with(request=request_instance)
 
