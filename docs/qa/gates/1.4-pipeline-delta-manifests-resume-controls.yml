@@ -4,7 +4,7 @@ story_title: Pipeline Delta Manifests & Resume Controls
 gate: PASS
 status_reason: Manifest schema and resume timeout expectations are now fully specified with supporting validation steps.
 reviewer: Quinn (Test Architect)
-updated: '2025-10-20T00:45:00Z'
+updated: '2025-10-26T11:05:36Z'
 
 top_issues: []
 
@@ -12,7 +12,7 @@ waiver:
   active: false
 
 quality_score: 100
-expires: '2025-11-03T00:00:00Z'
+expires: '2025-11-09T11:05:36Z'
 
 evidence:
   tests_reviewed: 0

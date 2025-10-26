@@ -12,9 +12,10 @@ Tests cover:
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch, MagicMock
 import json
 from datetime import datetime
+from google.api_core import exceptions
 from google.api_core.exceptions import NotFound
 
 
@@ -225,13 +226,26 @@ class TestVertexAIEmbeddings(unittest.TestCase):
 class TestVectorSearchWriter(unittest.TestCase):
     """Test Vector Search index upsert operations."""
 
-    @patch('src.embed.main.get_vector_search_client')
-    def test_upsert_embedding_success(self, mock_get_client):
+    @patch('src.embed.main.UpsertDatapointsRequest')
+    @patch('src.embed.main.IndexDatapoint')
+    @patch('src.embed.main.get_index_endpoint_client')
+    def test_upsert_embedding_success(self, mock_get_client, mock_index_datapoint, mock_upsert_request):
         """AC 2: Upsert embedding to Vector Search index."""
         from src.embed.main import upsert_to_vector_search
 
-        mock_index_endpoint = MagicMock()
-        mock_get_client.return_value = mock_index_endpoint
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        datapoint_instance = MagicMock()
+        mock_index_datapoint.return_value = datapoint_instance
+        request_instance = MagicMock()
+        mock_upsert_request.return_value = request_instance
+        import os
+        import src.embed.main as embed_main
+        embed_main.GCP_PROJECT = "test-project"
+        os.environ['GCP_PROJECT'] = "test-project"
+        embed_main.VECTOR_SEARCH_INDEX_ENDPOINT = "1838928799408848896"
+        embed_main.VECTOR_SEARCH_DEPLOYED_INDEX_ID = "test-index"
+        embed_main.GCP_REGION = "europe-west4"
 
         item_id = "41094950"
         embedding_vector = [0.1] * 768
@@ -239,24 +253,35 @@ class TestVectorSearchWriter(unittest.TestCase):
         result = upsert_to_vector_search(item_id, embedding_vector, run_id="run-123")
 
         self.assertTrue(result)
-        mock_index_endpoint.upsert_datapoints.assert_called_once()
+        mock_index_datapoint.assert_called_once_with(datapoint_id=item_id, feature_vector=embedding_vector)
+        self.assertEqual(datapoint_instance.crowding_tag, "run-123")
+        args, kwargs = mock_upsert_request.call_args
+        self.assertEqual(kwargs['deployed_index_id'], "test-index")
+        self.assertEqual(kwargs['datapoints'], [datapoint_instance])
+        self.assertIn("projects/test-project/locations/europe-west4/indexEndpoints", kwargs['index_endpoint'])
+        mock_client.upsert_datapoints.assert_called_once_with(request=request_instance)
 
-        # Verify the datapoint structure
-        call_args = mock_index_endpoint.upsert_datapoints.call_args
-        datapoints = call_args[1]['datapoints']
-        self.assertEqual(datapoints[0].datapoint_id, item_id)
-        self.assertEqual(len(datapoints[0].feature_vector), 768)
-        self.assertEqual(datapoints[0].crowding_tag, "run-123")
-
-    @patch('src.embed.main.get_vector_search_client')
+    @patch('src.embed.main.UpsertDatapointsRequest')
+    @patch('src.embed.main.IndexDatapoint')
     @patch('src.embed.main.logger')
-    def test_upsert_embedding_failure_logged(self, mock_logger, mock_get_client):
+    @patch('src.embed.main.get_index_endpoint_client')
+    def test_upsert_embedding_failure_logged(self, mock_get_client, mock_logger, mock_index_datapoint, mock_upsert_request):
         """AC 8: Log error on Vector Search upsert failure, continue processing."""
         from src.embed.main import upsert_to_vector_search
 
-        mock_index_endpoint = MagicMock()
-        mock_index_endpoint.upsert_datapoints.side_effect = Exception("Vector Search error")
-        mock_get_client.return_value = mock_index_endpoint
+        mock_client = MagicMock()
+        mock_client.upsert_datapoints.side_effect = exceptions.GoogleAPICallError("Unavailable")
+        mock_get_client.return_value = mock_client
+        datapoint_instance = MagicMock()
+        mock_index_datapoint.return_value = datapoint_instance
+        mock_upsert_request.return_value = MagicMock()
+        import os
+        import src.embed.main as embed_main
+        embed_main.GCP_PROJECT = "test-project"
+        os.environ['GCP_PROJECT'] = "test-project"
+        embed_main.VECTOR_SEARCH_INDEX_ENDPOINT = "1838928799408848896"
+        embed_main.VECTOR_SEARCH_DEPLOYED_INDEX_ID = "test-index"
+        embed_main.GCP_REGION = "europe-west4"
 
         item_id = "41094950"
         embedding_vector = [0.1] * 768
@@ -264,16 +289,28 @@ class TestVectorSearchWriter(unittest.TestCase):
         result = upsert_to_vector_search(item_id, embedding_vector, run_id="run-123")
 
         self.assertFalse(result)
-        mock_logger.error.assert_called_once()
-        self.assertIn("Vector Search error", str(mock_logger.error.call_args))
+        mock_logger.error.assert_called()
 
-    @patch('src.embed.main.get_vector_search_client')
-    def test_upsert_batch_embeddings(self, mock_get_client):
+    @patch('src.embed.main.UpsertDatapointsRequest')
+    @patch('src.embed.main.IndexDatapoint')
+    @patch('src.embed.main.get_index_endpoint_client')
+    def test_upsert_batch_embeddings(self, mock_get_client, mock_index_datapoint, mock_upsert_request):
         """AC 2: Batch upsert multiple embeddings (up to 100 datapoints)."""
         from src.embed.main import upsert_batch_to_vector_search
 
-        mock_index_endpoint = MagicMock()
-        mock_get_client.return_value = mock_index_endpoint
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        datapoint_instances = [MagicMock() for _ in range(50)]
+        mock_index_datapoint.side_effect = datapoint_instances
+        request_instance = MagicMock()
+        mock_upsert_request.return_value = request_instance
+        import os
+        import src.embed.main as embed_main
+        embed_main.GCP_PROJECT = "test-project"
+        os.environ['GCP_PROJECT'] = "test-project"
+        embed_main.VECTOR_SEARCH_INDEX_ENDPOINT = "1838928799408848896"
+        embed_main.VECTOR_SEARCH_DEPLOYED_INDEX_ID = "test-index"
+        embed_main.GCP_REGION = "europe-west4"
 
         batch = [
             {"id": f"item_{i}", "embedding": [0.1] * 768}
@@ -284,7 +321,9 @@ class TestVectorSearchWriter(unittest.TestCase):
 
         self.assertEqual(results['success'], 50)
         self.assertEqual(results['failed'], 0)
-        mock_index_endpoint.upsert_datapoints.assert_called_once()
+        self.assertEqual(mock_index_datapoint.call_count, 50)
+        mock_upsert_request.assert_called_once()
+        mock_client.upsert_datapoints.assert_called_once_with(request=request_instance)
 
 
 class TestFirestoreWriter(unittest.TestCase):

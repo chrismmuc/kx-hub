@@ -25,6 +25,9 @@ email:
   digest_schedule: "0 9 * * MON"  # Mondays 9am
 ```
 
+## Runtime Dependencies
+- **Embed function (`src/embed`)**: Pin `google-cloud-aiplatform>=1.44` to access the Vertex AI gRPC Matching Engine client for Vector Search upserts.
+
 ## Estimated Monthly Costs
 - **Embeddings & Vector Search**: ~$3.10 (Vertex AI)
 - **Generative Models**: ~$1.50 (Vertex AI Gemini 2.5 Flash)

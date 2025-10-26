@@ -1,0 +1,43 @@
+schema: 1
+story: '1.5'
+story_title: Vertex AI gRPC Upsert Upgrade
+gate: PASS
+status_reason: Story targets dependency + transport upgrade with clear tasks and no open risks.
+reviewer: Quinn (Test Architect)
+updated: '2025-10-26T19:04:27Z'
+
+top_issues: []
+
+waiver:
+  active: false
+
+quality_score: 100
+expires: '2025-11-09T19:04:27Z'
+
+evidence:
+  tests_reviewed: 0
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: No new surface area beyond existing IAM + Vertex AI usage.
+  performance:
+    status: PASS
+    notes: gRPC client maintains current throughput expectations.
+  reliability:
+    status: PASS
+    notes: Eliminates REST endpoint 404 failure mode; operational validation AC5 ensures correctness.
+  maintainability:
+    status: PASS
+    notes: Dependency floor documented; docs clarify long-term expectations.
+
+recommendations:
+  immediate: []
+  future:
+    - action: Capture workflow execution IDs or log links when fulfilling AC5 to aid future audits.
+      refs:
+        - docs/stories/1.5.story.md

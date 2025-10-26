@@ -20,12 +20,13 @@ import os
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
-from google.api_core.exceptions import ResourceExhausted, InternalServerError, NotFound
+from google.api_core.exceptions import GoogleAPICallError, InternalServerError, NotFound, ResourceExhausted
 
 _HAS_STORAGE_LIB = True
 _HAS_FIRESTORE_LIB = True
 _HAS_AIPLATFORM_LIB = True
 _HAS_VERTEX_LIB = True
+_HAS_MATCHING_ENGINE_LIB = True
 
 try:
     from google.cloud import storage, firestore, aiplatform
@@ -44,6 +45,15 @@ except ImportError:  # pragma: no cover - allows tests to run without deps
     TextEmbeddingModel = None  # type: ignore[assignment]
 
 try:
+    from google.cloud.aiplatform_v1.types import IndexDatapoint, UpsertDatapointsRequest
+    from google.cloud.aiplatform_v1 import MatchingEngineIndexEndpointServiceClient
+except ImportError:  # pragma: no cover - allows tests to run without deps
+    _HAS_MATCHING_ENGINE_LIB = False
+    IndexDatapoint = None  # type: ignore[assignment]
+    UpsertDatapointsRequest = None  # type: ignore[assignment]
+    MatchingEngineIndexEndpointServiceClient = None  # type: ignore[assignment]
+
+try:
     from google.cloud.firestore_v1 import Increment
 except ImportError:  # pragma: no cover - allows tests to run without deps
     Increment = None  # type: ignore[assignment]
@@ -53,6 +63,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from google.cloud import firestore as firestore_mod
     from google.cloud import aiplatform as aiplatform_mod
     from vertexai.preview.language_models import TextEmbeddingModel as TextEmbeddingModelType
+    from google.cloud.aiplatform_v1 import MatchingEngineIndexEndpointServiceClient
 
 # Configure structured logging
 logging.basicConfig(
@@ -62,18 +73,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Provide lightweight fallbacks when optional dependencies aren't available during tests.
-class _FallbackMatchingEngineIndexEndpoint:  # pragma: no cover - simple data holder
-    class Datapoint:
-        def __init__(self, datapoint_id: str, feature_vector: List[float], crowding_tag: Optional[str] = None):
-            self.datapoint_id = datapoint_id
-            self.feature_vector = feature_vector
-            self.crowding_tag = crowding_tag
-
-    @staticmethod
-    def init(*args: Any, **kwargs: Any) -> None:
-        raise ImportError("google-cloud-aiplatform is required for MatchingEngine operations")
-
-
 def _raise_missing_library(name: str) -> None:
     raise ImportError(f"{name} library is required for this operation")
 
@@ -86,15 +85,14 @@ if not _HAS_FIRESTORE_LIB:
 
 if not _HAS_AIPLATFORM_LIB:
     aiplatform = SimpleNamespace(  # type: ignore[assignment]
-        MatchingEngineIndexEndpoint=_FallbackMatchingEngineIndexEndpoint,
-        init=lambda *args, **kwargs: _raise_missing_library("google-cloud-aiplatform")
+        MatchingEngineIndexEndpoint=lambda *args, **kwargs: _raise_missing_library("google-cloud-aiplatform")
     )
 
 # Global GCP clients (lazy initialization)
 _storage_client = None
 _firestore_client = None
 _vertex_ai_model = None
-_vector_search_client = None
+_index_endpoint_client = None
 
 # Configuration
 GCP_PROJECT = os.environ.get('GCP_PROJECT', 'kx-hub')
@@ -163,19 +161,27 @@ def get_vertex_ai_client():
     return _vertex_ai_model
 
 
-def get_vector_search_client():
-    """Lazy initialization of Vector Search index endpoint client."""
-    global _vector_search_client
-    if _vector_search_client is None:
-        if not VECTOR_SEARCH_INDEX_ENDPOINT:
-            raise ValueError("VECTOR_SEARCH_INDEX_ENDPOINT environment variable not set")
-        if not _HAS_AIPLATFORM_LIB:
-            raise ImportError("google-cloud-aiplatform library is required for Vector Search")
-        _vector_search_client = aiplatform.MatchingEngineIndexEndpoint(
-            index_endpoint_name=VECTOR_SEARCH_INDEX_ENDPOINT
-        )
-        logger.info(f"Initialized Vector Search client for endpoint: {VECTOR_SEARCH_INDEX_ENDPOINT}")
-    return _vector_search_client
+def get_index_endpoint_client():
+    """Lazy initialization of Matching Engine Index Endpoint client."""
+    global _index_endpoint_client
+    if _index_endpoint_client is None:
+        if not (_HAS_AIPLATFORM_LIB and _HAS_MATCHING_ENGINE_LIB):
+            raise ImportError("google-cloud-aiplatform>=1.44 is required for Matching Engine operations")
+        client_options = {"api_endpoint": f"{GCP_REGION}-aiplatform.googleapis.com"}
+        if MatchingEngineIndexEndpointServiceClient is None:
+            raise ImportError("google-cloud-aiplatform>=1.44 is required for Matching Engine operations")
+        _index_endpoint_client = MatchingEngineIndexEndpointServiceClient(client_options=client_options)
+        logger.info("Initialized Matching Engine index endpoint client")
+    return _index_endpoint_client
+
+
+def _index_endpoint_resource() -> str:
+    if VECTOR_SEARCH_INDEX_ENDPOINT and "/" in VECTOR_SEARCH_INDEX_ENDPOINT:
+        return VECTOR_SEARCH_INDEX_ENDPOINT
+    if not VECTOR_SEARCH_INDEX_ENDPOINT:
+        raise ValueError("VECTOR_SEARCH_INDEX_ENDPOINT environment variable not set")
+    project = os.environ.get('GCP_PROJECT', GCP_PROJECT)
+    return f"projects/{project}/locations/{GCP_REGION}/indexEndpoints/{VECTOR_SEARCH_INDEX_ENDPOINT}"
 
 
 def get_pipeline_collection():
@@ -337,36 +343,29 @@ def upsert_to_vector_search(item_id: str, embedding_vector: List[float], run_id:
         True if successful, False if error occurred
     """
     try:
-        index_endpoint = get_vector_search_client()
+        client = get_index_endpoint_client()
+        if not VECTOR_SEARCH_DEPLOYED_INDEX_ID:
+            raise ValueError("Vector Search environment variables are not configured")
+        index_endpoint_resource = _index_endpoint_resource()
 
-        datapoint_cls = getattr(
-            getattr(aiplatform, "MatchingEngineIndexEndpoint", aiplatform),  # type: ignore[arg-type]
-            "Datapoint",
-            None
+        datapoint = IndexDatapoint(
+            datapoint_id=item_id,
+            feature_vector=embedding_vector,
         )
-        if datapoint_cls is None:
-            raise ImportError("MatchingEngineIndexEndpoint.Datapoint is unavailable")
+        if run_id:
+            datapoint.crowding_tag = run_id
 
-        # Create datapoint
-        kwargs: Dict[str, Any] = {
-            "datapoint_id": item_id,
-            "feature_vector": embedding_vector
-        }
-        if run_id is not None:
-            kwargs["crowding_tag"] = run_id
-
-        datapoint = datapoint_cls(**kwargs)
-
-        # Upsert to deployed index
-        index_endpoint.upsert_datapoints(
+        request = UpsertDatapointsRequest(
+            index_endpoint=index_endpoint_resource,
             deployed_index_id=VECTOR_SEARCH_DEPLOYED_INDEX_ID,
-            datapoints=[datapoint]
+            datapoints=[datapoint],
         )
 
+        client.upsert_datapoints(request=request)
         logger.info(f"Upserted datapoint {item_id} to Vector Search")
         return True
 
-    except Exception as e:
+    except (GoogleAPICallError, ValueError) as e:
         logger.error(f"Failed to upsert datapoint {item_id} to Vector Search: {e}")
         return False
 
@@ -382,35 +381,33 @@ def upsert_batch_to_vector_search(batch: List[Dict[str, Any]]) -> Dict[str, int]
         Dict with 'success' and 'failed' counts
     """
     try:
-        index_endpoint = get_vector_search_client()
+        client = get_index_endpoint_client()
+        if not VECTOR_SEARCH_DEPLOYED_INDEX_ID:
+            raise ValueError("Vector Search environment variables are not configured")
+        index_endpoint_resource = _index_endpoint_resource()
 
-        datapoint_cls = getattr(
-            getattr(aiplatform, "MatchingEngineIndexEndpoint", aiplatform),  # type: ignore[arg-type]
-            "Datapoint",
-            None
-        )
-        if datapoint_cls is None:
-            raise ImportError("MatchingEngineIndexEndpoint.Datapoint is unavailable")
-
-        # Create datapoints
-        datapoints = [
-            datapoint_cls(
+        datapoints = []
+        for item in batch:
+            dp = IndexDatapoint(
                 datapoint_id=item['id'],
-                feature_vector=item['embedding']
+                feature_vector=item['embedding'],
             )
-            for item in batch
-        ]
+            run_id = item.get('run_id')
+            if run_id:
+                dp.crowding_tag = run_id
+            datapoints.append(dp)
 
-        # Batch upsert
-        index_endpoint.upsert_datapoints(
+        request = UpsertDatapointsRequest(
+            index_endpoint=index_endpoint_resource,
             deployed_index_id=VECTOR_SEARCH_DEPLOYED_INDEX_ID,
-            datapoints=datapoints
+            datapoints=datapoints,
         )
+        client.upsert_datapoints(request=request)
 
         logger.info(f"Batch upserted {len(datapoints)} datapoints to Vector Search")
         return {'success': len(datapoints), 'failed': 0}
 
-    except Exception as e:
+    except (GoogleAPICallError, ValueError) as e:
         logger.error(f"Failed to batch upsert datapoints to Vector Search: {e}")
         return {'success': 0, 'failed': len(batch)}
 
