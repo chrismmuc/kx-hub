@@ -1,0 +1,2008 @@
+{
+  "version": 4,
+  "terraform_version": "1.13.4",
+  "serial": 169,
+  "lineage": "324056d9-1ac4-9448-636d-7b4c2fb4c7fd",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "data",
+      "type": "archive_file",
+      "name": "embed_source",
+      "provider": "provider[\"registry.terraform.io/hashicorp/archive\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "exclude_symlink_directories": null,
+            "excludes": [
+              "**/__pycache__",
+              "*.pyc",
+              ".DS_Store",
+              "__pycache__"
+            ],
+            "id": "bf891bbca88d94fdc652cb540111f75b6c4b9206",
+            "output_base64sha256": "plVDmGn+vaDZqfO29BwDjyCjY5ze2C+x13VqHKrlBQc=",
+            "output_base64sha512": "DOABN7iAqszMP2RAMC4L7hlftl5AzUAdmu6aK+Cm9WYYED0MlSoNgGcPgOWGIn/vUyhTjbQTn/2/f2/DnGseOQ==",
+            "output_file_mode": null,
+            "output_md5": "ba61f90e1b317813a19ff38ac274388d",
+            "output_path": "/tmp/embed_source.zip",
+            "output_sha": "bf891bbca88d94fdc652cb540111f75b6c4b9206",
+            "output_sha256": "a655439869febda0d9a9f3b6f41c038f20a3639cded82fb1d7756a1caae50507",
+            "output_sha512": "0ce00137b880aacccc3f6440302e0bee195fb65e40cd401d9aee9a2be0a6f56618103d0c952a0d80670f80e586227fef5328538db4139ffdbf7f6fc39c6b1e39",
+            "output_size": 6783,
+            "source": [],
+            "source_content": null,
+            "source_content_filename": null,
+            "source_dir": "../src/embed",
+            "source_file": null,
+            "type": "zip"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "data",
+      "type": "archive_file",
+      "name": "ingest_source",
+      "provider": "provider[\"registry.terraform.io/hashicorp/archive\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "exclude_symlink_directories": null,
+            "excludes": [
+              "**/__pycache__",
+              "*.pyc",
+              ".DS_Store",
+              "__pycache__"
+            ],
+            "id": "c9e0d7927ce99d8c4e351843347df5f1c138bb57",
+            "output_base64sha256": "DeX5RwhSVPW82MARpuCT5siUSG7+13DwYsZWuzNyj+I=",
+            "output_base64sha512": "uhewL8RaRvWGtd9n1lv5OxRky0f76x01uHg4wjn7eHF607TtdMvxY0cQKA6Aq9gXCm2ne/4nHx1OVzsUEuY8PA==",
+            "output_file_mode": null,
+            "output_md5": "acf83b5a133119498792cf205328be2f",
+            "output_path": "/tmp/ingest_source.zip",
+            "output_sha": "c9e0d7927ce99d8c4e351843347df5f1c138bb57",
+            "output_sha256": "0de5f947085254f5bcd8c011a6e093e6c894486efed770f062c656bb33728fe2",
+            "output_sha512": "ba17b02fc45a46f586b5df67d65bf93b1464cb47fbeb1d35b87838c239fb78717ad3b4ed74cbf1634710280e80abd8170a6da77bfe271f1d4e573b1412e63c3c",
+            "output_size": 3500,
+            "source": [],
+            "source_content": null,
+            "source_content_filename": null,
+            "source_dir": "../src/ingest",
+            "source_file": null,
+            "type": "zip"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "data",
+      "type": "archive_file",
+      "name": "normalize_source",
+      "provider": "provider[\"registry.terraform.io/hashicorp/archive\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "exclude_symlink_directories": null,
+            "excludes": [
+              "**/__pycache__",
+              "*.pyc",
+              ".DS_Store",
+              "__pycache__"
+            ],
+            "id": "283b1320e113ea7eca0b2ab0b0b5f8a542208d33",
+            "output_base64sha256": "2w4CWhuamJMYO6cAGaBntivqo0pOuVlU5Je2fD49YjM=",
+            "output_base64sha512": "hAI4kUyXdrS782YRyqoS37RGYx1ttdfZTYFg9cAYRWoCmW9qTWI6+u6DnZUmGqNXw0wLnrEHOnUFwsICLtzXJg==",
+            "output_file_mode": null,
+            "output_md5": "8dab93c7d60594edf7e11b814e989582",
+            "output_path": "/tmp/normalize_source.zip",
+            "output_sha": "283b1320e113ea7eca0b2ab0b0b5f8a542208d33",
+            "output_sha256": "db0e025a1b9a9893183ba70019a067b62beaa34a4eb95954e497b67c3e3d6233",
+            "output_sha512": "840238914c9776b4bbf36611caaa12dfb446631d6db5d7d94d8160f5c018456a02996f6a4d623afaee839d95261aa357c34c0b9eb1073a7505c2c2022edcd726",
+            "output_size": 4981,
+            "source": [],
+            "source_content": null,
+            "source_content_filename": null,
+            "source_dir": "../src/normalize",
+            "source_file": null,
+            "type": "zip"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "data",
+      "type": "google_project",
+      "name": "project",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "auto_create_network": null,
+            "billing_account": "01C57C-D84665-762E25",
+            "deletion_policy": "DELETE",
+            "effective_labels": {},
+            "folder_id": null,
+            "id": "projects/kx-hub",
+            "labels": {},
+            "name": "kx-hub",
+            "number": "386230044357",
+            "org_id": null,
+            "project_id": "kx-hub",
+            "skip_delete": null,
+            "terraform_labels": {}
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_cloud_run_service_iam_member",
+      "name": "ingest_function_eventarc_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxRqyqY0=",
+            "id": "v1/projects/kx-hub/locations/europe-west4/services/ingest-function/roles/run.invoker/serviceAccount:service-386230044357@gcp-sa-eventarc.iam.gserviceaccount.com",
+            "location": "europe-west4",
+            "member": "serviceAccount:service-386230044357@gcp-sa-eventarc.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/run.invoker",
+            "service": "v1/projects/kx-hub/locations/europe-west4/services/ingest-function"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "data.archive_file.ingest_source",
+            "data.google_project.project",
+            "google_cloudfunctions2_function.ingest_function",
+            "google_project_iam_member.ingest_sa_pubsub_publisher",
+            "google_project_iam_member.ingest_sa_secret_accessor",
+            "google_project_service.required_apis",
+            "google_pubsub_topic.daily_trigger",
+            "google_service_account.ingest_function_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.ingest_sa_pipeline_bucket_admin",
+            "google_storage_bucket_iam_member.ingest_sa_raw_bucket_admin",
+            "google_storage_bucket_object.ingest_source_zip"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_cloud_run_service_iam_member",
+      "name": "ingest_function_pubsub_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxRqyqY0=",
+            "id": "v1/projects/kx-hub/locations/europe-west4/services/ingest-function/roles/run.invoker/serviceAccount:service-386230044357@gcp-sa-pubsub.iam.gserviceaccount.com",
+            "location": "europe-west4",
+            "member": "serviceAccount:service-386230044357@gcp-sa-pubsub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/run.invoker",
+            "service": "v1/projects/kx-hub/locations/europe-west4/services/ingest-function"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "data.archive_file.ingest_source",
+            "data.google_project.project",
+            "google_cloudfunctions2_function.ingest_function",
+            "google_project_iam_member.ingest_sa_pubsub_publisher",
+            "google_project_iam_member.ingest_sa_secret_accessor",
+            "google_project_service.required_apis",
+            "google_pubsub_topic.daily_trigger",
+            "google_service_account.ingest_function_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.ingest_sa_pipeline_bucket_admin",
+            "google_storage_bucket_iam_member.ingest_sa_raw_bucket_admin",
+            "google_storage_bucket_object.ingest_source_zip"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_cloud_run_service_iam_member",
+      "name": "ingest_function_service_account_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxRqyqY0=",
+            "id": "v1/projects/kx-hub/locations/europe-west4/services/ingest-function/roles/run.invoker/serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "location": "europe-west4",
+            "member": "serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/run.invoker",
+            "service": "v1/projects/kx-hub/locations/europe-west4/services/ingest-function"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "data.archive_file.ingest_source",
+            "google_cloudfunctions2_function.ingest_function",
+            "google_project_iam_member.ingest_sa_pubsub_publisher",
+            "google_project_iam_member.ingest_sa_secret_accessor",
+            "google_project_service.required_apis",
+            "google_pubsub_topic.daily_trigger",
+            "google_service_account.ingest_function_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.ingest_sa_pipeline_bucket_admin",
+            "google_storage_bucket_iam_member.ingest_sa_raw_bucket_admin",
+            "google_storage_bucket_object.ingest_source_zip"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_cloud_run_service_iam_member",
+      "name": "normalize_function_workflow_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBh3eiqAQ=",
+            "id": "v1/projects/kx-hub/locations/europe-west4/services/normalize-function/roles/run.invoker/serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "location": "europe-west4",
+            "member": "serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/run.invoker",
+            "service": "v1/projects/kx-hub/locations/europe-west4/services/normalize-function"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "data.archive_file.normalize_source",
+            "google_cloudfunctions2_function.normalize_function",
+            "google_project_iam_member.normalize_sa_log_writer",
+            "google_project_iam_member.normalize_sa_run_invoker",
+            "google_project_service.required_apis",
+            "google_service_account.normalize_function_sa",
+            "google_service_account.workflow_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.markdown_normalized",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.normalize_sa_markdown_bucket_creator",
+            "google_storage_bucket_iam_member.normalize_sa_pipeline_bucket_viewer",
+            "google_storage_bucket_iam_member.normalize_sa_raw_bucket_viewer",
+            "google_storage_bucket_object.normalize_source_zip"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_cloud_scheduler_job",
+      "name": "daily_ingest_trigger",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "app_engine_http_target": [],
+            "attempt_deadline": "",
+            "description": "Triggers the daily data ingest pipeline",
+            "http_target": [],
+            "id": "projects/kx-hub/locations/europe-west3/jobs/daily-ingest-trigger-job",
+            "name": "daily-ingest-trigger-job",
+            "paused": false,
+            "project": "kx-hub",
+            "pubsub_target": [
+              {
+                "attributes": {},
+                "data": "R28h",
+                "topic_name": "projects/kx-hub/topics/daily-trigger"
+              }
+            ],
+            "region": "europe-west3",
+            "retry_config": [],
+            "schedule": "0 2 * * *",
+            "state": "ENABLED",
+            "time_zone": "UTC",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "google_project_service.required_apis",
+            "google_pubsub_topic.daily_trigger"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_cloudfunctions2_function",
+      "name": "ingest_function",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "build_config": [
+              {
+                "automatic_update_policy": [
+                  {}
+                ],
+                "build": "projects/386230044357/locations/europe-west4/builds/83321052-3522-44a8-b073-a0cadb0b8c41",
+                "docker_repository": "projects/kx-hub/locations/europe-west4/repositories/gcf-artifacts",
+                "entry_point": "handler",
+                "environment_variables": {},
+                "on_deploy_update_policy": [],
+                "runtime": "python311",
+                "service_account": "projects/kx-hub/serviceAccounts/386230044357-compute@developer.gserviceaccount.com",
+                "source": [
+                  {
+                    "repo_source": [],
+                    "storage_source": [
+                      {
+                        "bucket": "kx-hub-function-source",
+                        "generation": 1760810862121780,
+                        "object": "ingest_source.zip#acf83b5a133119498792cf205328be2f"
+                      }
+                    ]
+                  }
+                ],
+                "worker_pool": ""
+              }
+            ],
+            "description": "",
+            "effective_labels": {},
+            "environment": "GEN_2",
+            "event_trigger": [
+              {
+                "event_filters": [],
+                "event_type": "google.cloud.pubsub.topic.v1.messagePublished",
+                "pubsub_topic": "projects/kx-hub/topics/daily-trigger",
+                "retry_policy": "RETRY_POLICY_RETRY",
+                "service_account_email": "ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+                "trigger": "projects/kx-hub/locations/europe-west4/triggers/ingest-function-456424",
+                "trigger_region": "europe-west4"
+              }
+            ],
+            "id": "projects/kx-hub/locations/europe-west4/functions/ingest-function",
+            "kms_key_name": "",
+            "labels": {},
+            "location": "europe-west4",
+            "name": "ingest-function",
+            "project": "kx-hub",
+            "service_config": [
+              {
+                "all_traffic_on_latest_revision": true,
+                "available_cpu": "0.1666",
+                "available_memory": "256M",
+                "environment_variables": {
+                  "GCP_PROJECT": "kx-hub",
+                  "LOG_EXECUTION_ID": "true",
+                  "PIPELINE_BUCKET": "kx-hub-pipeline",
+                  "PIPELINE_MANIFEST_PREFIX": "manifests"
+                },
+                "gcf_uri": "",
+                "ingress_settings": "ALLOW_ALL",
+                "max_instance_count": 1,
+                "max_instance_request_concurrency": 1,
+                "min_instance_count": 0,
+                "secret_environment_variables": [],
+                "secret_volumes": [],
+                "service": "projects/kx-hub/locations/europe-west4/services/ingest-function",
+                "service_account_email": "ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+                "timeout_seconds": 60,
+                "uri": "https://ingest-function-znuyyrlu5a-ez.a.run.app",
+                "vpc_connector": "",
+                "vpc_connector_egress_settings": ""
+              }
+            ],
+            "state": "ACTIVE",
+            "terraform_labels": {},
+            "timeouts": null,
+            "update_time": "2025-10-21T19:54:22.204890826Z",
+            "url": "https://europe-west4-kx-hub.cloudfunctions.net/ingest-function"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozNjAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInVwZGF0ZSI6MzYwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.archive_file.ingest_source",
+            "google_project_iam_member.ingest_sa_pubsub_publisher",
+            "google_project_iam_member.ingest_sa_secret_accessor",
+            "google_project_service.required_apis",
+            "google_pubsub_topic.daily_trigger",
+            "google_service_account.ingest_function_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.ingest_sa_pipeline_bucket_admin",
+            "google_storage_bucket_iam_member.ingest_sa_raw_bucket_admin",
+            "google_storage_bucket_object.ingest_source_zip"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_cloudfunctions2_function",
+      "name": "normalize_function",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "build_config": [
+              {
+                "automatic_update_policy": [
+                  {}
+                ],
+                "build": "projects/386230044357/locations/europe-west4/builds/ec97fd14-610c-4c66-919a-f1780e5ed3f5",
+                "docker_repository": "projects/kx-hub/locations/europe-west4/repositories/gcf-artifacts",
+                "entry_point": "normalize",
+                "environment_variables": {},
+                "on_deploy_update_policy": [],
+                "runtime": "python311",
+                "service_account": "projects/kx-hub/serviceAccounts/386230044357-compute@developer.gserviceaccount.com",
+                "source": [
+                  {
+                    "repo_source": [],
+                    "storage_source": [
+                      {
+                        "bucket": "kx-hub-function-source",
+                        "generation": 1760872996244874,
+                        "object": "normalize_source.zip#8dab93c7d60594edf7e11b814e989582"
+                      }
+                    ]
+                  }
+                ],
+                "worker_pool": ""
+              }
+            ],
+            "description": "",
+            "effective_labels": {},
+            "environment": "GEN_2",
+            "event_trigger": [],
+            "id": "projects/kx-hub/locations/europe-west4/functions/normalize-function",
+            "kms_key_name": "",
+            "labels": {},
+            "location": "europe-west4",
+            "name": "normalize-function",
+            "project": "kx-hub",
+            "service_config": [
+              {
+                "all_traffic_on_latest_revision": true,
+                "available_cpu": "0.1666",
+                "available_memory": "256M",
+                "environment_variables": {
+                  "GCP_PROJECT": "kx-hub",
+                  "LOG_EXECUTION_ID": "true",
+                  "PIPELINE_BUCKET": "kx-hub-pipeline",
+                  "PIPELINE_COLLECTION": "pipeline_items",
+                  "PIPELINE_MANIFEST_PREFIX": "manifests"
+                },
+                "gcf_uri": "",
+                "ingress_settings": "ALLOW_ALL",
+                "max_instance_count": 3,
+                "max_instance_request_concurrency": 1,
+                "min_instance_count": 0,
+                "secret_environment_variables": [],
+                "secret_volumes": [],
+                "service": "projects/kx-hub/locations/europe-west4/services/normalize-function",
+                "service_account_email": "normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+                "timeout_seconds": 540,
+                "uri": "https://normalize-function-znuyyrlu5a-ez.a.run.app",
+                "vpc_connector": "",
+                "vpc_connector_egress_settings": ""
+              }
+            ],
+            "state": "ACTIVE",
+            "terraform_labels": {},
+            "timeouts": null,
+            "update_time": "2025-10-22T20:39:35.849766154Z",
+            "url": "https://europe-west4-kx-hub.cloudfunctions.net/normalize-function"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozNjAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInVwZGF0ZSI6MzYwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.archive_file.normalize_source",
+            "google_project_iam_member.normalize_sa_log_writer",
+            "google_project_iam_member.normalize_sa_run_invoker",
+            "google_project_service.required_apis",
+            "google_service_account.normalize_function_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.markdown_normalized",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.normalize_sa_markdown_bucket_creator",
+            "google_storage_bucket_iam_member.normalize_sa_pipeline_bucket_viewer",
+            "google_storage_bucket_iam_member.normalize_sa_raw_bucket_viewer",
+            "google_storage_bucket_object.normalize_source_zip"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_eventarc_trigger",
+      "name": "workflow_trigger",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "channel": "",
+            "conditions": {},
+            "create_time": "2025-10-20T19:12:49.815447862Z",
+            "destination": [
+              {
+                "cloud_function": "",
+                "cloud_run_service": [],
+                "gke": [],
+                "http_endpoint": [],
+                "network_config": [],
+                "workflow": "projects/kx-hub/locations/europe-west4/workflows/batch-pipeline"
+              }
+            ],
+            "effective_labels": {},
+            "etag": "",
+            "event_data_content_type": "",
+            "id": "projects/kx-hub/locations/europe-west4/triggers/workflow-trigger-daily-ingest",
+            "labels": {},
+            "location": "europe-west4",
+            "matching_criteria": [
+              {
+                "attribute": "type",
+                "operator": "",
+                "value": "google.cloud.pubsub.topic.v1.messagePublished"
+              }
+            ],
+            "name": "workflow-trigger-daily-ingest",
+            "project": "kx-hub",
+            "service_account": "batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "terraform_labels": {},
+            "timeouts": null,
+            "transport": [
+              {
+                "pubsub": [
+                  {
+                    "subscription": "projects/kx-hub/subscriptions/eventarc-europe-west4-workflow-trigger-daily-ingest-sub-268",
+                    "topic": "projects/kx-hub/topics/daily-ingest"
+                  }
+                ]
+              }
+            ],
+            "uid": "7318e8a5-6138-48ed-8bd4-0f78923e83d8",
+            "update_time": "2025-10-20T19:12:59.008179829Z"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.archive_file.normalize_source",
+            "data.google_project.project",
+            "google_cloudfunctions2_function.normalize_function",
+            "google_project_iam_member.eventarc_sa_workflows_invoker",
+            "google_project_iam_member.normalize_sa_log_writer",
+            "google_project_iam_member.normalize_sa_run_invoker",
+            "google_project_iam_member.workflow_sa_function_invoker",
+            "google_project_iam_member.workflow_sa_log_writer",
+            "google_project_iam_member.workflow_sa_workflows_invoker",
+            "google_project_service.required_apis",
+            "google_pubsub_topic.daily_ingest",
+            "google_service_account.normalize_function_sa",
+            "google_service_account.workflow_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.markdown_normalized",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.normalize_sa_markdown_bucket_creator",
+            "google_storage_bucket_iam_member.normalize_sa_pipeline_bucket_viewer",
+            "google_storage_bucket_iam_member.normalize_sa_raw_bucket_viewer",
+            "google_storage_bucket_object.normalize_source_zip",
+            "google_workflows_workflow.batch_pipeline"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_firestore_database",
+      "name": "kb_database",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "app_engine_integration_mode": "DISABLED",
+            "cmek_config": [],
+            "concurrency_mode": "PESSIMISTIC",
+            "create_time": "",
+            "delete_protection_state": "DELETE_PROTECTION_DISABLED",
+            "deletion_policy": "ABANDON",
+            "earliest_version_time": "2025-10-26T18:58:53.909679Z",
+            "etag": "IPHv6bLTwpADMMeq6PiItpAD",
+            "id": "projects/kx-hub/databases/(default)",
+            "key_prefix": "",
+            "location_id": "europe-west4",
+            "name": "(default)",
+            "point_in_time_recovery_enablement": "POINT_IN_TIME_RECOVERY_DISABLED",
+            "project": "kx-hub",
+            "timeouts": null,
+            "type": "FIRESTORE_NATIVE",
+            "uid": "e6f42d6c-0611-4b8b-b23e-fc142dbd9c09",
+            "update_time": "",
+            "version_retention_period": "3600s"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "google_project_service.required_apis"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_firestore_index",
+      "name": "pipeline_items_embedding_status_content_hash",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "api_scope": "ANY_API",
+            "collection": "pipeline_items",
+            "database": "(default)",
+            "fields": [
+              {
+                "array_config": "",
+                "field_path": "embedding_status",
+                "order": "ASCENDING",
+                "vector_config": []
+              },
+              {
+                "array_config": "",
+                "field_path": "content_hash",
+                "order": "ASCENDING",
+                "vector_config": []
+              },
+              {
+                "array_config": "",
+                "field_path": "__name__",
+                "order": "ASCENDING",
+                "vector_config": []
+              }
+            ],
+            "id": "projects/kx-hub/databases/(default)/collectionGroups/pipeline_items/indexes/CICAgOjXh4EK",
+            "name": "projects/kx-hub/databases/(default)/collectionGroups/pipeline_items/indexes/CICAgOjXh4EK",
+            "project": "kx-hub",
+            "query_scope": "COLLECTION",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDB9fQ==",
+          "dependencies": [
+            "google_firestore_database.kb_database",
+            "google_project_service.required_apis"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "embed_sa_aiplatform_user",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/aiplatform.user/serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/aiplatform.user"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.embed_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "embed_sa_datastore_user",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/datastore.user/serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/datastore.user"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.embed_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "embed_sa_log_writer",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/logging.logWriter/serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/logging.logWriter"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.embed_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "eventarc_sa_workflows_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/workflows.invoker/serviceAccount:service-386230044357@gcp-sa-eventarc.iam.gserviceaccount.com",
+            "member": "serviceAccount:service-386230044357@gcp-sa-eventarc.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/workflows.invoker"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "data.google_project.project"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "ingest_sa_pubsub_publisher",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/pubsub.publisher/serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/pubsub.publisher"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.ingest_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "ingest_sa_secret_accessor",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/secretmanager.secretAccessor/serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/secretmanager.secretAccessor"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.ingest_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "normalize_sa_datastore_user",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/datastore.user/serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/datastore.user"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.normalize_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "normalize_sa_log_writer",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/logging.logWriter/serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/logging.logWriter"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.normalize_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "normalize_sa_run_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/run.invoker/serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/run.invoker"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.normalize_function_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "workflow_sa_function_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/cloudfunctions.invoker/serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/cloudfunctions.invoker"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.workflow_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "workflow_sa_log_writer",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/logging.logWriter/serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/logging.logWriter"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.workflow_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_iam_member",
+      "name": "workflow_sa_workflows_invoker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "condition": [],
+            "etag": "BwZBxV1JKoE=",
+            "id": "kx-hub/roles/workflows.invoker/serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "role": "roles/workflows.invoker"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.workflow_sa"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_project_service",
+      "name": "required_apis",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "index_key": "aiplatform.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/aiplatform.googleapis.com",
+            "project": "kx-hub",
+            "service": "aiplatform.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "cloudbuild.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/cloudbuild.googleapis.com",
+            "project": "kx-hub",
+            "service": "cloudbuild.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "cloudfunctions.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/cloudfunctions.googleapis.com",
+            "project": "kx-hub",
+            "service": "cloudfunctions.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "cloudscheduler.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/cloudscheduler.googleapis.com",
+            "project": "kx-hub",
+            "service": "cloudscheduler.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "eventarc.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/eventarc.googleapis.com",
+            "project": "kx-hub",
+            "service": "eventarc.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "firestore.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/firestore.googleapis.com",
+            "project": "kx-hub",
+            "service": "firestore.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "pubsub.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/pubsub.googleapis.com",
+            "project": "kx-hub",
+            "service": "pubsub.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "run.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/run.googleapis.com",
+            "project": "kx-hub",
+            "service": "run.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "secretmanager.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/secretmanager.googleapis.com",
+            "project": "kx-hub",
+            "service": "secretmanager.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "storage.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/storage.googleapis.com",
+            "project": "kx-hub",
+            "service": "storage.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        },
+        {
+          "index_key": "workflows.googleapis.com",
+          "schema_version": 0,
+          "attributes": {
+            "disable_dependent_services": null,
+            "disable_on_destroy": false,
+            "id": "kx-hub/workflows.googleapis.com",
+            "project": "kx-hub",
+            "service": "workflows.googleapis.com",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInJlYWQiOjYwMDAwMDAwMDAwMCwidXBkYXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_pubsub_topic",
+      "name": "daily_ingest",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "effective_labels": {},
+            "id": "projects/kx-hub/topics/daily-ingest",
+            "ingestion_data_source_settings": [],
+            "kms_key_name": "",
+            "labels": {},
+            "message_retention_duration": "",
+            "message_storage_policy": [],
+            "name": "daily-ingest",
+            "project": "kx-hub",
+            "schema_settings": [],
+            "terraform_labels": {},
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_pubsub_topic",
+      "name": "daily_trigger",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "effective_labels": {},
+            "id": "projects/kx-hub/topics/daily-trigger",
+            "ingestion_data_source_settings": [],
+            "kms_key_name": "",
+            "labels": {},
+            "message_retention_duration": "",
+            "message_storage_policy": [],
+            "name": "daily-trigger",
+            "project": "kx-hub",
+            "schema_settings": [],
+            "terraform_labels": {},
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "google_project_service.required_apis"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_service_account",
+      "name": "embed_function_sa",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "embed-function-sa",
+            "create_ignore_already_exists": null,
+            "description": "",
+            "disabled": false,
+            "display_name": "Service Account for Embed Cloud Function",
+            "email": "embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "id": "projects/kx-hub/serviceAccounts/embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "name": "projects/kx-hub/serviceAccounts/embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "timeouts": null,
+            "unique_id": "107449176734995334181"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_service_account",
+      "name": "ingest_function_sa",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "ingest-function-sa",
+            "create_ignore_already_exists": null,
+            "description": "",
+            "disabled": false,
+            "display_name": "Service Account for Ingest Cloud Function",
+            "email": "ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "id": "projects/kx-hub/serviceAccounts/ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "name": "projects/kx-hub/serviceAccounts/ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "timeouts": null,
+            "unique_id": "112534762204267497070"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_service_account",
+      "name": "normalize_function_sa",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "normalize-function-sa",
+            "create_ignore_already_exists": null,
+            "description": "",
+            "disabled": false,
+            "display_name": "Service Account for Normalize Cloud Function",
+            "email": "normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "id": "projects/kx-hub/serviceAccounts/normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "name": "projects/kx-hub/serviceAccounts/normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "timeouts": null,
+            "unique_id": "100073107636126054653"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_service_account",
+      "name": "workflow_sa",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "batch-pipeline-workflow-sa",
+            "create_ignore_already_exists": null,
+            "description": "",
+            "disabled": false,
+            "display_name": "Service Account for Batch Pipeline Workflow",
+            "email": "batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "id": "projects/kx-hub/serviceAccounts/batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "name": "projects/kx-hub/serviceAccounts/batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "project": "kx-hub",
+            "timeouts": null,
+            "unique_id": "108582699843631829229"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDB9fQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket",
+      "name": "function_source",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "autoclass": [],
+            "cors": [],
+            "custom_placement_config": [],
+            "default_event_based_hold": false,
+            "effective_labels": {},
+            "enable_object_retention": false,
+            "encryption": [],
+            "force_destroy": true,
+            "id": "kx-hub-function-source",
+            "labels": {},
+            "lifecycle_rule": [],
+            "location": "EUROPE-WEST4",
+            "logging": [],
+            "name": "kx-hub-function-source",
+            "project": "kx-hub",
+            "project_number": 386230044357,
+            "public_access_prevention": "inherited",
+            "requester_pays": false,
+            "retention_policy": [],
+            "rpo": null,
+            "self_link": "https://www.googleapis.com/storage/v1/b/kx-hub-function-source",
+            "soft_delete_policy": [
+              {
+                "effective_time": "2025-10-18T18:07:12.930Z",
+                "retention_duration_seconds": 604800
+              }
+            ],
+            "storage_class": "STANDARD",
+            "terraform_labels": {},
+            "timeouts": null,
+            "uniform_bucket_level_access": true,
+            "url": "gs://kx-hub-function-source",
+            "versioning": [],
+            "website": []
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsInJlYWQiOjI0MDAwMDAwMDAwMCwidXBkYXRlIjoyNDAwMDAwMDAwMDB9LCJzY2hlbWFfdmVyc2lvbiI6IjIifQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket",
+      "name": "markdown_normalized",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "autoclass": [],
+            "cors": [],
+            "custom_placement_config": [],
+            "default_event_based_hold": false,
+            "effective_labels": {},
+            "enable_object_retention": false,
+            "encryption": [],
+            "force_destroy": true,
+            "id": "kx-hub-markdown-normalized",
+            "labels": {},
+            "lifecycle_rule": [],
+            "location": "EUROPE-WEST4",
+            "logging": [],
+            "name": "kx-hub-markdown-normalized",
+            "project": "kx-hub",
+            "project_number": 386230044357,
+            "public_access_prevention": "inherited",
+            "requester_pays": false,
+            "retention_policy": [],
+            "rpo": null,
+            "self_link": "https://www.googleapis.com/storage/v1/b/kx-hub-markdown-normalized",
+            "soft_delete_policy": [
+              {
+                "effective_time": "2025-10-19T11:22:51.827Z",
+                "retention_duration_seconds": 604800
+              }
+            ],
+            "storage_class": "STANDARD",
+            "terraform_labels": {},
+            "timeouts": null,
+            "uniform_bucket_level_access": true,
+            "url": "gs://kx-hub-markdown-normalized",
+            "versioning": [],
+            "website": []
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsInJlYWQiOjI0MDAwMDAwMDAwMCwidXBkYXRlIjoyNDAwMDAwMDAwMDB9LCJzY2hlbWFfdmVyc2lvbiI6IjIifQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket",
+      "name": "pipeline",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "autoclass": [],
+            "cors": [],
+            "custom_placement_config": [],
+            "default_event_based_hold": false,
+            "effective_labels": {},
+            "enable_object_retention": false,
+            "encryption": [],
+            "force_destroy": true,
+            "id": "kx-hub-pipeline",
+            "labels": {},
+            "lifecycle_rule": [],
+            "location": "EUROPE-WEST4",
+            "logging": [],
+            "name": "kx-hub-pipeline",
+            "project": "kx-hub",
+            "project_number": 386230044357,
+            "public_access_prevention": "inherited",
+            "requester_pays": false,
+            "retention_policy": [],
+            "rpo": null,
+            "self_link": "https://www.googleapis.com/storage/v1/b/kx-hub-pipeline",
+            "soft_delete_policy": [
+              {
+                "effective_time": "2025-10-21T19:53:05.203Z",
+                "retention_duration_seconds": 604800
+              }
+            ],
+            "storage_class": "STANDARD",
+            "terraform_labels": {},
+            "timeouts": null,
+            "uniform_bucket_level_access": true,
+            "url": "gs://kx-hub-pipeline",
+            "versioning": [],
+            "website": []
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsInJlYWQiOjI0MDAwMDAwMDAwMCwidXBkYXRlIjoyNDAwMDAwMDAwMDB9LCJzY2hlbWFfdmVyc2lvbiI6IjIifQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket",
+      "name": "raw_json",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "autoclass": [],
+            "cors": [],
+            "custom_placement_config": [],
+            "default_event_based_hold": false,
+            "effective_labels": {},
+            "enable_object_retention": false,
+            "encryption": [],
+            "force_destroy": true,
+            "id": "kx-hub-raw-json",
+            "labels": {},
+            "lifecycle_rule": [],
+            "location": "EUROPE-WEST4",
+            "logging": [],
+            "name": "kx-hub-raw-json",
+            "project": "kx-hub",
+            "project_number": 386230044357,
+            "public_access_prevention": "inherited",
+            "requester_pays": false,
+            "retention_policy": [],
+            "rpo": null,
+            "self_link": "https://www.googleapis.com/storage/v1/b/kx-hub-raw-json",
+            "soft_delete_policy": [
+              {
+                "effective_time": "2025-10-18T18:07:13.441Z",
+                "retention_duration_seconds": 604800
+              }
+            ],
+            "storage_class": "STANDARD",
+            "terraform_labels": {},
+            "timeouts": null,
+            "uniform_bucket_level_access": true,
+            "url": "gs://kx-hub-raw-json",
+            "versioning": [],
+            "website": []
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsInJlYWQiOjI0MDAwMDAwMDAwMCwidXBkYXRlIjoyNDAwMDAwMDAwMDB9LCJzY2hlbWFfdmVyc2lvbiI6IjIifQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "embed_sa_markdown_bucket_viewer",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "b/kx-hub-markdown-normalized",
+            "condition": [],
+            "etag": "CAU=",
+            "id": "b/kx-hub-markdown-normalized/roles/storage.objectViewer/serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "role": "roles/storage.objectViewer"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.embed_function_sa",
+            "google_storage_bucket.markdown_normalized"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "embed_sa_pipeline_bucket_viewer",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "b/kx-hub-pipeline",
+            "condition": [],
+            "etag": "CAQ=",
+            "id": "b/kx-hub-pipeline/roles/storage.objectViewer/serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:embed-function-sa@kx-hub.iam.gserviceaccount.com",
+            "role": "roles/storage.objectViewer"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.embed_function_sa",
+            "google_storage_bucket.pipeline"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "ingest_sa_pipeline_bucket_admin",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "b/kx-hub-pipeline",
+            "condition": [],
+            "etag": "CAQ=",
+            "id": "b/kx-hub-pipeline/roles/storage.objectAdmin/serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "role": "roles/storage.objectAdmin"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.ingest_function_sa",
+            "google_storage_bucket.pipeline"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "ingest_sa_raw_bucket_admin",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "b/kx-hub-raw-json",
+            "condition": [],
+            "etag": "CAM=",
+            "id": "b/kx-hub-raw-json/roles/storage.objectAdmin/serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:ingest-function-sa@kx-hub.iam.gserviceaccount.com",
+            "role": "roles/storage.objectAdmin"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.ingest_function_sa",
+            "google_storage_bucket.raw_json"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "normalize_sa_markdown_bucket_creator",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "b/kx-hub-markdown-normalized",
+            "condition": [],
+            "etag": "CAU=",
+            "id": "b/kx-hub-markdown-normalized/roles/storage.objectAdmin/serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "role": "roles/storage.objectAdmin"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.normalize_function_sa",
+            "google_storage_bucket.markdown_normalized"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "normalize_sa_pipeline_bucket_viewer",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "b/kx-hub-pipeline",
+            "condition": [],
+            "etag": "CAQ=",
+            "id": "b/kx-hub-pipeline/roles/storage.objectViewer/serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "role": "roles/storage.objectViewer"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.normalize_function_sa",
+            "google_storage_bucket.pipeline"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "normalize_sa_raw_bucket_viewer",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "b/kx-hub-raw-json",
+            "condition": [],
+            "etag": "CAM=",
+            "id": "b/kx-hub-raw-json/roles/storage.objectViewer/serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "member": "serviceAccount:normalize-function-sa@kx-hub.iam.gserviceaccount.com",
+            "role": "roles/storage.objectViewer"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "google_service_account.normalize_function_sa",
+            "google_storage_bucket.raw_json"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_object",
+      "name": "embed_source_zip",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "kx-hub-function-source",
+            "cache_control": "",
+            "content": null,
+            "content_disposition": "",
+            "content_encoding": "",
+            "content_language": "",
+            "content_type": "application/zip",
+            "crc32c": "5PZ1rA==",
+            "customer_encryption": [],
+            "detect_md5hash": "umH5DhsxeBOhn/OKwnQ4jQ==",
+            "event_based_hold": false,
+            "generation": 1761508750636446,
+            "id": "kx-hub-function-source-embed_source.zip#ba61f90e1b317813a19ff38ac274388d",
+            "kms_key_name": "",
+            "md5hash": "umH5DhsxeBOhn/OKwnQ4jQ==",
+            "media_link": "https://storage.googleapis.com/download/storage/v1/b/kx-hub-function-source/o/embed_source.zip%23ba61f90e1b317813a19ff38ac274388d?generation=1761508750636446\u0026alt=media",
+            "metadata": null,
+            "name": "embed_source.zip#ba61f90e1b317813a19ff38ac274388d",
+            "output_name": "embed_source.zip#ba61f90e1b317813a19ff38ac274388d",
+            "retention": [],
+            "self_link": "https://www.googleapis.com/storage/v1/b/kx-hub-function-source/o/embed_source.zip%23ba61f90e1b317813a19ff38ac274388d",
+            "source": "/tmp/embed_source.zip",
+            "storage_class": "STANDARD",
+            "temporary_hold": false,
+            "timeouts": null
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "content"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoyNDAwMDAwMDAwMDAsImRlbGV0ZSI6MjQwMDAwMDAwMDAwLCJ1cGRhdGUiOjI0MDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.archive_file.embed_source",
+            "google_storage_bucket.function_source"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_object",
+      "name": "ingest_source_zip",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "kx-hub-function-source",
+            "cache_control": "",
+            "content": null,
+            "content_disposition": "",
+            "content_encoding": "",
+            "content_language": "",
+            "content_type": "application/zip",
+            "crc32c": "ZtFVPA==",
+            "customer_encryption": [],
+            "detect_md5hash": "rPg7WhMxGUmHks8gUyi+Lw==",
+            "event_based_hold": false,
+            "generation": 1761076384212304,
+            "id": "kx-hub-function-source-ingest_source.zip#acf83b5a133119498792cf205328be2f",
+            "kms_key_name": "",
+            "md5hash": "rPg7WhMxGUmHks8gUyi+Lw==",
+            "media_link": "https://storage.googleapis.com/download/storage/v1/b/kx-hub-function-source/o/ingest_source.zip%23acf83b5a133119498792cf205328be2f?generation=1761076384212304\u0026alt=media",
+            "metadata": {},
+            "name": "ingest_source.zip#acf83b5a133119498792cf205328be2f",
+            "output_name": "ingest_source.zip#acf83b5a133119498792cf205328be2f",
+            "retention": [],
+            "self_link": "https://www.googleapis.com/storage/v1/b/kx-hub-function-source/o/ingest_source.zip%23acf83b5a133119498792cf205328be2f",
+            "source": "/tmp/ingest_source.zip",
+            "storage_class": "STANDARD",
+            "temporary_hold": false,
+            "timeouts": null
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "content"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoyNDAwMDAwMDAwMDAsImRlbGV0ZSI6MjQwMDAwMDAwMDAwLCJ1cGRhdGUiOjI0MDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.archive_file.ingest_source",
+            "google_storage_bucket.function_source"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_storage_bucket_object",
+      "name": "normalize_source_zip",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "kx-hub-function-source",
+            "cache_control": "",
+            "content": null,
+            "content_disposition": "",
+            "content_encoding": "",
+            "content_language": "",
+            "content_type": "application/zip",
+            "crc32c": "l3cSIw==",
+            "customer_encryption": [],
+            "detect_md5hash": "jauTx9YFlO334RuBTpiVgg==",
+            "event_based_hold": false,
+            "generation": 1761165524101510,
+            "id": "kx-hub-function-source-normalize_source.zip#8dab93c7d60594edf7e11b814e989582",
+            "kms_key_name": "",
+            "md5hash": "jauTx9YFlO334RuBTpiVgg==",
+            "media_link": "https://storage.googleapis.com/download/storage/v1/b/kx-hub-function-source/o/normalize_source.zip%238dab93c7d60594edf7e11b814e989582?generation=1761165524101510\u0026alt=media",
+            "metadata": {},
+            "name": "normalize_source.zip#8dab93c7d60594edf7e11b814e989582",
+            "output_name": "normalize_source.zip#8dab93c7d60594edf7e11b814e989582",
+            "retention": [],
+            "self_link": "https://www.googleapis.com/storage/v1/b/kx-hub-function-source/o/normalize_source.zip%238dab93c7d60594edf7e11b814e989582",
+            "source": "/tmp/normalize_source.zip",
+            "storage_class": "STANDARD",
+            "temporary_hold": false,
+            "timeouts": null
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "content"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoyNDAwMDAwMDAwMDAsImRlbGV0ZSI6MjQwMDAwMDAwMDAwLCJ1cGRhdGUiOjI0MDAwMDAwMDAwMH19",
+          "dependencies": [
+            "data.archive_file.normalize_source",
+            "google_storage_bucket.function_source"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_vertex_ai_index_endpoint",
+      "name": "kb_index_endpoint",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "create_time": "2025-10-21T19:53:31.450648Z",
+            "description": "Endpoint for knowledge base vector search",
+            "display_name": "kb-index-endpoint",
+            "effective_labels": {},
+            "etag": null,
+            "id": "projects/kx-hub/locations/europe-west4/indexEndpoints/1838928799408848896",
+            "labels": {},
+            "name": "1838928799408848896",
+            "network": "",
+            "private_service_connect_config": [
+              {
+                "enable_private_service_connect": false,
+                "project_allowlist": []
+              }
+            ],
+            "project": "kx-hub",
+            "public_endpoint_domain_name": "884956657.europe-west4-386230044357.vdb.vertexai.goog",
+            "public_endpoint_enabled": null,
+            "region": "europe-west4",
+            "terraform_labels": {},
+            "timeouts": null,
+            "update_time": "2025-10-21T19:56:07.881805Z"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "google_project_service.required_apis"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_workflows_workflow",
+      "name": "batch_pipeline",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "call_log_level": "",
+            "create_time": "2025-10-19T11:32:31.031058674Z",
+            "crypto_key_name": "",
+            "description": "Orchestrates the daily batch processing pipeline: normalize → embed → store",
+            "effective_labels": {},
+            "id": "projects/kx-hub/locations/europe-west4/workflows/batch-pipeline",
+            "labels": {},
+            "name": "batch-pipeline",
+            "name_prefix": null,
+            "project": "kx-hub",
+            "region": "europe-west4",
+            "revision_id": "000003-c08",
+            "service_account": "projects/kx-hub/serviceAccounts/batch-pipeline-workflow-sa@kx-hub.iam.gserviceaccount.com",
+            "source_contents": "# Cloud Workflow for daily batch processing pipeline\n# Triggered by Pub/Sub topic: daily-ingest (published by ingest function)\n# Orchestrates: normalize → embed (future) → store (future)\n\nmain:\n  params: [event]\n  steps:\n    - init:\n        assign:\n          - project_id: ${sys.get_env(\"GOOGLE_CLOUD_PROJECT_ID\")}\n          - region: \"europe-west4\"\n          - message_data: ${event.data.message.data}\n          - decoded_message: ${base64.decode(message_data)}\n\n    - parse_pubsub_payload:\n        try:\n          assign:\n            - payload: ${json.decode(decoded_message)}\n            - run_id: ${payload.run_id}\n        except:\n          as: e\n          steps:\n            - log_parse_error:\n                call: sys.log\n                args:\n                  text: Failed to parse Pub/Sub payload or missing run_id\n                  severity: ERROR\n            - fail_invalid_payload:\n                raise: \"INVALID_PUBSUB_PAYLOAD\"\n\n    - ensure_run_id:\n        switch:\n          - condition: ${run_id != null}\n            next: log_start\n        next: missing_run_id\n\n    - missing_run_id:\n        call: sys.log\n        args:\n          text: Pub/Sub payload missing run_id; aborting workflow\n          severity: ERROR\n        next: fail_missing_run_id\n\n    - fail_missing_run_id:\n        raise: \"RUN_ID_MISSING\"\n\n    - log_start:\n        call: sys.log\n        args:\n          text: ${\"Starting batch pipeline workflow for run_id \" + run_id}\n          severity: INFO\n\n    # Step 1: Call normalize function to transform JSON → Markdown\n    - call_normalize_function:\n        try:\n          call: http.post\n          args:\n            url: ${\"https://europe-west4-\" + project_id + \".cloudfunctions.net/normalize-function\"}\n            auth:\n              type: OIDC\n            timeout: 600\n            headers:\n              Content-Type: application/json\n            body:\n              run_id: ${run_id}\n          result: normalize_result\n        retry:\n          predicate: ${http.default_retry_predicate}\n          max_retries: 3\n          backoff:\n            initial_delay: 2\n            max_delay: 60\n            multiplier: 2\n        except:\n          as: e\n          steps:\n            - log_normalize_error:\n                call: sys.log\n                args:\n                  text: Normalize function failed - check logs for details\n                  severity: ERROR\n            - fail_workflow:\n                raise: ${e}\n\n    - log_normalize_success:\n        call: sys.log\n        args:\n          text: Normalize function completed successfully\n          severity: INFO\n\n    # Step 2: Call embed function to generate embeddings + store metadata\n    - call_embed_function:\n        try:\n          call: http.post\n          args:\n            url: ${\"https://europe-west4-\" + project_id + \".cloudfunctions.net/embed-function\"}\n            auth:\n              type: OIDC\n            timeout: 600\n            headers:\n              Content-Type: application/json\n            body:\n              run_id: ${run_id}\n          result: embed_result\n        retry:\n          predicate: ${http.default_retry_predicate}\n          max_retries: 3\n          backoff:\n            initial_delay: 2\n            max_delay: 60\n            multiplier: 2\n        except:\n          as: e\n          steps:\n            - log_embed_error:\n                call: sys.log\n                args:\n                  text: Embed function failed - check logs for details\n                  severity: ERROR\n            - fail_workflow_embed:\n                raise: ${e}\n\n    - log_embed_success:\n        call: sys.log\n        args:\n          text: Embed function completed successfully\n          severity: INFO\n\n    # Placeholder for Story 1.5: Cluster \u0026 Link\n    - placeholder_cluster_step:\n        call: sys.log\n        args:\n          text: \"TODO: Call cluster function (Story 1.5)\"\n          severity: INFO\n\n    # Return success\n    - return_success:\n        return:\n          status: \"success\"\n          normalize_result: ${normalize_result}\n          embed_result: ${embed_result}\n",
+            "state": "ACTIVE",
+            "terraform_labels": {},
+            "timeouts": null,
+            "update_time": "2025-10-21T19:54:19.206817641Z",
+            "user_env_vars": {}
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH0sInNjaGVtYV92ZXJzaW9uIjoiMSJ9",
+          "dependencies": [
+            "data.archive_file.normalize_source",
+            "google_cloudfunctions2_function.normalize_function",
+            "google_project_iam_member.normalize_sa_log_writer",
+            "google_project_iam_member.normalize_sa_run_invoker",
+            "google_project_iam_member.workflow_sa_function_invoker",
+            "google_project_iam_member.workflow_sa_log_writer",
+            "google_project_iam_member.workflow_sa_workflows_invoker",
+            "google_project_service.required_apis",
+            "google_service_account.normalize_function_sa",
+            "google_service_account.workflow_sa",
+            "google_storage_bucket.function_source",
+            "google_storage_bucket.markdown_normalized",
+            "google_storage_bucket.pipeline",
+            "google_storage_bucket.raw_json",
+            "google_storage_bucket_iam_member.normalize_sa_markdown_bucket_creator",
+            "google_storage_bucket_iam_member.normalize_sa_pipeline_bucket_viewer",
+            "google_storage_bucket_iam_member.normalize_sa_raw_bucket_viewer",
+            "google_storage_bucket_object.normalize_source_zip"
+          ]
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}

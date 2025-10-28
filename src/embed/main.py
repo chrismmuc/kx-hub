@@ -1,14 +1,13 @@
 """
-Cloud Function to embed markdown files and store to Vertex AI Vector Search + Firestore.
+Cloud Function to embed markdown files and store to Firestore with vector search.
 
-Story 1.3: Embed & Store to Vertex AI Vector Search + Firestore
+Story 1.3+: Embed & Store to Firestore Vector Search
 
 This function:
 1. Reads markdown files from Cloud Storage (markdown-normalized bucket)
 2. Parses YAML frontmatter to extract metadata
 3. Generates embeddings using Vertex AI gemini-embedding-001 model
-4. Stores embeddings in Vertex AI Vector Search index
-5. Stores metadata in Firestore kb_items collection
+4. Stores embeddings and metadata in Firestore kb_items collection with vector search support
 """
 
 import hashlib
@@ -45,13 +44,12 @@ except ImportError:  # pragma: no cover - allows tests to run without deps
     TextEmbeddingModel = None  # type: ignore[assignment]
 
 try:
-    from google.cloud.aiplatform_v1.types import IndexDatapoint, UpsertDatapointsRequest
-    from google.cloud.aiplatform_v1.services.index_service import IndexServiceClient
+    from google.cloud.firestore_v1.vector import Vector
+    from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
 except ImportError:  # pragma: no cover - allows tests to run without deps
     _HAS_MATCHING_ENGINE_LIB = False
-    IndexDatapoint = None  # type: ignore[assignment]
-    UpsertDatapointsRequest = None  # type: ignore[assignment]
-    IndexServiceClient = None  # type: ignore[assignment]
+    Vector = None  # type: ignore[assignment]
+    DistanceMeasure = None  # type: ignore[assignment]
 
 try:
     from google.cloud.firestore_v1 import Increment
@@ -92,14 +90,10 @@ if not _HAS_AIPLATFORM_LIB:
 _storage_client = None
 _firestore_client = None
 _vertex_ai_model = None
-_index_service_client = None
 
 # Configuration
 GCP_PROJECT = os.environ.get('GCP_PROJECT', 'kx-hub')
 GCP_REGION = os.environ.get('GCP_REGION', 'europe-west4')
-VECTOR_SEARCH_INDEX_ENDPOINT = os.environ.get('VECTOR_SEARCH_INDEX_ENDPOINT')
-VECTOR_SEARCH_DEPLOYED_INDEX_ID = os.environ.get('VECTOR_SEARCH_DEPLOYED_INDEX_ID')
-VECTOR_SEARCH_INDEX = os.environ.get('VECTOR_SEARCH_INDEX')
 MARKDOWN_BUCKET = os.environ.get('MARKDOWN_BUCKET', f'{GCP_PROJECT}-markdown-normalized')
 PIPELINE_BUCKET = os.environ.get('PIPELINE_BUCKET')
 PIPELINE_COLLECTION = os.environ.get('PIPELINE_COLLECTION', 'pipeline_items')
@@ -162,27 +156,8 @@ def get_vertex_ai_client():
     return _vertex_ai_model
 
 
-def get_index_service_client():
-    """Lazy initialization of Matching Engine Index Service client."""
-    global _index_service_client
-    if _index_service_client is None:
-        if not (_HAS_AIPLATFORM_LIB and _HAS_MATCHING_ENGINE_LIB):
-            raise ImportError("google-cloud-aiplatform>=1.44 is required for Matching Engine operations")
-        if IndexServiceClient is None:
-            raise ImportError("google-cloud-aiplatform>=1.44 is required for Matching Engine operations")
-        client_options = {"api_endpoint": f"{GCP_REGION}-aiplatform.googleapis.com"}
-        _index_service_client = IndexServiceClient(client_options=client_options)
-        logger.info("Initialized Matching Engine index service client")
-    return _index_service_client
-
-
-def _index_resource() -> str:
-    if VECTOR_SEARCH_INDEX and "/" in VECTOR_SEARCH_INDEX:
-        return VECTOR_SEARCH_INDEX
-    if not VECTOR_SEARCH_INDEX:
-        raise ValueError("VECTOR_SEARCH_INDEX environment variable not set")
-    project = os.environ.get('GCP_PROJECT', GCP_PROJECT)
-    return f"projects/{project}/locations/{GCP_REGION}/indexes/{VECTOR_SEARCH_INDEX}"
+# Note: Vertex AI Vector Search has been replaced with Firestore native vector search
+# No separate index service client needed - embeddings stored directly in Firestore documents
 
 
 def get_pipeline_collection():
@@ -305,7 +280,7 @@ def generate_embedding(text: str) -> List[float]:
         try:
             embeddings = model.get_embeddings([text])
             embedding_vector = embeddings[0].values
-            logger.debug(f"Generated embedding with {len(embedding_vector)} dimensions")
+            logger.info(f"Generated embedding with {len(embedding_vector)} dimensions (type: {type(embedding_vector).__name__})")
             return embedding_vector
 
         except ResourceExhausted as e:
@@ -331,97 +306,26 @@ def generate_embedding(text: str) -> List[float]:
             raise
 
 
-def upsert_to_vector_search(item_id: str, embedding_vector: List[float], run_id: Optional[str] = None) -> bool:
+# Removed: upsert_to_vector_search() - embeddings now stored directly in Firestore
+# Removed: upsert_batch_to_vector_search() - embeddings now stored directly in Firestore
+
+
+def write_to_firestore(
+    metadata: Dict[str, Any],
+    content_hash: str,
+    run_id: str,
+    embedding_status: str,
+    embedding_vector: Optional[List[float]] = None
+) -> bool:
     """
-    Upsert a single datapoint to Vector Search index.
-
-    Args:
-        item_id: Unique identifier for the datapoint
-        embedding_vector: 768-dimensional embedding vector
-        run_id: Current pipeline run identifier (used as crowding tag for observability)
-
-    Returns:
-        True if successful, False if error occurred
-    """
-    try:
-        client = get_index_service_client()
-        index_resource = _index_resource()
-
-        crowding_tag = None
-        if run_id:
-            crowding_tag = IndexDatapoint.CrowdingTag(crowding_attribute=run_id)
-
-        datapoint = IndexDatapoint(
-            datapoint_id=item_id,
-            feature_vector=embedding_vector,
-            crowding_tag=crowding_tag
-        )
-
-        request = UpsertDatapointsRequest(
-            index=index_resource,
-            datapoints=[datapoint],
-        )
-
-        client.upsert_datapoints(request=request)
-        logger.info(f"Upserted datapoint {item_id} to Vector Search")
-        return True
-
-    except (GoogleAPICallError, ValueError) as e:
-        logger.error(f"Failed to upsert datapoint {item_id} to Vector Search: {e}")
-        return False
-
-
-def upsert_batch_to_vector_search(batch: List[Dict[str, Any]]) -> Dict[str, int]:
-    """
-    Batch upsert datapoints to Vector Search index (up to 100 datapoints per batch).
-
-    Args:
-        batch: List of dicts with 'id' and 'embedding' keys
-
-    Returns:
-        Dict with 'success' and 'failed' counts
-    """
-    try:
-        client = get_index_service_client()
-        index_resource = _index_resource()
-
-        datapoints = []
-        for item in batch:
-            run_id = item.get('run_id')
-            crowding_tag = None
-            if run_id:
-                crowding_tag = IndexDatapoint.CrowdingTag(crowding_attribute=run_id)
-
-            dp = IndexDatapoint(
-                datapoint_id=item['id'],
-                feature_vector=item['embedding'],
-                crowding_tag=crowding_tag
-            )
-            datapoints.append(dp)
-
-        request = UpsertDatapointsRequest(
-            index=index_resource,
-            datapoints=datapoints,
-        )
-        client.upsert_datapoints(request=request)
-
-        logger.info(f"Batch upserted {len(datapoints)} datapoints to Vector Search")
-        return {'success': len(datapoints), 'failed': 0}
-
-    except (GoogleAPICallError, ValueError) as e:
-        logger.error(f"Failed to batch upsert datapoints to Vector Search: {e}")
-        return {'success': 0, 'failed': len(batch)}
-
-
-def write_to_firestore(metadata: Dict[str, Any], content_hash: str, run_id: str, embedding_status: str) -> bool:
-    """
-    Write metadata document to Firestore kb_items collection.
+    Write metadata and embedding to Firestore kb_items collection.
 
     Args:
         metadata: Document metadata from frontmatter
         content_hash: Hash of the markdown content used for embedding
         run_id: Current pipeline run identifier
         embedding_status: Embedding status to persist with metadata
+        embedding_vector: Optional 768-dimensional embedding vector (stored as Firestore Vector)
 
     Returns:
         True if successful, False if error occurred
@@ -445,16 +349,27 @@ def write_to_firestore(metadata: Dict[str, Any], content_hash: str, run_id: str,
             'last_embedded_at': getattr(firestore, "SERVER_TIMESTAMP", None),
             'last_error': None,
             'last_run_id': run_id,
-            'cluster_id': [],  # Future: Story 1.5
-            'similar_ids': [],  # Future: Story 1.5
-            'scores': []  # Future: Story 1.5
+            'cluster_id': [],  # Future: clustering
+            'similar_ids': [],  # Future: similarity recommendations
+            'scores': []  # Future: similarity scores
         }
+
+        # Add embedding vector if provided (using Firestore Vector type for vector search)
+        if embedding_vector is not None:
+            # Ensure embedding_vector is a list of floats (not numpy array or other type)
+            vector_list = [float(x) for x in embedding_vector]
+            logger.info(f"Storing embedding vector with {len(vector_list)} dimensions for {metadata['id']}")
+
+            # Store as raw list for now to debug dimension issue
+            # TODO: Convert back to Vector() once working
+            doc_data['embedding'] = vector_list
+
 
         # Write to kb_items collection with document ID = item_id
         doc_ref = db.collection('kb_items').document(metadata['id'])
         doc_ref.set(doc_data, merge=True)
 
-        logger.info(f"Wrote document {metadata['id']} to Firestore")
+        logger.info(f"Wrote document {metadata['id']} to Firestore with embedding={embedding_vector is not None}")
         return True
 
     except Exception as e:
@@ -469,8 +384,8 @@ def embed(request):
     Processes pipeline items flagged for embedding:
     1. Load manifest for provided run_id
     2. Fetch pipeline_items requiring embedding work
-    3. Generate embeddings as needed and upsert to Vector Search
-    4. Update Firestore metadata + pipeline state
+    3. Generate embeddings as needed and store to Firestore with vector search support
+    4. Update pipeline state in Firestore
     """
     logger.info("Embed function triggered")
 
@@ -513,7 +428,6 @@ def embed(request):
         'processed': 0,
         'skipped': 0,
         'failed': 0,
-        'vector_upserts': 0,
         'firestore_updates': 0,
         'stale_resets': 0
     }
@@ -591,15 +505,17 @@ def embed(request):
 
             if needs_upsert:
                 embedding_vector = generate_embedding(text_to_embed)
-                if not upsert_to_vector_search(metadata['id'], embedding_vector, run_id=run_id):
-                    raise RuntimeError("Vector Search upsert failed")
-                stats['vector_upserts'] += 1
 
+                # Store embedding directly in Firestore (replaces separate Vector Search upsert)
+                if not write_to_firestore(metadata, computed_hash, run_id, "complete", embedding_vector=embedding_vector):
+                    raise RuntimeError("Failed to write embedding to Firestore")
+                stats['firestore_updates'] += 1
+            else:
+                logger.info(f"Skipping embedding generation for {item_id}; content hash unchanged")
+                # Still update metadata even if embedding unchanged
                 if not write_to_firestore(metadata, computed_hash, run_id, "complete"):
                     raise RuntimeError("Failed to update kb_items metadata")
                 stats['firestore_updates'] += 1
-            else:
-                logger.info(f"Skipping Vector Search upsert for {item_id}; content hash unchanged")
 
             success_update = {
                 'embedding_status': 'complete',

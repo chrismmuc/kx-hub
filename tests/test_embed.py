@@ -1,11 +1,10 @@
 """
-Unit tests for the embed Cloud Function (Story 1.3).
+Unit tests for the embed Cloud Function (Story 1.3+).
 
 Tests cover:
 - Frontmatter parsing (valid, missing fields, malformed)
 - Vertex AI embedding generation
-- Vector Search index upsert operations
-- Firestore document writes
+- Firestore document writes with vector embeddings
 - API error handling (429 rate limit, 500 server error)
 - Retry logic with exponential backoff
 - Edge cases (empty content, large files, Unicode)
@@ -223,150 +222,7 @@ class TestVertexAIEmbeddings(unittest.TestCase):
         self.assertEqual(mock_sleep.call_count, 2)  # 2 backoff sleeps
 
 
-class TestVectorSearchWriter(unittest.TestCase):
-    """Test Vector Search index upsert operations."""
-
-    @patch('src.embed.main.UpsertDatapointsRequest')
-    @patch('src.embed.main.IndexDatapoint')
-    @patch('src.embed.main.get_index_service_client')
-    def test_upsert_embedding_success(self, mock_get_client, mock_index_datapoint, mock_upsert_request):
-        """AC 2: Upsert embedding to Vector Search index."""
-        from src.embed.main import upsert_to_vector_search
-
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
-        created_datapoints = []
-
-        class StubIndexDatapoint:
-            class CrowdingTag:
-                def __init__(self, crowding_attribute=None):
-                    self.crowding_attribute = crowding_attribute
-
-            def __init__(self, datapoint_id=None, feature_vector=None, crowding_tag=None, **kwargs):
-                self.datapoint_id = datapoint_id
-                self.feature_vector = feature_vector
-                self.crowding_tag = crowding_tag
-
-        def factory(*args, **kwargs):
-            dp = StubIndexDatapoint(*args, **kwargs)
-            created_datapoints.append(dp)
-            return dp
-
-        mock_index_datapoint.side_effect = factory
-        mock_index_datapoint.CrowdingTag = StubIndexDatapoint.CrowdingTag
-        request_instance = MagicMock()
-        mock_upsert_request.return_value = request_instance
-        import os
-        import src.embed.main as embed_main
-        embed_main.GCP_PROJECT = "test-project"
-        os.environ['GCP_PROJECT'] = "test-project"
-        embed_main.VECTOR_SEARCH_INDEX = "projects/test-project/locations/europe-west4/indexes/123"
-        embed_main.GCP_REGION = "europe-west4"
-
-        item_id = "41094950"
-        embedding_vector = [0.1] * 768
-
-        result = upsert_to_vector_search(item_id, embedding_vector, run_id="run-123")
-
-        self.assertTrue(result)
-        self.assertEqual(len(created_datapoints), 1)
-        self.assertEqual(created_datapoints[0].datapoint_id, item_id)
-        self.assertEqual(created_datapoints[0].feature_vector, embedding_vector)
-        self.assertEqual(created_datapoints[0].crowding_tag.crowding_attribute, "run-123")
-        args, kwargs = mock_upsert_request.call_args
-        self.assertEqual(kwargs['datapoints'], [created_datapoints[0]])
-        self.assertEqual(kwargs['index'], "projects/test-project/locations/europe-west4/indexes/123")
-        mock_client.upsert_datapoints.assert_called_once_with(request=request_instance)
-
-    @patch('src.embed.main.UpsertDatapointsRequest')
-    @patch('src.embed.main.IndexDatapoint')
-    @patch('src.embed.main.logger')
-    @patch('src.embed.main.get_index_service_client')
-    def test_upsert_embedding_failure_logged(self, mock_get_client, mock_logger, mock_index_datapoint, mock_upsert_request):
-        """AC 8: Log error on Vector Search upsert failure, continue processing."""
-        from src.embed.main import upsert_to_vector_search
-
-        mock_client = MagicMock()
-        mock_client.upsert_datapoints.side_effect = exceptions.GoogleAPICallError("Unavailable")
-        mock_get_client.return_value = mock_client
-
-        class StubIndexDatapoint:
-            class CrowdingTag:
-                def __init__(self, crowding_attribute=None):
-                    self.crowding_attribute = crowding_attribute
-
-            def __init__(self, datapoint_id=None, feature_vector=None, crowding_tag=None, **kwargs):
-                self.datapoint_id = datapoint_id
-                self.feature_vector = feature_vector
-                self.crowding_tag = crowding_tag
-
-        mock_index_datapoint.side_effect = lambda *args, **kwargs: StubIndexDatapoint(*args, **kwargs)
-        mock_index_datapoint.CrowdingTag = StubIndexDatapoint.CrowdingTag
-        mock_upsert_request.return_value = MagicMock()
-        import os
-        import src.embed.main as embed_main
-        embed_main.GCP_PROJECT = "test-project"
-        os.environ['GCP_PROJECT'] = "test-project"
-        embed_main.VECTOR_SEARCH_INDEX = "projects/test-project/locations/europe-west4/indexes/123"
-        embed_main.GCP_REGION = "europe-west4"
-
-        item_id = "41094950"
-        embedding_vector = [0.1] * 768
-
-        result = upsert_to_vector_search(item_id, embedding_vector, run_id="run-123")
-
-        self.assertFalse(result)
-        mock_logger.error.assert_called()
-
-    @patch('src.embed.main.UpsertDatapointsRequest')
-    @patch('src.embed.main.IndexDatapoint')
-    @patch('src.embed.main.get_index_service_client')
-    def test_upsert_batch_embeddings(self, mock_get_client, mock_index_datapoint, mock_upsert_request):
-        """AC 2: Batch upsert multiple embeddings (up to 100 datapoints)."""
-        from src.embed.main import upsert_batch_to_vector_search
-
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
-        datapoint_instances = []
-
-        class StubIndexDatapoint:
-            class CrowdingTag:
-                def __init__(self, crowding_attribute=None):
-                    self.crowding_attribute = crowding_attribute
-
-            def __init__(self, datapoint_id=None, feature_vector=None, crowding_tag=None, **kwargs):
-                self.datapoint_id = datapoint_id
-                self.feature_vector = feature_vector
-                self.crowding_tag = crowding_tag
-
-        def factory(*args, **kwargs):
-            dp = StubIndexDatapoint(*args, **kwargs)
-            datapoint_instances.append(dp)
-            return dp
-
-        mock_index_datapoint.side_effect = factory
-        mock_index_datapoint.CrowdingTag = StubIndexDatapoint.CrowdingTag
-        request_instance = MagicMock()
-        mock_upsert_request.return_value = request_instance
-        import os
-        import src.embed.main as embed_main
-        embed_main.GCP_PROJECT = "test-project"
-        os.environ['GCP_PROJECT'] = "test-project"
-        embed_main.VECTOR_SEARCH_INDEX = "projects/test-project/locations/europe-west4/indexes/123"
-        embed_main.GCP_REGION = "europe-west4"
-
-        batch = [
-            {"id": f"item_{i}", "embedding": [0.1] * 768}
-            for i in range(50)
-        ]
-
-        results = upsert_batch_to_vector_search(batch)
-
-        self.assertEqual(results['success'], 50)
-        self.assertEqual(results['failed'], 0)
-        self.assertEqual(len(datapoint_instances), 50)
-        mock_upsert_request.assert_called_once()
-        mock_client.upsert_datapoints.assert_called_once_with(request=request_instance)
+# Removed: TestVectorSearchWriter - embeddings now stored directly in Firestore
 
 
 class TestFirestoreWriter(unittest.TestCase):
@@ -463,18 +319,58 @@ class TestFirestoreWriter(unittest.TestCase):
         mock_logger.error.assert_called_once()
         self.assertIn("Firestore error", str(mock_logger.error.call_args))
 
+    @patch('src.embed.main._HAS_MATCHING_ENGINE_LIB', True)
+    @patch('src.embed.main.Vector')
+    @patch('src.embed.main.get_firestore_client')
+    def test_write_document_with_embedding_vector(self, mock_get_client, mock_vector):
+        """AC 2: Write embedding vector to Firestore using Vector type."""
+        from src.embed.main import write_to_firestore
+
+        mock_db = MagicMock()
+        mock_get_client.return_value = mock_db
+        mock_vector_instance = MagicMock()
+        mock_vector.return_value = mock_vector_instance
+
+        metadata = {
+            'id': '41094950',
+            'title': 'Test Book',
+            'author': 'Test Author',
+            'created_at': '2024-06-01T13:22:09.640Z',
+            'updated_at': '2024-06-01T13:22:09.641Z'
+        }
+
+        embedding_vector = [0.1] * 768
+
+        result = write_to_firestore(
+            metadata,
+            content_hash="sha256:abc",
+            run_id="run-1",
+            embedding_status="complete",
+            embedding_vector=embedding_vector
+        )
+
+        self.assertTrue(result)
+
+        # Verify Vector was created with the embedding
+        mock_vector.assert_called_once_with(embedding_vector)
+
+        # Verify document data includes embedding
+        call_args = mock_db.collection().document().set.call_args
+        doc_data = call_args[0][0]
+        self.assertEqual(doc_data['embedding'], mock_vector_instance)
+        self.assertEqual(doc_data['title'], 'Test Book')
+
 
 class TestEmbedHandler(unittest.TestCase):
     """Test the manifest-driven embed handler."""
 
     @patch('src.embed.main.write_to_firestore', return_value=True)
-    @patch('src.embed.main.upsert_to_vector_search', return_value=True)
     @patch('src.embed.main.generate_embedding', return_value=[0.1] * 768)
     @patch('src.embed.main.get_pipeline_collection')
     @patch('src.embed.main.get_storage_client')
     @patch('src.embed.main._load_manifest', return_value={'run_id': 'run-123', 'items': [{'id': '123'}]})
     def test_embed_processes_pending_item(self, mock_manifest, mock_storage, mock_collection,
-                                          mock_generate_embedding, mock_upsert, mock_write):
+                                          mock_generate_embedding, mock_write):
         from src.embed.main import embed, _compute_markdown_hash
 
         markdown_content = """---
@@ -529,13 +425,15 @@ Body text here."""
         self.assertEqual(status, 200)
         self.assertEqual(response['processed'], 1)
         self.assertEqual(response['failed'], 0)
-        self.assertEqual(response['vector_upserts'], 1)
         self.assertEqual(response['firestore_updates'], 1)
 
         mock_generate_embedding.assert_called_once()
-        mock_upsert.assert_called_once()
-        upsert_kwargs = mock_upsert.call_args.kwargs
-        self.assertEqual(upsert_kwargs.get('run_id'), 'run-123')
+
+        # Verify write_to_firestore was called with embedding_vector
+        mock_write.assert_called()
+        write_call = mock_write.call_args
+        self.assertIn('embedding_vector', write_call.kwargs)
+        self.assertEqual(write_call.kwargs['embedding_vector'], [0.1] * 768)
 
         success_call = doc_ref.set.call_args_list[-1]
         success_update = success_call.args[0]

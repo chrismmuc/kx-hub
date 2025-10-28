@@ -30,7 +30,7 @@ Knowledge workers face a critical challenge: their collected knowledge remains s
 
 **2. On-Demand Knowledge Retrieval (Pull Model)**
 - A natural language query interface (CLI/API).
-- Vertex AI Vector Search provides fast, accurate, and scalable semantic search.
+- Firestore native vector search provides fast, accurate, and scalable semantic search.
 - Returns a ranked list of the most relevant articles, highlights, and book sections.
 
 **Core Differentiators:**
@@ -87,13 +87,13 @@ Our target users are tech-savvy knowledge workers, researchers, writers, and pro
   - API Gateway for the query endpoint.
   - Pub/Sub and Cloud Workflows for orchestration.
 - **AI**: Google Vertex AI
-  - `text-embedding-004` for embeddings.
-  - `Gemini 1.5 Flash` for generative tasks.
-  - `Vertex AI Vector Search` for similarity search.
+  - `gemini-embedding-001` for embeddings (~$0.10/month).
+  - `Gemini 2.5 Flash` for generative tasks.
+  - `Firestore native vector search` for similarity search (~$0.10/month instead of $100+/month).
 - **Backend**: Python 3.11+
 - **Database**: Firestore for metadata, Cloud Storage for files.
 - **Hosting**: Google Cloud Serverless, Pay-Per-Use model.
-- **Estimated Cost**: ~$5/month.
+- **Estimated Cost**: ~$0.90/month (after migrating to Firestore vector search).
 
 ---
 

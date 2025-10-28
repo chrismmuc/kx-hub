@@ -438,74 +438,27 @@ resource "google_firestore_index" "pipeline_items_embedding_status_content_hash"
   depends_on = [google_firestore_database.kb_database]
 }
 
-# Vertex AI Vector Search Index
-resource "google_vertex_ai_index" "kb_vector_index" {
-  display_name = "kb-vector-index"
-  description  = "Vector search index for knowledge base embeddings"
-  region       = var.region
+# Firestore vector search index for kb_items collection
+# Vector search is now native to Firestore (no separate Vertex AI Vector Search service)
+resource "google_firestore_index" "kb_items_vector_index" {
+  project    = var.project_id
+  database   = google_firestore_database.kb_database.name
+  collection = "kb_items"
 
-  metadata {
-    contents_delta_uri = "gs://${google_storage_bucket.vector_search_staging.name}/initial"
-    config {
-      dimensions                  = 768
-      approximate_neighbors_count = 150
-      distance_measure_type       = "COSINE_DISTANCE"
-      feature_norm_type           = "UNIT_L2_NORM"
-      algorithm_config {
-        tree_ah_config {
-          leaf_node_embedding_count    = 1000
-          leaf_nodes_to_search_percent = 7
-        }
-      }
+  fields {
+    field_path = "__name__"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "embedding"
+    vector_config {
+      dimension = 3072
+      flat {}
     }
   }
 
-  depends_on = [google_project_service.required_apis]
-}
-
-# Cloud Storage bucket for Vector Search staging
-resource "google_storage_bucket" "vector_search_staging" {
-  name          = "${var.project_id}-vector-search-staging"
-  location      = var.region
-  force_destroy = true
-
-  uniform_bucket_level_access = true
-}
-
-# Initial empty embedding file for Vector Search index creation
-resource "google_storage_bucket_object" "initial_embeddings" {
-  name   = "initial/embedding_seed.jsonl"
-  bucket = google_storage_bucket.vector_search_staging.name
-  source = "${path.module}/templates/embedding_seed.jsonl"
-  content_type = "application/json"
-}
-
-# Vertex AI Index Endpoint
-resource "google_vertex_ai_index_endpoint" "kb_index_endpoint" {
-  display_name = "kb-index-endpoint"
-  description  = "Endpoint for knowledge base vector search"
-  region       = var.region
-
-  depends_on = [google_project_service.required_apis]
-}
-
-# Deploy index to endpoint
-resource "google_vertex_ai_index_endpoint_deployed_index" "kb_deployed_index" {
-  index_endpoint        = google_vertex_ai_index_endpoint.kb_index_endpoint.id
-  deployed_index_id     = "kb_deployed_index"
-  display_name          = "KB Deployed Index"
-  index                 = google_vertex_ai_index.kb_vector_index.id
-  enable_access_logging = false
-
-  automatic_resources {
-    min_replica_count = 1
-    max_replica_count = 2
-  }
-
-  depends_on = [
-    google_vertex_ai_index.kb_vector_index,
-    google_vertex_ai_index_endpoint.kb_index_endpoint
-  ]
+  depends_on = [google_firestore_database.kb_database]
 }
 
 # IAM Service Account for the Embed Cloud Function
@@ -591,15 +544,13 @@ resource "google_cloudfunctions2_function" "embed_function" {
     available_memory      = "512Mi"
     service_account_email = google_service_account.embed_function_sa.email
     environment_variables = {
-      GCP_PROJECT                     = var.project_id
-      GCP_REGION                      = var.region
-      VECTOR_SEARCH_INDEX_ENDPOINT    = google_vertex_ai_index_endpoint.kb_index_endpoint.name
-      VECTOR_SEARCH_DEPLOYED_INDEX_ID = "kb_deployed_index"
-      MARKDOWN_BUCKET                 = google_storage_bucket.markdown_normalized.name
-      PIPELINE_BUCKET                 = google_storage_bucket.pipeline.name
-      PIPELINE_COLLECTION             = "pipeline_items"
-      PIPELINE_MANIFEST_PREFIX        = "manifests"
-      EMBED_STALE_TIMEOUT_SECONDS     = "900" // 15 minutes
+      GCP_PROJECT                 = var.project_id
+      GCP_REGION                  = var.region
+      MARKDOWN_BUCKET             = google_storage_bucket.markdown_normalized.name
+      PIPELINE_BUCKET             = google_storage_bucket.pipeline.name
+      PIPELINE_COLLECTION         = "pipeline_items"
+      PIPELINE_MANIFEST_PREFIX    = "manifests"
+      EMBED_STALE_TIMEOUT_SECONDS = "900" // 15 minutes
     }
   }
 
@@ -610,8 +561,8 @@ resource "google_cloudfunctions2_function" "embed_function" {
     google_project_iam_member.embed_sa_datastore_user,
     google_project_iam_member.embed_sa_log_writer,
     google_storage_bucket_iam_member.embed_sa_pipeline_bucket_viewer,
-    google_vertex_ai_index_endpoint_deployed_index.kb_deployed_index,
-    google_firestore_database.kb_database
+    google_firestore_database.kb_database,
+    google_firestore_index.kb_items_vector_index
   ]
 }
 

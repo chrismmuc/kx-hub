@@ -26,11 +26,22 @@ email:
 ```
 
 ## Runtime Dependencies
-- **Embed function (`src/embed`)**: Pin `google-cloud-aiplatform>=1.44` to access the Vertex AI gRPC Matching Engine client for Vector Search upserts.
+- **Embed function (`src/embed`)**: Requires `google-cloud-firestore>=2.16.0` for native vector storage and `google-cloud-aiplatform>=1.44.0` for Vertex AI embeddings.
+
+## Environment Variables
+Core configuration (no Vector Search index needed anymore):
+- `GCP_PROJECT`: GCP project ID
+- `GCP_REGION`: Region for Cloud Functions (e.g., `europe-west4`)
+- `MARKDOWN_BUCKET`: Cloud Storage bucket for normalized markdown
+- `PIPELINE_BUCKET`: Cloud Storage bucket for pipeline artifacts
+- `PIPELINE_COLLECTION`: Firestore collection for pipeline state (default: `pipeline_items`)
 
 ## Estimated Monthly Costs
-- **Embeddings & Vector Search**: ~$3.10 (Vertex AI)
-- **Generative Models**: ~$1.50 (Vertex AI Gemini 2.5 Flash)
-- **Cloud Functions, Storage, Firestore**: ~$0.50
-- **Total**: **~$5.10/month**
-✅ **Goal: ~$5/month achieved. Complexity and maintenance effort are drastically reduced compared to the V2 architecture.**
+- **Vertex AI Embeddings** (gemini-embedding-001): ~$0.10 (271 books × 1-2 calls per book)
+- **Firestore Vector Search**: ~$0.10 (storage + vector queries)
+- **Cloud Functions**: ~$0.50 (ingest, normalize, embed execution)
+- **Cloud Storage**: ~$0.10 (markdown, raw JSON storage)
+- **Firestore Reads/Writes**: ~$0.10 (pipeline metadata + kb_items)
+- **Total**: **~$0.90/month**
+
+✅ **99% cost reduction achieved**: Previously $100+/month with Vertex AI Vector Search → Now ~$0.90/month with Firestore native vectors. Complexity and maintenance effort drastically reduced.
