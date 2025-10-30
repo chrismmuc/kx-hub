@@ -220,6 +220,8 @@ def parse_markdown(content: str) -> Tuple[Dict[str, Any], str]:
     """
     Parse YAML frontmatter and content from markdown file.
 
+    Supports both legacy document format and new chunk format.
+
     Args:
         content: Raw markdown file content with frontmatter
 
@@ -241,17 +243,35 @@ def parse_markdown(content: str) -> Tuple[Dict[str, Any], str]:
     except yaml.YAMLError as e:
         raise ValueError(f"Invalid YAML frontmatter: {e}")
 
-    # Validate required fields
-    required_fields = ['id', 'title', 'author', 'created_at', 'updated_at']
-    for field in required_fields:
-        if field not in metadata:
-            raise ValueError(f"Missing required field in frontmatter: {field}")
+    # Check if this is a chunk (has chunk_id field)
+    is_chunk = 'chunk_id' in metadata
+
+    if is_chunk:
+        # Chunk format - validate chunk-specific fields
+        required_fields = ['chunk_id', 'doc_id', 'chunk_index', 'total_chunks', 'title', 'author']
+        for field in required_fields:
+            if field not in metadata:
+                raise ValueError(f"Missing required chunk field in frontmatter: {field}")
+
+        # Use chunk_id as the item id
+        metadata['id'] = metadata['chunk_id']
+        metadata['parent_doc_id'] = metadata.get('doc_id')
+    else:
+        # Legacy document format - validate legacy fields
+        required_fields = ['id', 'title', 'author', 'created_at', 'updated_at']
+        for field in required_fields:
+            if field not in metadata:
+                raise ValueError(f"Missing required field in frontmatter: {field}")
 
     # Normalize optional fields
     if 'url' not in metadata:
         metadata['url'] = None
     if 'tags' not in metadata:
         metadata['tags'] = []
+    if 'source' not in metadata:
+        metadata['source'] = 'unknown'
+    if 'category' not in metadata:
+        metadata['category'] = 'unknown'
 
     markdown_content = parts[2].strip()
     return metadata, markdown_content
@@ -278,7 +298,9 @@ def generate_embedding(text: str) -> List[float]:
 
     for attempt in range(MAX_RETRIES):
         try:
-            embeddings = model.get_embeddings([text])
+            # Specify output_dimensionality=768 to stay within Firestore's 2048 limit
+            # gemini-embedding-001 default is 3072 dimensions which exceeds Firestore limit
+            embeddings = model.get_embeddings([text], output_dimensionality=768)
             embedding_vector = embeddings[0].values
             logger.info(f"Generated embedding with {len(embedding_vector)} dimensions (type: {type(embedding_vector).__name__})")
             return embedding_vector
@@ -312,16 +334,20 @@ def generate_embedding(text: str) -> List[float]:
 
 def write_to_firestore(
     metadata: Dict[str, Any],
+    content: str,
     content_hash: str,
     run_id: str,
     embedding_status: str,
     embedding_vector: Optional[List[float]] = None
 ) -> bool:
     """
-    Write metadata and embedding to Firestore kb_items collection.
+    Write chunk metadata, content, and embedding to Firestore kb_items collection.
+
+    Supports both legacy document format and new chunk format.
 
     Args:
-        metadata: Document metadata from frontmatter
+        metadata: Document/chunk metadata from frontmatter
+        content: Full chunk content (markdown text without frontmatter)
         content_hash: Hash of the markdown content used for embedding
         run_id: Current pipeline run identifier
         embedding_status: Embedding status to persist with metadata
@@ -333,26 +359,61 @@ def write_to_firestore(
     try:
         db = get_firestore_client()
 
-        created_at_value = _parse_iso_datetime(metadata.get('created_at'))
-        updated_at_value = _parse_iso_datetime(metadata.get('updated_at'))
+        # Check if this is a chunk
+        is_chunk = 'chunk_id' in metadata
 
-        # Prepare document data
-        doc_data = {
-            'title': metadata['title'],
-            'url': metadata.get('url'),
-            'tags': metadata.get('tags', []),
-            'authors': [metadata['author']],  # Convert single author to list
-            'created_at': created_at_value if created_at_value else getattr(firestore, "SERVER_TIMESTAMP", None),
-            'updated_at': updated_at_value if updated_at_value else getattr(firestore, "SERVER_TIMESTAMP", None),
-            'content_hash': content_hash,
-            'embedding_status': embedding_status,
-            'last_embedded_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-            'last_error': None,
-            'last_run_id': run_id,
-            'cluster_id': [],  # Future: clustering
-            'similar_ids': [],  # Future: similarity recommendations
-            'scores': []  # Future: similarity scores
-        }
+        if is_chunk:
+            # Chunk schema (Story 1.6)
+            doc_data = {
+                'chunk_id': metadata['chunk_id'],
+                'parent_doc_id': metadata.get('parent_doc_id', metadata.get('doc_id')),
+                'chunk_index': metadata.get('chunk_index', 0),
+                'total_chunks': metadata.get('total_chunks', 1),
+                'title': metadata['title'],
+                'author': metadata['author'],
+                'source': metadata.get('source', 'unknown'),
+                'category': metadata.get('category', 'unknown'),
+                'tags': metadata.get('tags', []),
+                'content': content,  # NEW: Store full chunk content
+                'embedding_model': 'gemini-embedding-001',
+                'content_hash': content_hash,
+                'embedding_status': embedding_status,
+                'last_embedded_at': getattr(firestore, "SERVER_TIMESTAMP", None),
+                'last_error': None,
+                'retry_count': 0,
+                'created_at': getattr(firestore, "SERVER_TIMESTAMP", None),
+                'updated_at': getattr(firestore, "SERVER_TIMESTAMP", None)
+            }
+
+            # Add chunk-specific fields if present
+            if 'token_count' in metadata:
+                doc_data['token_count'] = metadata['token_count']
+            if 'overlap_start' in metadata:
+                doc_data['overlap_start'] = metadata['overlap_start']
+            if 'overlap_end' in metadata:
+                doc_data['overlap_end'] = metadata['overlap_end']
+
+        else:
+            # Legacy document schema (backward compatibility)
+            created_at_value = _parse_iso_datetime(metadata.get('created_at'))
+            updated_at_value = _parse_iso_datetime(metadata.get('updated_at'))
+
+            doc_data = {
+                'title': metadata['title'],
+                'url': metadata.get('url'),
+                'tags': metadata.get('tags', []),
+                'authors': [metadata['author']],
+                'created_at': created_at_value if created_at_value else getattr(firestore, "SERVER_TIMESTAMP", None),
+                'updated_at': updated_at_value if updated_at_value else getattr(firestore, "SERVER_TIMESTAMP", None),
+                'content_hash': content_hash,
+                'embedding_status': embedding_status,
+                'last_embedded_at': getattr(firestore, "SERVER_TIMESTAMP", None),
+                'last_error': None,
+                'last_run_id': run_id,
+                'cluster_id': [],
+                'similar_ids': [],
+                'scores': []
+            }
 
         # Add embedding vector if provided (using Firestore Vector type for vector search)
         if embedding_vector is not None:
@@ -360,16 +421,18 @@ def write_to_firestore(
             vector_list = [float(x) for x in embedding_vector]
             logger.info(f"Storing embedding vector with {len(vector_list)} dimensions for {metadata['id']}")
 
-            # Store as raw list for now to debug dimension issue
-            # TODO: Convert back to Vector() once working
-            doc_data['embedding'] = vector_list
+            # Store as Firestore Vector for native vector search
+            if _HAS_MATCHING_ENGINE_LIB and Vector is not None:
+                doc_data['embedding'] = Vector(vector_list)
+            else:
+                # Fallback: store as raw list
+                doc_data['embedding'] = vector_list
 
-
-        # Write to kb_items collection with document ID = item_id
+        # Write to kb_items collection with document ID = chunk_id or item_id
         doc_ref = db.collection('kb_items').document(metadata['id'])
         doc_ref.set(doc_data, merge=True)
 
-        logger.info(f"Wrote document {metadata['id']} to Firestore with embedding={embedding_vector is not None}")
+        logger.info(f"Wrote {'chunk' if is_chunk else 'document'} {metadata['id']} to Firestore with embedding={embedding_vector is not None}")
         return True
 
     except Exception as e:
@@ -507,13 +570,13 @@ def embed(request):
                 embedding_vector = generate_embedding(text_to_embed)
 
                 # Store embedding directly in Firestore (replaces separate Vector Search upsert)
-                if not write_to_firestore(metadata, computed_hash, run_id, "complete", embedding_vector=embedding_vector):
+                if not write_to_firestore(metadata, markdown_content, computed_hash, run_id, "complete", embedding_vector=embedding_vector):
                     raise RuntimeError("Failed to write embedding to Firestore")
                 stats['firestore_updates'] += 1
             else:
                 logger.info(f"Skipping embedding generation for {item_id}; content hash unchanged")
                 # Still update metadata even if embedding unchanged
-                if not write_to_firestore(metadata, computed_hash, run_id, "complete"):
+                if not write_to_firestore(metadata, markdown_content, computed_hash, run_id, "complete"):
                     raise RuntimeError("Failed to update kb_items metadata")
                 stats['firestore_updates'] += 1
 

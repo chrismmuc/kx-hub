@@ -320,10 +320,14 @@ class TestNormalizeCloudFunction(unittest.TestCase):
         markdown_blob.upload_from_string.assert_called_once()
         self.assertEqual(markdown_blob.upload_from_string.call_args.kwargs['content_type'], 'text/markdown; charset=utf-8')
 
-        # Firestore updated to complete
-        success_update = doc_ref.set.call_args_list[-1].args[0]
-        self.assertEqual(success_update['embedding_status'], 'pending')
-        self.assertEqual(success_update['normalize_status'], 'complete')
+        # Firestore updated - check that chunks were created
+        # The last call is to the original document marking it complete
+        final_update = doc_ref.set.call_args_list[-1].args[0]
+        self.assertEqual(final_update['normalize_status'], 'complete')
+        self.assertIn('total_chunks', final_update)
+
+        # Verify chunk documents were created (there should be multiple set calls for chunks)
+        self.assertGreater(len(doc_ref.set.call_args_list), 1)
 
     @patch('normalize.main.PROJECT_ID', 'test-project')
     @patch('normalize.main._get_firestore_client')

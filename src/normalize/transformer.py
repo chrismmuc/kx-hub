@@ -35,8 +35,16 @@ def generate_frontmatter(book: Dict[str, Any]) -> str:
         )
         updated_at = sorted_by_updated[-1].get("updated_at")
 
-    # Extract tags from highlights
+    # Extract tags from book_tags (book-level) and highlights (highlight-level)
     tags = []
+
+    # First, get book-level tags
+    for tag in book.get("book_tags", []):
+        tag_name = tag.get("name") if isinstance(tag, dict) else tag
+        if tag_name and tag_name not in tags:
+            tags.append(tag_name)
+
+    # Then, get highlight-level tags
     for highlight in highlights:
         for tag in highlight.get("tags", []):
             tag_name = tag.get("name") if isinstance(tag, dict) else tag

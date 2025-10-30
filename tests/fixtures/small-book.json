@@ -1,0 +1,48 @@
+{
+  "user_book_id": "test-001",
+  "title": "Test Book: Small",
+  "author": "Test Author",
+  "source": "kindle",
+  "category": "books",
+  "source_url": "https://readwise.io/books/test-001",
+  "unique_url": "https://readwise.io/books/test-001",
+  "book_tags": [
+    {
+      "id": 1,
+      "name": "testing"
+    }
+  ],
+  "created": "2024-06-01T13:22:09.640Z",
+  "last_highlight_at": "2024-06-01T13:22:09.641Z",
+  "updated": "2024-06-01T13:22:09.641Z",
+  "cover_image_url": "",
+  "highlights_count": 2,
+  "highlights": [
+    {
+      "id": 1001,
+      "text": "This is the first highlight from the small book. It contains a single thought.",
+      "note": "A note about the first highlight.",
+      "location": 10,
+      "location_type": "page",
+      "highlighted_at": "2024-06-01T10:00:00.000Z",
+      "url": null,
+      "color": "yellow",
+      "updated": "2024-06-01T10:00:00.000Z",
+      "book_id": "test-001",
+      "tags": []
+    },
+    {
+      "id": 1002,
+      "text": "This is the second highlight. It's brief too.",
+      "note": null,
+      "location": 25,
+      "location_type": "page",
+      "highlighted_at": "2024-06-01T11:00:00.000Z",
+      "url": null,
+      "color": "yellow",
+      "updated": "2024-06-01T11:00:00.000Z",
+      "book_id": "test-001",
+      "tags": []
+    }
+  ]
+}

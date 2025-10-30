@@ -131,17 +131,17 @@ resource "google_cloudfunctions2_function" "ingest_function" {
     service_account_email          = google_service_account.ingest_function_sa.email
     all_traffic_on_latest_revision = true
     environment_variables = {
-      GCP_PROJECT               = var.project_id
-      PIPELINE_BUCKET           = google_storage_bucket.pipeline.name
-      PIPELINE_MANIFEST_PREFIX  = "manifests"
+      GCP_PROJECT              = var.project_id
+      PIPELINE_BUCKET          = google_storage_bucket.pipeline.name
+      PIPELINE_MANIFEST_PREFIX = "manifests"
     }
   }
 
   event_trigger {
-    trigger_region = var.region
-    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
-    pubsub_topic   = google_pubsub_topic.daily_trigger.id
-    retry_policy   = "RETRY_POLICY_RETRY"
+    trigger_region        = var.region
+    event_type            = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic          = google_pubsub_topic.daily_trigger.id
+    retry_policy          = "RETRY_POLICY_RETRY"
     service_account_email = google_service_account.ingest_function_sa.email
   }
 
@@ -276,6 +276,10 @@ resource "google_cloudfunctions2_function" "normalize_function" {
       PIPELINE_BUCKET          = google_storage_bucket.pipeline.name
       PIPELINE_MANIFEST_PREFIX = "manifests"
       PIPELINE_COLLECTION      = "pipeline_items"
+      CHUNK_TARGET_TOKENS      = "512"
+      CHUNK_MAX_TOKENS         = "1024"
+      CHUNK_MIN_TOKENS         = "100"
+      CHUNK_OVERLAP_TOKENS     = "75"
     }
   }
 
@@ -420,9 +424,9 @@ resource "google_firestore_database" "kb_database" {
 
 # Composite index to support pipeline_items queries by embedding status + content hash
 resource "google_firestore_index" "pipeline_items_embedding_status_content_hash" {
-  project    = var.project_id
-  database   = "(default)"
-  collection = "pipeline_items"
+  project     = var.project_id
+  database    = "(default)"
+  collection  = "pipeline_items"
   query_scope = "COLLECTION"
 
   fields {
@@ -453,7 +457,7 @@ resource "google_firestore_index" "kb_items_vector_index" {
   fields {
     field_path = "embedding"
     vector_config {
-      dimension = 3072
+      dimension = 768
       flat {}
     }
   }
@@ -551,6 +555,8 @@ resource "google_cloudfunctions2_function" "embed_function" {
       PIPELINE_COLLECTION         = "pipeline_items"
       PIPELINE_MANIFEST_PREFIX    = "manifests"
       EMBED_STALE_TIMEOUT_SECONDS = "900" // 15 minutes
+      CHUNK_TARGET_TOKENS         = "512"
+      CHUNK_MAX_TOKENS            = "1024"
     }
   }
 

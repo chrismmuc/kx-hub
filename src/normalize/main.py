@@ -38,6 +38,19 @@ try:
 except ImportError:
     from transformer import json_to_markdown
 
+# Import chunker - handle both relative and absolute imports
+try:
+    from ..common.chunker import DocumentChunker, ChunkConfig
+except ImportError:
+    try:
+        from common.chunker import DocumentChunker, ChunkConfig
+    except ImportError:
+        # Fallback for tests
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+        from common.chunker import DocumentChunker, ChunkConfig
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +60,12 @@ PROJECT_ID = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT"
 PIPELINE_BUCKET = os.environ.get("PIPELINE_BUCKET")
 PIPELINE_MANIFEST_PREFIX = os.environ.get("PIPELINE_MANIFEST_PREFIX", "manifests")
 PIPELINE_COLLECTION = os.environ.get("PIPELINE_COLLECTION", "pipeline_items")
+
+# Chunking configuration
+CHUNK_TARGET_TOKENS = int(os.environ.get("CHUNK_TARGET_TOKENS", "512"))
+CHUNK_MAX_TOKENS = int(os.environ.get("CHUNK_MAX_TOKENS", "1024"))
+CHUNK_MIN_TOKENS = int(os.environ.get("CHUNK_MIN_SIZE_TOKENS", "100"))
+CHUNK_OVERLAP_TOKENS = int(os.environ.get("CHUNK_OVERLAP_TOKENS", "75"))
 
 # Lazy client initialization pattern (for testability)
 storage_client = None
@@ -226,35 +245,80 @@ def normalize_handler(request):
 
             user_book_id = book_data["user_book_id"]
             markdown_content = json_to_markdown(book_data)
-            output_filename = f"notes/{user_book_id}.md"
-            output_blob = markdown_bucket.blob(output_filename)
-            output_blob.upload_from_string(
-                markdown_content,
-                content_type="text/markdown; charset=utf-8"
+
+            # Initialize chunker with configuration
+            chunker_config = ChunkConfig(
+                target_tokens=CHUNK_TARGET_TOKENS,
+                max_tokens=CHUNK_MAX_TOKENS,
+                min_tokens=CHUNK_MIN_TOKENS,
+                overlap_tokens=CHUNK_OVERLAP_TOKENS
             )
+            chunker = DocumentChunker(config=chunker_config)
 
-            content_hash = _compute_markdown_hash(markdown_content)
-            previous_hash = doc_data.get("content_hash")
-            previous_embedding_status = doc_data.get("embedding_status", "pending")
+            # Split document into chunks
+            chunks = chunker.split_into_chunks(markdown_content, parent_doc_id=user_book_id)
 
-            if previous_hash == content_hash and previous_embedding_status == "complete":
-                next_embedding_status = "complete"
-            else:
-                next_embedding_status = "pending"
+            logger.info(f"Split {item_id} into {len(chunks)} chunks")
 
+            # Process each chunk
+            for chunk in chunks:
+                chunk_id = chunk.frontmatter['chunk_id']
+                chunk_markdown = chunker.chunk_to_markdown(chunk)
+
+                # Upload chunk markdown to GCS
+                output_filename = f"notes/{chunk_id}.md"
+                output_blob = markdown_bucket.blob(output_filename)
+                output_blob.upload_from_string(
+                    chunk_markdown,
+                    content_type="text/markdown; charset=utf-8"
+                )
+
+                # Create or update pipeline_items entry for this chunk
+                chunk_doc_ref = pipeline_collection.document(chunk_id)
+                chunk_doc_ref.set({
+                    "item_id": chunk_id,
+                    "user_book_id": user_book_id,
+                    "chunk_index": chunk.chunk_index,
+                    "total_chunks": chunk.total_chunks,
+                    "raw_uri": raw_uri,
+                    "raw_updated_at": item.get("updated_at"),
+                    "raw_checksum": raw_checksum,
+                    "markdown_uri": f"gs://{bucket_names['markdown']}/{output_filename}",
+                    "markdown_size_bytes": len(chunk_markdown.encode('utf-8')),
+                    "normalize_status": "complete",
+                    "embedding_status": "pending",
+                    "content_hash": chunk.content_hash,
+                    "chunk_tokens": chunk.token_count,
+                    "chunk_boundaries": {
+                        "start": chunk.char_start,
+                        "end": chunk.char_end
+                    },
+                    "parent_metadata": {
+                        "title": chunk.frontmatter.get("title", ""),
+                        "author": chunk.frontmatter.get("author", ""),
+                        "source": chunk.frontmatter.get("source", "")
+                    },
+                    "last_transition_at": firestore.SERVER_TIMESTAMP,
+                    "last_error": None,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "manifest_run_id": run_id,
+                    "created_at": firestore.SERVER_TIMESTAMP,
+                    "updated_at": firestore.SERVER_TIMESTAMP
+                }, merge=True)
+
+                logger.info(f"Processed chunk {chunk_id} ({chunk.token_count} tokens)")
+
+            # Update original document entry to mark complete
             doc_ref.set({
-                "markdown_uri": f"gs://{bucket_names['markdown']}/{output_filename}",
                 "normalize_status": "complete",
-                "content_hash": content_hash,
-                "embedding_status": next_embedding_status,
+                "total_chunks": len(chunks),
                 "last_transition_at": firestore.SERVER_TIMESTAMP,
-                "last_error": None,
-                "retry_count": 0,
                 "manifest_run_id": run_id
             }, merge=True)
 
             stats["processed"] += 1
-            logger.info(f"Normalized item {item_id} → {output_filename}")
+            logger.info(f"Normalized item {item_id} → {len(chunks)} chunks")
 
         except Exception as exc:  # pragma: no cover - complex integration logic
             logger.error(f"Error processing item {item_id}: {exc}")

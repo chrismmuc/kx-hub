@@ -246,7 +246,7 @@ class TestFirestoreWriter(unittest.TestCase):
             'updated_at': '2024-06-01T13:22:09.641Z'
         }
 
-        result = write_to_firestore(metadata, content_hash="sha256:abc", run_id="run-1", embedding_status="complete")
+        result = write_to_firestore(metadata, content="Test content", content_hash="sha256:abc", run_id="run-1", embedding_status="complete")
 
         self.assertTrue(result)
 
@@ -284,7 +284,7 @@ class TestFirestoreWriter(unittest.TestCase):
             'updated_at': '2024-06-01T13:22:09.641Z'
         }
 
-        result = write_to_firestore(metadata, content_hash="sha256:def", run_id="run-1", embedding_status="complete")
+        result = write_to_firestore(metadata, content="Test content", content_hash="sha256:def", run_id="run-1", embedding_status="complete")
 
         self.assertTrue(result)
 
@@ -313,7 +313,7 @@ class TestFirestoreWriter(unittest.TestCase):
             'updated_at': '2024-06-01T13:22:09.641Z'
         }
 
-        result = write_to_firestore(metadata, content_hash="sha256:ghi", run_id="run-1", embedding_status="complete")
+        result = write_to_firestore(metadata, content="Test content", content_hash="sha256:ghi", run_id="run-1", embedding_status="complete")
 
         self.assertFalse(result)
         mock_logger.error.assert_called_once()
@@ -343,6 +343,7 @@ class TestFirestoreWriter(unittest.TestCase):
 
         result = write_to_firestore(
             metadata,
+            content="Test content",
             content_hash="sha256:abc",
             run_id="run-1",
             embedding_status="complete",
@@ -442,7 +443,8 @@ Body text here."""
         self.assertEqual(success_update['embedding_status'], 'complete')
 
         write_args = mock_write.call_args.args
-        self.assertEqual(write_args[1], expected_hash)
+        # args[0] = metadata, args[1] = content, args[2] = content_hash
+        self.assertEqual(write_args[2], expected_hash)
 
     def test_embed_missing_run_id(self):
         from src.embed.main import embed
