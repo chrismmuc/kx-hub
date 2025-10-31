@@ -10,7 +10,32 @@ A serverless knowledge base system that automatically transforms your daily read
 3. 🧮 **Embed**: Generates vector embeddings using Vertex AI and stores in Firestore
 4. 🔍 **Query**: Semantic search across your knowledge base (coming soon)
 
-**Current Status:** Stories 1.1-1.3 fully implemented and production-ready.
+**Current Status:** Stories 1.1-1.7 fully implemented and production-ready.
+
+## 🤖 MCP Server for Claude Desktop
+
+Query your knowledge base conversationally through Claude Desktop using natural language - no context switching required!
+
+**Features:**
+- 🔍 Semantic search across 813 chunks
+- 📊 Filter by author, source, or tags
+- 🔗 Discover related content
+- 💬 Conversational interface (no copy-paste)
+- ⚡ <1 second query response time
+- 💰 ~$0.15/month additional cost
+
+**Quick Start:**
+```bash
+# See setup guide
+cat docs/mcp-server-setup.md
+```
+
+**Example Queries:**
+- "What insights do I have about decision making?"
+- "Show me all highlights from Daniel Kahneman"
+- "Find content similar to this passage about habits"
+
+→ [Setup Guide](docs/mcp-server-setup.md) | [Usage Examples](docs/mcp-server-usage.md) | [Architecture](docs/architecture/mcp-integration.md)
 
 ## 💰 Cost
 

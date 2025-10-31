@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/1.8" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.8</storyId>
+    <storyKey>1-8-time-based-queries</storyKey>
+    <title>Time-Based Knowledge Base Queries</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-10-31T02:00:00Z</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/1.8.story.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>knowledge base user</asA>
+    <iWant>query my highlights by time periods (e.g., "what did I read yesterday?" or "last week?")</iWant>
+    <soThat>I can discover recent learnings and track my reading activity over time without having to manually filter results</soThat>
+    <acceptanceCriteria>
+      <criterion id="1">Time-based search by date range: Execute queries filtering chunks by `created_at` timestamp within a specified date range (start_date, end_date)</criterion>
+      <criterion id="2">Relative time period support: Support natural language time periods ("yesterday", "last_week", "last_month", "last_3_days")</criterion>
+      <criterion id="3">Reading activity analytics: Get a summary of reading activity showing chunks added per day, top sources, and top authors for a given period</criterion>
+      <criterion id="4">Recently added chunks: Quick access to most recent chunks added in the last N days</criterion>
+      <criterion id="5">Combined filters: All time-based queries support optional metadata filters (tags, author, source)</criterion>
+      <criterion id="6">MCP tool integration: All new queries exposed as MCP tools callable from Claude Desktop</criterion>
+      <criterion id="7">Consistent result format: All time-based tools return results in same structure as existing semantic/metadata search tools</criterion>
+      <criterion id="8">Documentation: Tools have clear descriptions and input schema in MCP server</criterion>
+    </acceptanceCriteria>
+    <tasks>
+      <task id="1" acs="1-3">Extend firestore_client.py with time-based query functions
+        <subtask>Add `query_by_date_range()` function supporting start_date/end_date parameters</subtask>
+        <subtask>Add `query_by_relative_time()` helper to convert periods to dates</subtask>
+        <subtask>Add `get_activity_summary()` to calculate reading stats</subtask>
+        <subtask>Add `get_recently_added()` for quick recent access</subtask>
+        <subtask>Handle timezone considerations (UTC storage, user timezone if needed)</subtask>
+        <subtask>Test with Firestore queries to ensure performance with large date ranges</subtask>
+      </task>
+      <task id="2" acs="1-5,7">Add tool handlers to tools.py
+        <subtask>Implement `search_by_date_range()` tool handler</subtask>
+        <subtask>Implement `search_by_relative_time()` tool handler</subtask>
+        <subtask>Implement `get_reading_activity()` tool handler</subtask>
+        <subtask>Implement `get_recently_added()` tool handler</subtask>
+        <subtask>Format all results consistently with existing tools (rank, snippet, full_content fields)</subtask>
+        <subtask>Add result aggregation (chunks_per_day, top_sources breakdown)</subtask>
+        <subtask>Test result formatting with various date ranges</subtask>
+      </task>
+      <task id="3" acs="6,8">Register new tools in MCP server
+        <subtask>Add 4 new Tool definitions to list_tools_handler() in main.py</subtask>
+        <subtask>Define input schemas (date formats, limit, filter parameters)</subtask>
+        <subtask>Write clear tool descriptions for Claude to understand when to use each</subtask>
+        <subtask>Add handlers in call_tool_handler() to dispatch to tools.py functions</subtask>
+        <subtask>Test MCP tool invocation from Claude Desktop</subtask>
+      </task>
+      <task id="4" acs="1-8">Integration testing
+        <subtask>Test date_range query: verify correct chunks returned for known date ranges</subtask>
+        <subtask>Test relative_time: verify "yesterday", "last_week" resolve correctly</subtask>
+        <subtask>Test activity_summary: verify daily breakdown, sources, authors are accurate</subtask>
+        <subtask>Test recently_added: verify ordering by created_at DESC</subtask>
+        <subtask>Test combined filters: date range + tags/author/source</subtask>
+        <subtask>Test edge cases: empty date ranges, future dates, timezone handling</subtask>
+        <subtask>Verify all 4 tools callable from Claude Desktop MCP menu</subtask>
+      </task>
+      <task id="5" acs="8">Documentation and cleanup
+        <subtask>Add docstrings to all new functions in firestore_client.py</subtask>
+        <subtask>Update MCP server documentation/README with new tools</subtask>
+        <subtask>Add examples: "what did I read yesterday?", "reading activity last month"</subtask>
+        <subtask>Note any timezone assumptions in documentation</subtask>
+      </task>
+    </tasks>
+  </story>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document (V3)</title>
+        <section>2. Core Use Cases</section>
+        <snippet>Query-Driven Retrieval: Natural Language Query → semantic search → ranked results with relevant articles/highlights/book sections.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Product Requirements Document (V3)</title>
+        <section>7. Success Criteria</section>
+        <snippet>Query Response Time: &lt;1s for semantic search (P95). Query Relevance: ≥80% of top-10 results rated as "relevant".</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture – Google Cloud + Vertex AI (MVP)</title>
+        <section>On-Demand Query Flow</section>
+        <snippet>User Query → Vertex AI Embeddings API → Vertex AI Vector Search → Ranked Results with metadata and content</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epics Breakdown</title>
+        <section>Story 1.7: MCP Server for Conversational Knowledge Base Access</section>
+        <snippet>Build a local MCP server to expose the knowledge base to Claude Desktop for conversational queries with semantic search, metadata filters, and related chunks discovery.</snippet>
+      </doc>
+    </docs>
+
+    <code>
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>module</kind>
+        <symbol>query_by_metadata()</symbol>
+        <lines>116-167</lines>
+        <reason>Existing query pattern to follow for date-range queries. Uses Firestore where() chaining and order_by().</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>module</kind>
+        <symbol>find_nearest()</symbol>
+        <lines>170-220</lines>
+        <reason>Vector search pattern; useful reference for understanding query structure and result formatting.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>module</kind>
+        <symbol>get_stats()</symbol>
+        <lines>223-289</lines>
+        <reason>Existing stats aggregation pattern; reusable for get_activity_summary() implementation.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_semantic()</symbol>
+        <lines>19-100</lines>
+        <reason>Template for tool handler structure, result formatting with rank/snippet/full_content, error handling pattern.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_by_metadata()</symbol>
+        <lines>103-182</lines>
+        <reason>Filter-based search pattern with optional metadata fields; similar structure expected for date-range search.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/main.py</path>
+        <kind>module</kind>
+        <symbol>list_tools_handler()</symbol>
+        <lines>80-171</lines>
+        <reason>Where to register 4 new Tool definitions with input schemas and descriptions for Claude to understand.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/main.py</path>
+        <kind>module</kind>
+        <symbol>call_tool_handler()</symbol>
+        <lines>173-215</lines>
+        <reason>Where to add dispatch logic for 4 new tools, calling corresponding handlers in tools.py.</reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <ecosystem name="python">
+        <package name="google-cloud-firestore" version="any">Firestore client for queries</package>
+        <package name="datetime" version="builtin">Date/time manipulation for relative periods</package>
+        <package name="typing" version="builtin">Type hints for function signatures</package>
+        <package name="logging" version="builtin">Logging for all queries</package>
+      </ecosystem>
+      <note>No new external dependencies required. All 4 new packages are already in use by existing MCP server.</note>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint priority="critical">All queries must use Firestore `created_at` timestamp field (verified present in all kb_items documents)</constraint>
+    <constraint priority="critical">All timestamp operations must work in UTC (as stored in Firestore) and convert to user timezone for display if needed</constraint>
+    <constraint priority="high">Query performance must remain &lt;1s (P95) per PRD success criteria, even for large date ranges</constraint>
+    <constraint priority="high">Result formatting must exactly match existing tools: rank, snippet (first 500 chars), full_content, chunk_id, title, author, source, tags, chunk_info</constraint>
+    <constraint priority="high">All new tools must follow MCP Tool registration pattern: Tool definition with name, description, inputSchema</constraint>
+    <constraint priority="medium">Firestore auto-indexes timestamp fields; no custom indexes needed for date-range queries</constraint>
+    <constraint priority="medium">Error handling must follow existing pattern: try/except with logger.error() and return empty results dict</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>query_by_date_range()</name>
+      <kind>python-function</kind>
+      <signature>def query_by_date_range(start_date: str, end_date: str, limit: int = 20, tags: Optional[List[str]] = None, author: Optional[str] = None, source: Optional[str] = None) -> List[Dict[str, Any]]:</signature>
+      <path>src/mcp_server/firestore_client.py</path>
+      <description>Query Firestore kb_items collection for chunks with created_at between start_date and end_date (ISO format: "2025-10-31")</description>
+    </interface>
+    <interface>
+      <name>query_by_relative_time()</name>
+      <kind>python-function</kind>
+      <signature>def query_by_relative_time(period: str, limit: int = 20, tags: Optional[List[str]] = None, author: Optional[str] = None, source: Optional[str] = None) -> List[Dict[str, Any]]:</signature>
+      <path>src/mcp_server/firestore_client.py</path>
+      <description>Helper to convert period ("yesterday", "last_week", "last_month", "last_3_days") to dates and call query_by_date_range()</description>
+    </interface>
+    <interface>
+      <name>get_activity_summary()</name>
+      <kind>python-function</kind>
+      <signature>def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:</signature>
+      <path>src/mcp_server/firestore_client.py</path>
+      <description>Calculate reading activity stats: total_chunks_added, days_with_activity, chunks_by_day, top_sources, top_authors</description>
+    </interface>
+    <interface>
+      <name>get_recently_added()</name>
+      <kind>python-function</kind>
+      <signature>def get_recently_added(limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:</signature>
+      <path>src/mcp_server/firestore_client.py</path>
+      <description>Quick access to most recent chunks added in the last N days, ordered by created_at DESC</description>
+    </interface>
+    <interface>
+      <name>search_by_date_range (MCP Tool)</name>
+      <kind>mcp-tool</kind>
+      <signature>Tool(name="search_by_date_range", description="...", inputSchema={type: object, properties: {start_date, end_date, limit, tags, author, source}})</signature>
+      <path>src/mcp_server/main.py</path>
+      <description>MCP tool callable from Claude Desktop for querying by date range</description>
+    </interface>
+    <interface>
+      <name>search_by_relative_time (MCP Tool)</name>
+      <kind>mcp-tool</kind>
+      <signature>Tool(name="search_by_relative_time", description="...", inputSchema={type: object, properties: {period, limit, tags, author, source}})</signature>
+      <path>src/mcp_server/main.py</path>
+      <description>MCP tool for natural language periods ("yesterday", "last_week")</description>
+    </interface>
+    <interface>
+      <name>get_reading_activity (MCP Tool)</name>
+      <kind>mcp-tool</kind>
+      <signature>Tool(name="get_reading_activity", description="...", inputSchema={type: object, properties: {period}})</signature>
+      <path>src/mcp_server/main.py</path>
+      <description>MCP tool for reading activity analytics and statistics</description>
+    </interface>
+    <interface>
+      <name>get_recently_added (MCP Tool)</name>
+      <kind>mcp-tool</kind>
+      <signature>Tool(name="get_recently_added", description="...", inputSchema={type: object, properties: {limit, days}})</signature>
+      <path>src/mcp_server/main.py</path>
+      <description>MCP tool for quick access to most recent chunks</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      No formal test framework configured in this project yet. Manual testing approach:
+      1. Test each function in isolation with known Firestore data
+      2. Verify date range queries return correct chunks within boundaries
+      3. Verify relative time periods (yesterday, last_week) map to correct dates
+      4. Verify activity_summary aggregates correctly (check against manual count)
+      5. Verify result formatting matches existing tools
+      6. Verify MCP tools callable from Claude Desktop UI
+      7. Test edge cases: empty ranges, future dates, timezone handling
+    </standards>
+    <locations>
+      No test directory yet. Tests will be manual verification against live Firestore data using test script or REPL.
+      Suggested location if formal testing added: `src/mcp_server/tests/test_time_based_queries.py`
+    </locations>
+    <ideas>
+      <idea acs="1">Test date_range query with known date boundaries: query chunks from Oct 29-31, verify 13 chunks returned (from recent runs)</idea>
+      <idea acs="2">Test relative_time conversions: "yesterday" maps to start_date=Oct30, end_date=Oct31 (system date-dependent)</idea>
+      <idea acs="3">Test activity_summary aggregation: query last 3 days, verify daily breakdown shows 13+13+13=39 chunks</idea>
+      <idea acs="4">Test recently_added ordering: verify first result has most recent created_at timestamp</idea>
+      <idea acs="5">Test combined filters: date_range + tags filter returns only chunks matching both conditions</idea>
+      <idea acs="8">Test MCP integration: invoke each of 4 tools from Claude Desktop, verify JSON response structure matches existing tools</idea>
+    </ideas>
+  </tests>
+
+</story-context>

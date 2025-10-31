@@ -579,3 +579,27 @@ resource "google_cloud_run_service_iam_member" "embed_function_workflow_invoker"
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
+
+# ============================================================================
+# MCP Server Service Account (for local Claude Desktop integration)
+# ============================================================================
+
+resource "google_service_account" "mcp_server_sa" {
+  account_id   = "mcp-server-sa"
+  display_name = "MCP Server Service Account"
+  description  = "Read-only access for local MCP server (Firestore + Vertex AI embeddings)"
+}
+
+# Grant MCP server read access to Firestore
+resource "google_project_iam_member" "mcp_sa_datastore_user" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.mcp_server_sa.email}"
+}
+
+# Grant MCP server access to Vertex AI embeddings
+resource "google_project_iam_member" "mcp_sa_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.mcp_server_sa.email}"
+}
