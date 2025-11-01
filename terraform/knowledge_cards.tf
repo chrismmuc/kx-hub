@@ -63,7 +63,7 @@ resource "google_cloudfunctions2_function" "knowledge_cards_function" {
 
   build_config {
     runtime     = "python311"
-    entry_point = "generate_cards_handler"  # Cloud Function entry point (needs wrapper)
+    entry_point = "generate_cards_handler"  # Entry point in cloud_function.py
     source {
       storage_source {
         bucket = google_storage_bucket.function_source.name

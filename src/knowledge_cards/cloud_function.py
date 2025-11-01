@@ -9,10 +9,13 @@ Entry point: generate_cards_handler
 
 import functions_framework
 import logging
-from flask import Request
 from typing import Dict, Any
 
-from .main import run_pipeline
+# Import run_pipeline - handle both module and standalone contexts
+try:
+    from main import run_pipeline
+except ImportError:
+    from .main import run_pipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 @functions_framework.http
-def generate_cards_handler(request: Request) -> tuple:
+def generate_cards_handler(request) -> tuple:
     """
     Cloud Function HTTP handler for knowledge card generation.
 
