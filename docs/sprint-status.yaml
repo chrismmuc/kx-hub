@@ -46,12 +46,21 @@ development_status:
     story_file: docs/stories/1.7.story.md
 
   1-8-time-based-queries:
-    status: review
+    status: done
     story_file: docs/stories/1.8.story.md
     context_file: docs/stories/1.8.story.context.xml
 
+  # Epic 2: Enhanced Knowledge Graph & Clustering
+
+  2-1-knowledge-cards:
+    status: done
+    story_file: docs/stories/2.1-knowledge-cards.md
+    context_file: docs/stories/2.1-knowledge-cards.context.xml
+    completion_date: 2025-11-01
+    notes: "100% success rate (818/818 chunks), $0.10 cost, ready for pipeline deployment"
+
 # Epic Completion
 epic-1:
-  status: in-progress
-  completion: 7/8 (87%)
-  notes: "Story 1.8 (time-based queries) drafted. Waiting for dev preparation."
+  status: complete
+  completion: 8/8 (100%)
+  notes: "All stories complete. Epic 1 MVP fully implemented."

@@ -1,0 +1,314 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>1</storyId>
+    <title>Knowledge Card Generation</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-01</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/2.1-knowledge-cards.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>knowledge base user</asA>
+    <iWant>each of my 813 highlights to have an AI-generated knowledge card with a one-line summary and key takeaways</iWant>
+    <soThat>I can quickly scan insights without reading full passages and have atomic notes ready for synthesis</soThat>
+    <tasks>
+      - Task 1: Design knowledge card schema (AC: #6)
+        - Define Firestore schema for `knowledge_card` sub-document
+        - Fields: summary (string), takeaways (array), tags (array), generated_at (timestamp)
+        - Document schema in code comments and architecture docs
+        - Validate schema with sample data
+
+      - Task 2: Create LLM prompt for knowledge card generation (AC: #2, #3)
+        - Design prompt template for Gemini 2.5 Flash-Lite
+        - Prompt structure: chunk content → summary + takeaways + tags
+        - Emphasize conciseness (summary &lt;200 chars, 3-5 takeaways)
+        - Emphasize actionability (insights, not just facts)
+        - Test prompt with 10 sample chunks
+        - Iterate prompt based on quality of output
+
+      - Task 3: Implement batch processing logic (AC: #1, #5)
+        - Load all chunks from Firestore `kb_items` (813 documents)
+        - Batch into groups of 100 chunks for API efficiency
+        - For each chunk: call Gemini 2.5 Flash-Lite API with prompt + chunk content
+        - Parse API response to extract summary, takeaways, tags
+        - Handle API rate limits and retries
+        - Log progress (chunks processed, time elapsed)
+
+      - Task 4: Update Firestore with knowledge cards (AC: #6)
+        - For each chunk, update `kb_items` document with `knowledge_card` field
+        - Batch writes (100 updates per batch) for Firestore efficiency
+        - Add `generated_at` timestamp to track when card was created
+        - Handle write failures with retry logic
+        - Verify all 813 chunks updated successfully
+
+      - Task 5: Cost optimization and monitoring (AC: #4)
+        - Calculate token usage per chunk (input + output tokens)
+        - Estimate monthly cost based on Gemini 2.5 Flash-Lite pricing
+        - If cost &gt;$0.10/month, optimize: reduce prompt length or tune output
+        - Log cost metrics per batch for monitoring
+
+      - Task 6: Quality validation (AC: #7)
+        - Manually review 20 randomly selected knowledge cards
+        - Check summary quality: concise, accurate, captures key insight
+        - Check takeaways quality: actionable, distinct, relevant
+        - Check tags: descriptive, not generic
+        - Calculate accuracy score (≥80% required)
+        - If quality &lt;80%, iterate on prompt and regenerate
+
+      - Task 7: Integration testing (AC: #1-6)
+        - Run end-to-end test: load chunks → generate cards → update Firestore
+        - Verify 813/813 chunks have knowledge_card field
+        - Verify generation completes in ≤5 minutes
+        - Verify cost ≤$0.10/month
+        - Check no API errors or Firestore write failures
+        - Sample check: query 5 random chunks and review knowledge cards
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. **100% coverage:** All 813+ chunks in Firestore `kb_items` collection have knowledge cards generated
+    2. **Concise summaries:** One-line summary is 1-2 sentences max (≤200 characters)
+    3. **Actionable takeaways:** 3-5 distinct, actionable takeaways per chunk
+    4. **Cost efficiency:** Total generation cost ≤$0.10/month (within budget)
+    5. **Performance:** Batch processing completes in ≤5 minutes for 813 chunks
+    6. **Data persistence:** Knowledge cards stored in `kb_items.knowledge_card` field with schema: `{summary, takeaways[], tags[], generated_at}`
+    7. **Quality validation:** Manual review of 20 random samples shows ≥80% accuracy and relevance
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <!-- Epic 2 PRD - Knowledge card requirements and rationale -->
+      <doc>
+        <path>docs/epic-2-prd.md</path>
+        <title>Epic 2 PRD – Enhanced Knowledge Graph &amp; Clustering</title>
+        <section>Story 2.1: Knowledge Card Generation</section>
+        <snippet>
+          Generate TL;DR summaries with key takeaways for each chunk. Rationale: Generate atomic note summaries first to deliver immediate value (scan 813 chunks via knowledge cards), enable enhanced clustering (use card keywords + embeddings), and follow progressive summarization best practices (distill before organize). Cost target: ≤$0.10/month using Gemini 2.5 Flash-Lite.
+        </snippet>
+      </doc>
+
+      <!-- Epic 2 PRD - Progressive summarization background -->
+      <doc>
+        <path>docs/epic-2-prd.md</path>
+        <title>Epic 2 PRD – Enhanced Knowledge Graph &amp; Clustering</title>
+        <section>Background &amp; Research Foundation</section>
+        <snippet>
+          Progressive summarization (CODE workflow: Capture-Organize-Distill-Express). Distillation phase extracts most important insights. Zettelkasten Principle: "The true atomic unit should be your own processed ideas, not raw highlights." Knowledge cards bridge the gap: Raw highlight → Knowledge card (TL;DR + takeaways) → Foundation for future synthesis.
+        </snippet>
+      </doc>
+
+      <!-- Epic 2 PRD - Data model extensions -->
+      <doc>
+        <path>docs/epic-2-prd.md</path>
+        <title>Epic 2 PRD – Enhanced Knowledge Graph &amp; Clustering</title>
+        <section>Technical Architecture - Data Model Extensions</section>
+        <snippet>
+          Firestore kb_items collection extension: Add knowledge_card field with schema: {summary: string (1-2 sentences, &lt;200 chars), takeaways: array (3-5 actionable insights), tags: array (themes/concepts), generated_at: timestamp}. Uses Gemini 2.5 Flash-Lite for cost-effective summarization at scale.
+        </snippet>
+      </doc>
+
+      <!-- Architecture - Vertex AI integration -->
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture – Google Cloud + Vertex AI (MVP)</title>
+        <section>AI Provider Integration (Vertex AI)</section>
+        <snippet>
+          All AI functionality via Vertex AI. Embeddings: gemini-embedding-001. Generative Models: Gemini 2.5 Flash for summaries and synthesis. No abstraction layer needed, simplifying architecture.
+        </snippet>
+      </doc>
+
+      <!-- Architecture - Cost optimization -->
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture – Google Cloud + Vertex AI (MVP)</title>
+        <section>Cost Optimization &amp; Scaling</section>
+        <snippet>
+          Vertex AI and Google Cloud Serverless components simplify cost structure. Pay-per-use model. Target: ~$5/month budget. Current estimate ~50% under budget with all features enabled.
+        </snippet>
+      </doc>
+    </docs>
+
+    <code>
+      <!-- Firestore client - existing implementation pattern -->
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>module</kind>
+        <symbol>get_firestore_client, write_to_firestore patterns</symbol>
+        <lines>33-47, 335-441</lines>
+        <reason>
+          Reusable Firestore client initialization and write patterns. Shows how to properly initialize Firestore client with project config, handle Vector types, and batch write data to kb_items collection. Story 2.1 should follow same patterns for writing knowledge_card field updates.
+        </reason>
+      </artifact>
+
+      <!-- Vertex AI embedding generation - LLM API pattern -->
+      <artifact>
+        <path>src/embed/main.py</path>
+        <kind>module</kind>
+        <symbol>get_vertex_ai_client, generate_embedding</symbol>
+        <lines>147-329</lines>
+        <reason>
+          Demonstrates Vertex AI initialization and LLM API call patterns with retry logic, rate limiting handling, and error management. Story 2.1 will use similar pattern for Gemini 2.5 Flash-Lite API calls to generate knowledge cards (different model but same Vertex AI SDK).
+        </reason>
+      </artifact>
+
+      <!-- Batch processing pattern -->
+      <artifact>
+        <path>src/embed/main.py</path>
+        <kind>cloud_function</kind>
+        <symbol>embed</symbol>
+        <lines>443-613</lines>
+        <reason>
+          Shows batch processing pattern for 813+ items: load from Firestore, process in batches, handle retries, update status tracking. Story 2.1 needs similar batch logic to process all chunks for knowledge card generation within 5-minute target.
+        </reason>
+      </artifact>
+
+      <!-- Firestore schema - kb_items collection structure -->
+      <artifact>
+        <path>src/embed/main.py</path>
+        <kind>data_schema</kind>
+        <symbol>write_to_firestore, doc_data structure</symbol>
+        <lines>366-395</lines>
+        <reason>
+          Current kb_items document schema for chunks. Story 2.1 extends this with knowledge_card sub-field: {summary, takeaways[], tags[], generated_at}. Must preserve all existing fields during update (merge=True pattern).
+        </reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <python>
+        <package>google-cloud-firestore</package>
+        <version>&gt;=2.16.0</version>
+        <usage>Firestore client for kb_items collection updates with knowledge_card field</usage>
+      </python>
+      <python>
+        <package>google-cloud-aiplatform</package>
+        <version>&gt;=1.44.0</version>
+        <usage>Vertex AI SDK for Gemini 2.5 Flash-Lite API calls to generate knowledge cards</usage>
+      </python>
+      <python>
+        <package>functions-framework</package>
+        <version>3.*</version>
+        <usage>Cloud Function framework (if implementing as Cloud Function)</usage>
+      </python>
+      <python>
+        <package>PyYAML</package>
+        <version>6.0.1</version>
+        <usage>Already installed, may be needed for config parsing</usage>
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - **Cost Budget**: Total generation cost must be ≤$0.10/month (Gemini 2.5 Flash-Lite pricing: $0.10/1M input tokens, $0.40/1M output tokens)
+    - **Performance**: Batch processing must complete in ≤5 minutes for 813 chunks
+    - **Model Requirement**: Must use Gemini 2.5 Flash-Lite (latest model as of Jan 2025, optimized for summarization at scale)
+    - **Schema Compliance**: knowledge_card field must match exact schema from Epic 2 PRD: {summary, takeaways[], tags[], generated_at}
+    - **Data Integrity**: Use Firestore merge=True to preserve existing chunk fields during update
+    - **Batch Size**: Process in batches of 100 chunks for API efficiency and Firestore write limits
+    - **Retry Logic**: Implement exponential backoff for rate limiting and server errors (follow pattern from src/embed/main.py)
+    - **Quality Threshold**: Manual validation of 20 random samples must show ≥80% accuracy and relevance
+    - **Summary Length**: One-line summary must be 1-2 sentences max (≤200 characters)
+    - **Takeaways Count**: 3-5 distinct, actionable takeaways per chunk
+    - **100% Coverage**: All 813+ chunks in kb_items collection must have knowledge_card generated
+  </constraints>
+
+  <interfaces>
+    <!-- Firestore kb_items collection -->
+    <interface>
+      <name>kb_items collection (Firestore)</name>
+      <kind>Firestore collection</kind>
+      <signature>
+        Document ID: chunk-{uuid}
+        Fields: {
+          chunk_id: string,
+          parent_doc_id: string,
+          content: string (full chunk text),
+          embedding: Vector(768),
+          ...existing fields...
+          knowledge_card: {  // NEW FIELD to add
+            summary: string,
+            takeaways: string[],
+            tags: string[],
+            generated_at: timestamp
+          }
+        }
+      </signature>
+      <path>Firestore database: kb_items collection</path>
+    </interface>
+
+    <!-- Vertex AI Gemini 2.5 Flash-Lite API -->
+    <interface>
+      <name>Vertex AI Generative AI API (Gemini 2.5 Flash-Lite)</name>
+      <kind>REST API / Python SDK</kind>
+      <signature>
+        from vertexai.generative_models import GenerativeModel
+        model = GenerativeModel("gemini-2.5-flash-lite")
+        response = model.generate_content(prompt)
+      </signature>
+      <path>google.cloud.aiplatform / vertexai Python SDK</path>
+    </interface>
+
+    <!-- Firestore Client (reusable pattern) -->
+    <interface>
+      <name>get_firestore_client()</name>
+      <kind>Function</kind>
+      <signature>
+        def get_firestore_client() -&gt; firestore.Client
+      </signature>
+      <path>src/mcp_server/firestore_client.py:33-47</path>
+    </interface>
+
+    <!-- Batch update pattern -->
+    <interface>
+      <name>Firestore batch writes</name>
+      <kind>Pattern</kind>
+      <signature>
+        db.collection('kb_items').document(chunk_id).set(data, merge=True)
+        // Batch 100 updates at a time for Firestore efficiency
+      </signature>
+      <path>src/embed/main.py:432-433 (pattern reference)</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Python unittest framework (existing pattern in tests/ directory). Unit tests for LLM prompt generation, JSON parsing, and Firestore updates. Integration tests for end-to-end batch processing. Quality validation: manual review of random samples with accuracy scoring.
+    </standards>
+
+    <locations>
+      tests/ directory - unit tests
+      tests/test_integration_*.py - integration tests pattern
+      New file: tests/test_knowledge_cards.py
+    </locations>
+
+    <ideas>
+      <!-- Unit Tests -->
+      - Test prompt generation with sample chunk content (AC #2, #3)
+      - Test JSON response parsing from LLM API
+      - Test summary length validation (&lt;200 chars)
+      - Test takeaways count validation (3-5 items)
+      - Mock Vertex AI API calls for unit tests
+      - Test Firestore update logic with merge=True
+      - Test batch processing logic (100 chunks per batch)
+
+      <!-- Integration Tests -->
+      - Run knowledge card generation on 50 test chunks (AC #1, #5)
+      - Verify Firestore updates successful (AC #6)
+      - Measure execution time (&lt;5 min target) (AC #5)
+      - Validate output format (summary, takeaways, tags)
+      - Test retry logic for rate limiting
+
+      <!-- Quality Validation -->
+      - Manual review of 20 random knowledge cards (AC #7)
+      - Check criteria: conciseness, actionability, relevance
+      - Calculate accuracy score (≥80% target)
+
+      <!-- Cost Validation -->
+      - Monitor token usage during test run (AC #4)
+      - Calculate projected monthly cost
+      - Verify ≤$0.10/month estimate
+    </ideas>
+  </tests>
+</story-context>

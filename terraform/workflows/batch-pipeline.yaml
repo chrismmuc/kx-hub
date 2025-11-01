@@ -126,6 +126,45 @@ main:
           text: Embed function completed successfully
           severity: INFO
 
+    # Step 3: Call knowledge cards function to generate AI summaries
+    - call_knowledge_cards_function:
+        try:
+          call: http.post
+          args:
+            url: ${"https://europe-west4-" + project_id + ".cloudfunctions.net/knowledge-cards-function"}
+            auth:
+              type: OIDC
+            timeout: 3600  # 60 minutes for 818 chunks
+            headers:
+              Content-Type: application/json
+            body:
+              run_id: ${run_id}
+              batch_size: 100
+          result: knowledge_cards_result
+        retry:
+          predicate: ${http.default_retry_predicate}
+          max_retries: 2
+          backoff:
+            initial_delay: 5
+            max_delay: 120
+            multiplier: 2
+        except:
+          as: e
+          steps:
+            - log_knowledge_cards_error:
+                call: sys.log
+                args:
+                  text: Knowledge cards function failed - check logs for details
+                  severity: ERROR
+            - fail_workflow_knowledge_cards:
+                raise: ${e}
+
+    - log_knowledge_cards_success:
+        call: sys.log
+        args:
+          text: ${"Knowledge cards function completed: " + string(knowledge_cards_result.body.generated) + " generated, " + string(knowledge_cards_result.body.updated) + " updated"}
+          severity: INFO
+
     # Placeholder for Story 1.5: Cluster & Link
     - placeholder_cluster_step:
         call: sys.log
@@ -139,3 +178,4 @@ main:
           status: "success"
           normalize_result: ${normalize_result}
           embed_result: ${embed_result}
+          knowledge_cards_result: ${knowledge_cards_result}
