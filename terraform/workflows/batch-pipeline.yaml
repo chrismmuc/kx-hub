@@ -162,7 +162,7 @@ main:
     - log_knowledge_cards_success:
         call: sys.log
         args:
-          text: ${"Knowledge cards function completed: " + string(knowledge_cards_result.body.generated) + " generated, " + string(knowledge_cards_result.body.updated) + " updated"}
+          text: '${"Knowledge cards function completed: " + string(knowledge_cards_result.body.generated) + " generated, " + string(knowledge_cards_result.body.updated) + " updated"}'
           severity: INFO
 
     # Placeholder for Story 1.5: Cluster & Link
