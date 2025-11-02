@@ -260,3 +260,107 @@ Terraform has been selected as the exclusive tool for provisioning and managing 
 - **Workflow:** The GitHub Actions workflow will be configured to automatically run `terraform plan` on pull requests and `terraform apply` on merges to the main branch, ensuring the deployed infrastructure always matches the configuration in the repository.
 
 ---
+
+## Development Guidelines for AI Agents
+
+### Infrastructure Management Policy
+
+**CRITICAL:** All infrastructure changes MUST be managed through Terraform. This policy ensures reproducibility, maintains single source of truth, and prevents configuration drift.
+
+#### Allowed gcloud Commands
+
+✅ **Status checks and monitoring:**
+```bash
+gcloud <service> describe <resource>   # Check resource status
+gcloud <service> list                  # List resources
+gcloud logging read                    # Read logs
+gcloud monitoring <commands>           # Check metrics
+gcloud auth print-identity-token       # Get auth tokens for testing
+```
+
+✅ **Testing and validation:**
+```bash
+gcloud workflows execute <workflow>    # Test workflow execution
+gcloud functions call <function>       # Test function invocation
+gcloud pubsub topics publish <topic>   # Trigger pipeline for testing
+```
+
+#### Prohibited gcloud Commands
+
+❌ **Resource creation/modification/deletion:**
+```bash
+gcloud <service> create     # NEVER - use Terraform instead
+gcloud <service> update     # NEVER - use Terraform instead
+gcloud <service> delete     # NEVER - use Terraform instead
+gcloud iam <commands>       # NEVER - define IAM in Terraform
+```
+
+#### Required Infrastructure-as-Code Workflow
+
+1. **Define** infrastructure in Terraform configuration files (`terraform/*.tf`)
+2. **Review** changes with `terraform plan`
+3. **Apply** changes with `terraform apply`
+4. **Commit** Terraform files to version control
+5. **Document** changes in commit messages and architecture docs
+
+**Example:** The knowledge-cards Cloud Function deployment followed this pattern:
+- Defined in `terraform/knowledge_cards.tf`
+- Service account, IAM bindings, and function configuration all in Terraform
+- Applied via `terraform apply`
+- Only used `gcloud` for testing and log inspection
+
+### Technology Selection and Research
+
+**CRITICAL:** Before implementing any feature, agents MUST research current stable versions and best practices.
+
+#### Mandatory Web Research
+
+For ALL external interfaces, frameworks, and libraries:
+
+1. **Latest Stable Version:** Research current GA (Generally Available) versions
+   - Example: "Google Cloud Functions Python runtime latest stable version 2024"
+   - Example: "Vertex AI Gemini model latest available europe-west4 2024"
+
+2. **API Documentation:** Find official documentation for current APIs
+   - Google Cloud documentation
+   - Library-specific documentation (PyPI, npm, etc.)
+   - Framework guides (Flask, FastAPI, etc.)
+
+3. **Best Practices:** Research recommended patterns
+   - Return value formats (e.g., Cloud Functions HTTP responses)
+   - Error handling patterns
+   - Authentication methods
+
+4. **Regional Availability:** Verify services are available in target region
+   - Example: "Gemini 2.5 Flash availability europe-west4"
+   - Check quota limits and pricing
+
+#### When to Research
+
+- ✅ Before selecting a new library or framework
+- ✅ Before implementing integration with external APIs
+- ✅ When encountering errors with unfamiliar interfaces
+- ✅ When documentation seems outdated or contradictory
+- ✅ Before making architectural decisions about technology choices
+
+#### Research Documentation
+
+Document research findings in:
+- Story files (Dev Notes section)
+- Architecture decisions (this document)
+- Code comments for non-obvious implementation choices
+
+**Example from Story 2.1:**
+- Researched Gemini model availability → chose `gemini-2.5-flash` (latest GA in europe-west4)
+- Researched Cloud Functions return formats → confirmed dict/tuple patterns via web search
+- Documented in story file why Flash was chosen over Flash-Lite
+
+### Code Quality Standards
+
+1. **Follow existing patterns:** Match coding style and structure of existing codebase
+2. **Error handling:** Implement retry logic with exponential backoff for external APIs
+3. **Logging:** Use structured logging at appropriate levels (INFO, WARNING, ERROR)
+4. **Testing:** Write unit tests for business logic, integration tests for Cloud Functions
+5. **Documentation:** Update architecture docs, story files, and inline comments
+
+---
