@@ -38,14 +38,13 @@ resource "google_project_iam_member" "knowledge_cards_sa_log_writer" {
 # Archive the source code for the Knowledge Cards Cloud Function
 data "archive_file" "knowledge_cards_source" {
   type        = "zip"
-  source_dir  = "../src/knowledge_cards"
+  source_dir  = "../functions/knowledge_cards"
   output_path = "/tmp/knowledge_cards_source.zip"
   excludes = [
     "__pycache__",
     "**/__pycache__",
     "*.pyc",
-    ".DS_Store",
-    "retry_failed.py"  # Not needed in Cloud Function
+    ".DS_Store"
   ]
 }
 
