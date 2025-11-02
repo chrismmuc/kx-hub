@@ -155,14 +155,86 @@
 
 ---
 
+## Epic 2: Enhanced Knowledge Graph & Clustering
+
+**Goal:** Build AI-powered knowledge graph capabilities including automatic knowledge card generation and semantic clustering to organize and surface insights from the knowledge base.
+
+**Business Value:** Enables quick insight scanning through AI-generated summaries and automatic topic clustering for knowledge discovery and synthesis.
+
+**Dependencies:** Epic 1 (Story 1.6 - Intelligent Chunking must be complete with 813+ chunks)
+
+**Estimated Complexity:** Medium - AI generation and clustering algorithms with pipeline integration
+
+**Status:** Active Development (Story 2.1 Complete, Story 2.2 Backlog)
+
+---
+
+### Story 2.1: Knowledge Card Generation
+
+**Status:** Done
+
+**Summary:** Generate AI-powered knowledge cards with one-line summaries and key takeaways for all 813 chunks using Gemini 2.5 Flash. Support initial bulk generation (local script) and ongoing pipeline integration (Cloud Function) for new chunks.
+
+**Key Features:**
+- **Initial Generation Mode:** Local Python script for bulk card generation (813 existing chunks)
+- **Pipeline Integration Mode:** Cloud Function in daily batch pipeline for new chunks
+- Gemini 2.5 Flash-based generation (concise summaries + 3-5 actionable takeaways)
+- Firestore storage in `kb_items.knowledge_card` field
+- Cost: $0.10/month (within budget)
+- 100% success rate (818/818 chunks processed)
+
+**Success Metrics:**
+- ✅ 100% coverage (818/818 chunks have knowledge cards)
+- ✅ Concise summaries (<200 characters)
+- ✅ Actionable takeaways (3-5 per chunk)
+- ✅ Cost ≤$0.10/month
+- ✅ Quality validation: ≥80% accuracy (manual spot-check)
+
+---
+
+### Story 2.2: Semantic Clustering with Initial Load & Delta Processing
+
+**Status:** Backlog
+
+**Summary:** Implement semantic clustering to automatically group related knowledge chunks into topics/clusters using cosine similarity on embeddings. Support two execution modes: initial load (local script for bulk processing) and delta processing (Cloud Function for daily pipeline integration).
+
+**Key Features:**
+- **Clustering Algorithm:** Cosine similarity-based clustering on existing chunk embeddings
+- **Initial Load Mode:** Local Python script for bulk cluster assignment of all existing chunks
+  - Direct Firestore updates (kb_items.cluster_id field)
+  - Processes all 813+ chunks in batches
+  - Idempotent: can be re-run to recompute clusters
+- **Delta Processing Mode:** Cloud Function integrated into daily batch pipeline
+  - Processes only newly added chunks from current pipeline run
+  - Assigns new chunks to existing clusters or creates new clusters as needed
+  - Triggered by Cloud Workflows after Knowledge Cards step
+- **Cluster Storage:**
+  - cluster_id array field in kb_items Firestore documents
+  - Optional: kb_clusters collection for cluster metadata (label, member count)
+- **Graph Export:** Generate graph.json in Cloud Storage for downstream use
+- **Cost:** Negligible (<$0.10/month) - uses existing embeddings, no new AI calls
+
+**Dependencies:** Story 2.1 (Knowledge Cards) - requires chunks with embeddings
+
+**Technical Approach:**
+- Reuse existing 768-dimensional embeddings (no new embedding costs)
+- Clustering methods to evaluate: K-means, HDBSCAN, or hierarchical clustering
+- Initial load: Python script run locally via `python3 -m src.clustering.initial_load`
+- Delta processing: Cloud Function `cluster-and-link` in batch pipeline workflow
+- Both modes share core clustering logic module
+
+**Success Metrics:**
+- ✅ Initial load successfully clusters all existing chunks
+- ✅ Delta processing assigns clusters to new chunks in daily pipeline
+- ✅ Cluster quality: ≥80% of cluster members are semantically related (manual spot-check)
+- ✅ Graph.json exported to Cloud Storage for Epic 3 use
+- ✅ Cost impact: <$0.10/month
+
+---
+
 ## Future Epics (Beyond MVP)
 
 See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backlog) for planned enhancements:
-
-- **Epic 2:** Enhanced Knowledge Graph & Clustering
-  - Semantic clustering and topic detection
-  - Knowledge cards generation (TL;DR + takeaways)
-  - Idea synthesis per cluster/topic
 
 - **Epic 3:** Export & Distribution
   - GitHub export (Markdown + graph.json)
@@ -180,8 +252,8 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 
 | Epic | Stories | Status | Completion |
 |------|---------|--------|------------|
-| Epic 1: Core Pipeline & KB Infrastructure | 7 | Active | 6/7 Complete (85%) |
-| Epic 2: Knowledge Graph (Future) | TBD | Planned | 0% |
+| Epic 1: Core Pipeline & KB Infrastructure | 8 | Complete | 8/8 Complete (100%) |
+| Epic 2: Enhanced Knowledge Graph & Clustering | 2 | Active | 1/2 Complete (50%) |
 | Epic 3: Export & Distribution (Future) | TBD | Planned | 0% |
 | Epic 4: Advanced Features (Future) | TBD | Backlog | 0% |
 

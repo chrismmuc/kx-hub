@@ -59,6 +59,11 @@ development_status:
     completion_date: 2025-11-01
     notes: "100% success rate (818/818 chunks), $0.10 cost, ready for pipeline deployment"
 
+  2-2-semantic-clustering:
+    status: in-progress
+    story_file: docs/stories/2-2-semantic-clustering.md
+    context_file: docs/stories/2-2-semantic-clustering.context.xml
+
 # Epic Completion
 epic-1:
   status: complete
