@@ -12,6 +12,7 @@ from sklearn.metrics.pairwise import cosine_distances
 from sklearn.cluster import HDBSCAN, KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import normalize
+import umap
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +39,31 @@ class SemanticClusterer:
         min_cluster_size: int = 3,
         min_samples: int = 2,
         n_clusters: Optional[int] = None,
-        random_state: int = 42
+        random_state: int = 42,
+        use_umap: bool = True,
+        umap_n_components: int = 5,
+        umap_n_neighbors: int = 15
     ):
         self.algorithm = algorithm.lower()
         self.min_cluster_size = min_cluster_size
         self.min_samples = min_samples
         self.n_clusters = n_clusters
         self.random_state = random_state
+        self.use_umap = use_umap
+        self.umap_n_components = umap_n_components
+        self.umap_n_neighbors = umap_n_neighbors
 
         # Cluster model (set after fit)
         self.clusterer = None
+        self.umap_model = None
         self.labels_ = None
         self.n_clusters_found = 0
         self.n_noise_points = 0
 
         logger.info(
             f"Initialized SemanticClusterer: algorithm={algorithm}, "
-            f"min_cluster_size={min_cluster_size}, min_samples={min_samples}"
+            f"min_cluster_size={min_cluster_size}, min_samples={min_samples}, "
+            f"use_umap={use_umap}"
         )
 
     def fit_predict(self, embeddings: np.ndarray) -> np.ndarray:
@@ -79,10 +88,25 @@ class SemanticClusterer:
         n_samples = embeddings.shape[0]
         logger.info(f"Clustering {n_samples} embeddings with {self.algorithm}")
 
+        # Apply UMAP dimensionality reduction if enabled
+        if self.use_umap:
+            logger.info(f"Applying UMAP: {embeddings.shape[1]}D → {self.umap_n_components}D...")
+            self.umap_model = umap.UMAP(
+                n_components=self.umap_n_components,
+                n_neighbors=self.umap_n_neighbors,
+                metric='cosine',
+                random_state=self.random_state,
+                min_dist=0.0
+            )
+            embeddings_reduced = self.umap_model.fit_transform(embeddings)
+            logger.info(f"UMAP complete: reduced to shape {embeddings_reduced.shape}")
+        else:
+            embeddings_reduced = embeddings
+
         if self.algorithm == 'hdbscan':
-            labels = self._fit_hdbscan(embeddings)
+            labels = self._fit_hdbscan(embeddings_reduced)
         elif self.algorithm == 'kmeans':
-            labels = self._fit_kmeans(embeddings)
+            labels = self._fit_kmeans(embeddings_reduced)
         else:
             raise ValueError(
                 f"Unsupported algorithm: {self.algorithm}. "
@@ -96,22 +120,33 @@ class SemanticClusterer:
 
     def _fit_hdbscan(self, embeddings: np.ndarray) -> np.ndarray:
         """
-        Cluster using HDBSCAN with cosine distance.
+        Cluster using HDBSCAN.
 
-        Uses precomputed distance matrix for cosine similarity.
+        If UMAP was applied, use euclidean distance on reduced embeddings.
+        Otherwise, use cosine distance on original high-dimensional embeddings.
         """
-        logger.info("Computing cosine distance matrix...")
-        distance_matrix = cosine_distances(embeddings)
+        if self.use_umap:
+            # UMAP already applied cosine metric; use euclidean on reduced space
+            logger.info(f"Running HDBSCAN on UMAP-reduced embeddings (min_cluster_size={self.min_cluster_size})...")
+            self.clusterer = HDBSCAN(
+                metric='euclidean',
+                min_cluster_size=self.min_cluster_size,
+                min_samples=self.min_samples,
+                cluster_selection_epsilon=0.1,  # Merge similar clusters
+            )
+            labels = self.clusterer.fit_predict(embeddings)
+        else:
+            # Original high-dimensional path: compute cosine distance matrix
+            logger.info(f"Computing cosine distance matrix for {len(embeddings)} embeddings...")
+            distance_matrix = cosine_distances(embeddings)
 
-        logger.info(f"Running HDBSCAN (min_cluster_size={self.min_cluster_size})...")
-        self.clusterer = HDBSCAN(
-            metric='precomputed',
-            min_cluster_size=self.min_cluster_size,
-            min_samples=self.min_samples,
-            cluster_selection_epsilon=0.1,  # Merge similar clusters
-        )
-
-        labels = self.clusterer.fit_predict(distance_matrix)
+            logger.info(f"Running HDBSCAN on cosine distance (min_cluster_size={self.min_cluster_size})...")
+            self.clusterer = HDBSCAN(
+                metric='precomputed',
+                min_cluster_size=self.min_cluster_size,
+                min_samples=self.min_samples
+            )
+            labels = self.clusterer.fit_predict(distance_matrix)
 
         return labels
 

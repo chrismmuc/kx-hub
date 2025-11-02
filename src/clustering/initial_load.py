@@ -150,8 +150,8 @@ class InitialLoadClusterer:
 
         clusterer = SemanticClusterer(
             algorithm='hdbscan',
-            min_cluster_size=10,  # Optimized: Reduces over-fragmentation (was 3)
-            min_samples=5         # Optimized: Better density estimation (was 2)
+            min_cluster_size=10,  # Optimal: Research-backed, prevents over-fragmentation
+            min_samples=3         # Optimal: Balanced density estimation
         )
 
         # Cluster
