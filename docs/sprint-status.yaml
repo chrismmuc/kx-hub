@@ -61,8 +61,24 @@ development_status:
 
   2-2-semantic-clustering:
     status: in-progress
-    story_file: docs/stories/2-2-semantic-clustering.md
-    context_file: docs/stories/2-2-semantic-clustering.context.xml
+    story_file: docs/stories/2.2-semantic-clustering.md
+    context_file: docs/stories/2.2-semantic-clustering.context.xml
+
+  2-3-clustering-consistency-fix:
+    status: backlog
+    story_file: docs/stories/2.3-clustering-consistency-fix.md
+
+  2-4-knowledge-cards-consistency:
+    status: backlog
+    story_file: docs/stories/2.4-knowledge-cards-consistency-check.md
+
+  2-5-graph-regeneration:
+    status: backlog
+    story_file: docs/stories/2.5-graph-regeneration-permissions.md
+
+  2-6-mcp-enhancements:
+    status: drafted
+    story_file: docs/stories/2.6-mcp-enhancements.md
 
 # Epic Completion
 epic-1:
