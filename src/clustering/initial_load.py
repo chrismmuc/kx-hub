@@ -19,6 +19,9 @@ import sys
 import logging
 import argparse
 import time
+import pickle
+import json
+from datetime import datetime
 from typing import List, Dict, Any
 import numpy as np
 from google.cloud import firestore
@@ -28,7 +31,6 @@ from google.cloud import storage
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from clustering.clusterer import SemanticClusterer, create_cluster_mapping
-from clustering.graph_generator import GraphGenerator
 
 # Configure logging
 logging.basicConfig(
@@ -43,7 +45,7 @@ class InitialLoadClusterer:
     Handles initial bulk clustering of all knowledge chunks.
 
     Loads all chunks with embeddings, clusters them, and updates
-    Firestore with cluster assignments and generates graph.json.
+    Firestore with cluster assignments. Graph generation is deferred to Story 3.2.
     """
 
     def __init__(
@@ -136,7 +138,7 @@ class InitialLoadClusterer:
 
         return chunks, embeddings_array, chunk_ids
 
-    def cluster_embeddings(self, embeddings: np.ndarray) -> tuple[np.ndarray, Dict[str, Any]]:
+    def cluster_embeddings(self, embeddings: np.ndarray) -> tuple[np.ndarray, Dict[str, Any], SemanticClusterer]:
         """
         Cluster embeddings using HDBSCAN.
 
@@ -144,7 +146,7 @@ class InitialLoadClusterer:
             embeddings: Array of embedding vectors
 
         Returns:
-            Tuple of (cluster_labels, quality_metrics)
+            Tuple of (cluster_labels, quality_metrics, clusterer)
         """
         logger.info("Starting clustering with HDBSCAN...")
 
@@ -165,7 +167,7 @@ class InitialLoadClusterer:
         metrics = clusterer.compute_quality_metrics(embeddings)
         logger.info(f"Quality metrics: {metrics}")
 
-        return cluster_labels, metrics
+        return cluster_labels, metrics, clusterer
 
     def update_firestore_with_clusters(
         self,
@@ -245,42 +247,68 @@ class InitialLoadClusterer:
 
         logger.info(f"✅ Successfully updated {total_updates} chunks with cluster assignments")
 
-    def generate_and_upload_graph(
-        self,
-        chunks: List[Dict[str, Any]],
-        embeddings: np.ndarray,
-        cluster_labels: np.ndarray
-    ):
+    def save_umap_model(self, clusterer: SemanticClusterer):
         """
-        Generate graph.json and upload to Cloud Storage.
+        Save UMAP model and metadata to Cloud Storage.
 
         Args:
-            chunks: List of chunk documents
-            embeddings: Embedding vectors
-            cluster_labels: Cluster assignments
+            clusterer: SemanticClusterer instance with fitted UMAP model
         """
-        logger.info("Generating graph.json...")
-
-        generator = GraphGenerator(
-            similarity_threshold=0.7,
-            max_edges_per_node=5
-        )
-
-        graph = generator.generate(chunks, embeddings, cluster_labels)
-
         if self.dry_run:
-            logger.info("[DRY RUN] Would upload graph to GCS")
-            logger.info(f"Graph metadata: {graph['metadata']}")
+            logger.info("[DRY RUN] Would save UMAP model to Cloud Storage")
             return
 
+        if clusterer.umap_model is None:
+            logger.warning("No UMAP model to save (UMAP not used)")
+            return
+
+        logger.info("Saving UMAP model to Cloud Storage...")
+
+        # Save using joblib (recommended by UMAP) with Numba-safe settings
+        import tempfile
+        import joblib
+
+        with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as tmp_file:
+            joblib.dump(clusterer.umap_model, tmp_file.name)
+            tmp_file.seek(0)
+            model_bytes = open(tmp_file.name, 'rb').read()
+            model_size_kb = len(model_bytes) / 1024
+            os.unlink(tmp_file.name)
+
+        logger.info(f"UMAP model serialized: {model_size_kb:.2f} KB")
+
         # Upload to Cloud Storage
-        GraphGenerator.save_to_storage(
-            graph,
-            bucket_name=self.bucket_name,
-            blob_name='graphs/graph.json'
+        bucket = self.storage_client.bucket(self.bucket_name)
+        blob = bucket.blob('models/umap_model.pkl')
+        blob.upload_from_string(model_bytes, content_type='application/octet-stream')
+
+        logger.info(f"✅ UMAP model uploaded to gs://{self.bucket_name}/models/umap_model.pkl")
+
+        # Create metadata file
+        metadata = {
+            'version': datetime.now().strftime('%Y-%m-%d'),
+            'created_at': datetime.now().isoformat(),
+            'umap_parameters': {
+                'n_components': clusterer.umap_n_components,
+                'n_neighbors': clusterer.umap_n_neighbors,
+                'metric': 'cosine',
+                'min_dist': 0.0,
+                'random_state': clusterer.random_state
+            },
+            'model_size_bytes': len(model_bytes),
+            'storage_path': f'gs://{self.bucket_name}/models/umap_model.pkl'
+        }
+
+        # Upload metadata
+        metadata_blob = bucket.blob('models/umap_metadata.json')
+        metadata_blob.upload_from_string(
+            json.dumps(metadata, indent=2),
+            content_type='application/json'
         )
 
-        logger.info(f"✅ Graph uploaded to gs://{self.bucket_name}/graphs/graph.json")
+        logger.info(f"✅ UMAP metadata saved to gs://{self.bucket_name}/models/umap_metadata.json")
+        logger.info(f"   UMAP version: {metadata['version']}")
+        logger.info(f"   Parameters: {metadata['umap_parameters']}")
 
     def run(self):
         """Execute the complete initial load clustering workflow."""
@@ -303,15 +331,15 @@ class InitialLoadClusterer:
 
         # Step 2: Cluster embeddings
         logger.info(f"\n[Step 2/4] Clustering {len(embeddings)} embeddings...")
-        cluster_labels, metrics = self.cluster_embeddings(embeddings)
+        cluster_labels, metrics, clusterer = self.cluster_embeddings(embeddings)
 
-        # Step 3: Update Firestore
-        logger.info("\n[Step 3/4] Updating Firestore with cluster assignments...")
+        # Step 3: Save UMAP model
+        logger.info("\n[Step 3/4] Saving UMAP model to Cloud Storage...")
+        self.save_umap_model(clusterer)
+
+        # Step 4: Update Firestore
+        logger.info("\n[Step 4/4] Updating Firestore with cluster assignments...")
         self.update_firestore_with_clusters(chunk_ids, cluster_labels, clear_existing=True)
-
-        # Step 4: Generate and upload graph
-        logger.info("\n[Step 4/4] Generating and uploading graph.json...")
-        self.generate_and_upload_graph(chunks, embeddings, cluster_labels)
 
         # Summary
         elapsed = time.time() - start_time

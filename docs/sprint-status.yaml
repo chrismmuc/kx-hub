@@ -65,20 +65,35 @@ development_status:
     context_file: docs/stories/2.2-semantic-clustering.context.xml
 
   2-3-clustering-consistency-fix:
-    status: backlog
+    status: review
     story_file: docs/stories/2.3-clustering-consistency-fix.md
+    context_file: docs/stories/2.3-clustering-consistency-fix.context.xml
+    completion_date: 2025-11-03
+    notes: "UMAP model persistence implemented, 5D centroids stored, delta clustering 5x faster (1.4s vs 7s), all 825 chunks re-clustered with 37 clusters"
 
   2-4-knowledge-cards-consistency:
-    status: backlog
+    status: done
     story_file: docs/stories/2.4-knowledge-cards-consistency-check.md
+    investigation_file: docs/stories/2.4-knowledge-cards-consistency-investigation.md
+    completion_date: 2025-11-13
+    notes: "Investigation complete. Shared modules (schema.py, prompt_manager.py) ensure consistency. Minor return type difference found but non-critical. Knowledge Cards implementation is architecturally sound."
 
-  2-5-graph-regeneration:
-    status: backlog
-    story_file: docs/stories/2.5-graph-regeneration-permissions.md
+  2-5-storage-permissions:
+    status: done
+    story_file: docs/stories/2.5-graph-storage-permissions.md
+    completion_date: 2025-11-13
+    notes: "IAM permissions deployed via Terraform. Graph generation code removed from initial_load.py (deferred to Story 3.2). Infrastructure ready for Story 3.2."
 
   2-6-mcp-enhancements:
     status: drafted
     story_file: docs/stories/2.6-mcp-enhancements.md
+
+  # Epic 3: Knowledge Graph Visualization & Export
+
+  3-2-graph-regeneration-on-delta:
+    status: backlog
+    story_file: docs/stories/3.2-graph-regeneration-on-delta.md
+    notes: "Deferred from Story 2.5. Implement when Epic 3 visualization feature begins."
 
 # Epic Completion
 epic-1:

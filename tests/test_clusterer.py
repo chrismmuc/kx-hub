@@ -183,6 +183,107 @@ class TestSemanticClusterer(unittest.TestCase):
         # Labels should be valid (exist in training labels)
         self.assertTrue(np.all(np.isin(test_labels, train_labels)))
 
+    def test_transform_and_assign_with_umap(self):
+        """Test transform_and_assign method with UMAP model."""
+        # Create clusterer with UMAP
+        clusterer = SemanticClusterer(
+            algorithm='hdbscan',
+            min_cluster_size=3,
+            use_umap=True,
+            umap_n_components=5
+        )
+
+        # Fit on initial data
+        train_embeddings = self.synthetic_embeddings[:12]
+        train_labels = clusterer.fit_predict(train_embeddings)
+
+        # Create 5D centroids from fitted model
+        train_embeddings_5d = clusterer.umap_model.transform(train_embeddings)
+
+        # Compute centroids for each cluster
+        unique_labels = np.unique(train_labels)
+        centroids_5d = []
+        cluster_labels = []
+
+        for label in unique_labels:
+            if label != -1:  # Skip noise
+                mask = train_labels == label
+                centroid = np.mean(train_embeddings_5d[mask], axis=0)
+                centroids_5d.append(centroid)
+                cluster_labels.append(label)
+
+        centroids_5d = np.array(centroids_5d)
+        cluster_labels = np.array(cluster_labels)
+
+        # Test new embeddings
+        test_embeddings = self.synthetic_embeddings[12:]
+
+        # Assign using transform_and_assign
+        assigned_labels = clusterer.transform_and_assign(
+            test_embeddings,
+            centroids_5d,
+            cluster_labels
+        )
+
+        # Should get labels for all test embeddings
+        self.assertEqual(len(assigned_labels), len(test_embeddings))
+
+        # Labels should be valid (exist in cluster_labels)
+        self.assertTrue(np.all(np.isin(assigned_labels, cluster_labels)))
+
+    def test_transform_and_assign_without_umap_model(self):
+        """Test that transform_and_assign raises error without UMAP model."""
+        clusterer = SemanticClusterer(use_umap=False)
+
+        # Create dummy centroids and labels
+        centroids_5d = np.random.randn(3, 5)
+        cluster_labels = np.array([0, 1, 2])
+        test_embeddings = np.random.randn(5, 768)
+
+        # Should raise ValueError
+        with self.assertRaises(ValueError) as context:
+            clusterer.transform_and_assign(
+                test_embeddings,
+                centroids_5d,
+                cluster_labels
+            )
+
+        self.assertIn("UMAP model not fitted", str(context.exception))
+
+    def test_transform_and_assign_dimension_validation(self):
+        """Test that transform_and_assign validates dimensions."""
+        clusterer = SemanticClusterer(use_umap=True, umap_n_components=5)
+
+        # Fit to create UMAP model
+        clusterer.fit_predict(self.synthetic_embeddings[:12])
+
+        # Test with wrong embedding dimension
+        wrong_dim_embeddings = np.random.randn(5, 512)  # Wrong: 512 instead of 768
+        centroids_5d = np.random.randn(3, 5)
+        cluster_labels = np.array([0, 1, 2])
+
+        with self.assertRaises(ValueError) as context:
+            clusterer.transform_and_assign(
+                wrong_dim_embeddings,
+                centroids_5d,
+                cluster_labels
+            )
+
+        self.assertIn("Expected 768D embeddings", str(context.exception))
+
+        # Test with wrong centroid dimension
+        correct_embeddings = np.random.randn(5, 768)
+        wrong_centroids = np.random.randn(3, 10)  # Wrong: 10 instead of 5
+
+        with self.assertRaises(ValueError) as context:
+            clusterer.transform_and_assign(
+                correct_embeddings,
+                wrong_centroids,
+                cluster_labels
+            )
+
+        self.assertIn("Centroid dimension", str(context.exception))
+
 
 class TestClusterMapping(unittest.TestCase):
     """Test cluster mapping helper functions."""

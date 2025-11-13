@@ -35,7 +35,9 @@ class ClusterMetadataGenerator:
         region: str = 'europe-west4',
         kb_collection: str = 'kb_items',
         clusters_collection: str = 'clusters',
-        dry_run: bool = False
+        dry_run: bool = False,
+        umap_model = None,
+        umap_version: str = None
     ):
         """
         Initialize cluster metadata generator.
@@ -46,12 +48,16 @@ class ClusterMetadataGenerator:
             kb_collection: Knowledge base collection name
             clusters_collection: Clusters collection name
             dry_run: If True, don't write to Firestore
+            umap_model: UMAP model for generating 5D centroids
+            umap_version: UMAP model version string
         """
         self.project_id = project_id
         self.region = region
         self.kb_collection = kb_collection
         self.clusters_collection = clusters_collection
         self.dry_run = dry_run
+        self.umap_model = umap_model
+        self.umap_version = umap_version or datetime.now().strftime('%Y-%m-%d')
 
         # Initialize clients
         logger.info(f"Initializing Firestore for project: {project_id}")
@@ -178,9 +184,16 @@ class ClusterMetadataGenerator:
         Returns:
             Cluster metadata dict
         """
-        # Calculate centroid (mean embedding)
+        # Calculate centroid in 768D space (mean embedding)
         embeddings = np.array([chunk['embedding'] for chunk in chunks])
-        centroid = np.mean(embeddings, axis=0).astype(np.float32)
+        centroid_768d = np.mean(embeddings, axis=0).astype(np.float32)
+
+        # Calculate centroid in 5D UMAP space if UMAP model available
+        centroid_5d = None
+        if self.umap_model is not None:
+            embeddings_5d = self.umap_model.transform(embeddings)
+            centroid_5d = np.mean(embeddings_5d, axis=0).astype(np.float32)
+            logger.debug(f"  Computed 5D centroid for {cluster_id}: shape {centroid_5d.shape}")
 
         # Generate name and description via Gemini
         name, description = self._generate_cluster_name_description(chunks)
@@ -194,10 +207,15 @@ class ClusterMetadataGenerator:
             'name': name,
             'description': description,
             'size': size,
-            'centroid': centroid.tolist(),  # Will convert to Vector when writing
+            'centroid_768d': centroid_768d.tolist(),  # Reference only
             'created_at': datetime.utcnow().isoformat() + 'Z',
             'updated_at': datetime.utcnow().isoformat() + 'Z'
         }
+
+        # Add 5D centroid if UMAP model was used
+        if centroid_5d is not None:
+            metadata['centroid_5d'] = centroid_5d.tolist()  # Active for assignments
+            metadata['umap_version'] = self.umap_version
 
         return metadata
 
@@ -293,9 +311,12 @@ DESCRIPTION: <description>"""
         for cluster in clusters:
             doc_ref = collection_ref.document(cluster['id'])
 
-            # Convert centroid to Vector type
+            # Convert centroids to Vector types
             cluster_data = cluster.copy()
-            cluster_data['centroid'] = Vector(cluster['centroid'])
+            cluster_data['centroid_768d'] = Vector(cluster['centroid_768d'])
+
+            if 'centroid_5d' in cluster:
+                cluster_data['centroid_5d'] = Vector(cluster['centroid_5d'])
 
             batch.set(doc_ref, cluster_data)
             batch_count += 1

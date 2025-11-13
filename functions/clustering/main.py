@@ -23,10 +23,20 @@ Response:
 """
 
 import os
+
+# CRITICAL: Set Numba environment variables BEFORE importing UMAP
+# This fixes "key already in dictionary" errors in serverless environments
+os.environ['NUMBA_CACHE_DIR'] = '/tmp/numba_cache'
+os.environ['NUMBA_NUM_THREADS'] = '1'
+os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT to avoid caching conflicts
+os.environ['NUMBA_WARNINGS'] = '0'
+
 import logging
 import time
 import json
-from typing import List, Dict, Any
+import pickle
+import joblib
+from typing import List, Dict, Any, Optional
 import numpy as np
 from google.cloud import firestore
 from google.cloud import storage
@@ -36,6 +46,10 @@ from flask import Request
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global cache for UMAP model (survives across invocations)
+_umap_model = None
+_umap_load_time = None
 
 
 def load_embeddings_from_firestore(
@@ -101,9 +115,61 @@ def load_embeddings_from_firestore(
     return chunks, embeddings_array, valid_ids
 
 
+def load_umap_model(
+    storage_client: storage.Client,
+    bucket_name: str,
+    model_path: str = 'models/umap_model.pkl'
+) -> Any:
+    """
+    Load UMAP model from Cloud Storage with global caching.
+
+    Args:
+        storage_client: Storage client
+        bucket_name: GCS bucket name
+        model_path: Path to UMAP model in bucket
+
+    Returns:
+        UMAP model object
+    """
+    global _umap_model, _umap_load_time
+
+    # Return cached model if available
+    if _umap_model is not None:
+        logger.info("Using cached UMAP model")
+        return _umap_model
+
+    logger.info(f"Loading UMAP model from gs://{bucket_name}/{model_path}...")
+    load_start = time.time()
+
+    try:
+        import tempfile
+
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(model_path)
+        model_bytes = blob.download_as_bytes()
+
+        # Load using joblib (recommended by UMAP)
+        with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as tmp_file:
+            tmp_file.write(model_bytes)
+            tmp_file.flush()
+            _umap_model = joblib.load(tmp_file.name)
+            os.unlink(tmp_file.name)
+
+        _umap_load_time = time.time() - load_start
+
+        logger.info(f"✅ UMAP model loaded in {_umap_load_time:.2f}s (cached for future invocations)")
+
+        return _umap_model
+
+    except Exception as e:
+        logger.error(f"Failed to load UMAP model: {e}")
+        raise
+
+
 def load_existing_clusters(
     db: firestore.Client,
-    collection_name: str = 'clusters'
+    collection_name: str = 'clusters',
+    use_5d_centroids: bool = True
 ) -> tuple[np.ndarray, np.ndarray, List[str]]:
     """
     Load cluster centroids from clusters collection (efficient).
@@ -114,11 +180,13 @@ def load_existing_clusters(
     Args:
         db: Firestore client
         collection_name: Clusters collection name (default: 'clusters')
+        use_5d_centroids: If True, load centroid_5d (UMAP space); else centroid_768d
 
     Returns:
         Tuple of (centroid_embeddings, cluster_labels, cluster_ids)
     """
-    logger.info("Loading cluster centroids from Firestore...")
+    centroid_field = 'centroid_5d' if use_5d_centroids else 'centroid_768d'
+    logger.info(f"Loading cluster centroids ({centroid_field}) from Firestore...")
 
     collection_ref = db.collection(collection_name)
     docs = collection_ref.stream()
@@ -136,11 +204,17 @@ def load_existing_clusters(
             continue
 
         # Extract centroid
-        if 'centroid' not in data:
-            logger.warning(f"Cluster {cluster_id} missing centroid, skipping")
-            continue
+        if centroid_field not in data:
+            # Fallback to old 'centroid' field for backward compatibility
+            if 'centroid' in data and not use_5d_centroids:
+                centroid_field_actual = 'centroid'
+            else:
+                logger.warning(f"Cluster {cluster_id} missing {centroid_field}, skipping")
+                continue
+        else:
+            centroid_field_actual = centroid_field
 
-        centroid = data['centroid']
+        centroid = data[centroid_field_actual]
         if hasattr(centroid, 'to_map_value'):
             # Firestore Vector type - extract values from dict
             map_value = centroid.to_map_value()
@@ -172,10 +246,55 @@ def load_existing_clusters(
 
     logger.info(
         f"Loaded {len(centroids)} cluster centroids "
-        f"(much faster than loading all chunks!)"
+        f"(shape: {centroids_array.shape if len(centroids) > 0 else 'N/A'})"
     )
 
     return centroids_array, labels_array, cluster_ids
+
+
+def transform_and_assign_with_umap(
+    new_embeddings: np.ndarray,
+    cluster_centroids_5d: np.ndarray,
+    cluster_labels: np.ndarray,
+    umap_model: Any
+) -> np.ndarray:
+    """
+    Transform new embeddings with UMAP and assign to nearest centroids.
+
+    This ensures consistency between initial clustering and delta processing.
+
+    Args:
+        new_embeddings: New 768D embeddings
+        cluster_centroids_5d: Centroids in 5D UMAP space
+        cluster_labels: Labels for each centroid
+        umap_model: Fitted UMAP model
+
+    Returns:
+        Cluster labels for new embeddings
+    """
+    from sklearn.metrics.pairwise import euclidean_distances
+
+    logger.info(f"Transforming {len(new_embeddings)} embeddings: 768D → 5D...")
+
+    # Transform to 5D UMAP space
+    new_embeddings_5d = umap_model.transform(new_embeddings)
+
+    logger.info(f"Computing euclidean distances to {len(cluster_centroids_5d)} centroids...")
+
+    # Compute euclidean distance in 5D space
+    distances = euclidean_distances(new_embeddings_5d, cluster_centroids_5d)
+
+    # Assign to nearest centroid
+    nearest_indices = np.argmin(distances, axis=1)
+    assigned_labels = cluster_labels[nearest_indices]
+
+    # Log assignments
+    unique_labels, counts = np.unique(assigned_labels, return_counts=True)
+    for label, count in zip(unique_labels, counts):
+        cluster_id = "noise" if label == -1 else f"cluster-{label}"
+        logger.info(f"  Assigned {count} chunks to {cluster_id}")
+
+    return assigned_labels
 
 
 def assign_to_existing_clusters(
@@ -185,6 +304,8 @@ def assign_to_existing_clusters(
 ) -> np.ndarray:
     """
     Assign new embeddings to existing clusters using nearest neighbor.
+
+    DEPRECATED: Use transform_and_assign_with_umap() for UMAP consistency.
 
     Args:
         new_embeddings: New embedding vectors
@@ -196,6 +317,7 @@ def assign_to_existing_clusters(
     """
     from sklearn.metrics.pairwise import cosine_distances
 
+    logger.warning("Using deprecated cosine distance assignment. Prefer UMAP transform.")
     logger.info(f"Assigning {len(new_embeddings)} new embeddings to existing clusters...")
 
     # Compute distance from new to existing
@@ -297,15 +419,20 @@ def cluster_new_chunks(request: Request):
     # Get configuration
     project_id = os.getenv('GCP_PROJECT')
     collection_name = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
-    bucket_name = os.getenv('GCS_BUCKET', f'{project_id}-data')
+    bucket_name = os.getenv('GCS_BUCKET', f'{project_id}-pipeline')
+    umap_model_path = os.getenv('UMAP_MODEL_PATH', 'models/umap_model.pkl')
 
     # Initialize clients
     db = firestore.Client(project=project_id)
     storage_client = storage.Client(project=project_id)
 
     try:
-        # Step 1: Load new chunk embeddings
-        logger.info("[Step 1/4] Loading new chunk embeddings...")
+        # Step 1: Load UMAP model (cached globally)
+        logger.info("[Step 1/5] Loading UMAP model...")
+        umap_model = load_umap_model(storage_client, bucket_name, umap_model_path)
+
+        # Step 2: Load new chunk embeddings
+        logger.info("[Step 2/5] Loading new chunk embeddings...")
         new_chunks, new_embeddings, valid_chunk_ids = load_embeddings_from_firestore(
             db, collection_name, chunk_ids
         )
@@ -320,26 +447,26 @@ def cluster_new_chunks(request: Request):
                 'message': 'No valid chunks found'
             }, 200
 
-        # Step 2: Load existing cluster centroids (efficient!)
-        logger.info("[Step 2/4] Loading cluster centroids...")
-        centroid_embeddings, centroid_labels, cluster_ids = load_existing_clusters(
-            db, 'clusters'  # Load from clusters collection
+        # Step 3: Load existing cluster centroids (5D UMAP space)
+        logger.info("[Step 3/5] Loading 5D cluster centroids...")
+        centroid_5d, centroid_labels, cluster_ids = load_existing_clusters(
+            db, 'clusters', use_5d_centroids=True
         )
 
-        if len(centroid_embeddings) == 0:
+        if len(centroid_5d) == 0:
             logger.error("No existing clusters found - run initial_load.py first")
             return {
                 'error': 'No existing clusters found. Run initial load first.'
             }, 500
 
-        # Step 3: Assign new chunks to nearest centroids
-        logger.info("[Step 3/4] Assigning new chunks to nearest centroids...")
-        new_labels = assign_to_existing_clusters(
-            new_embeddings, centroid_embeddings, centroid_labels
+        # Step 4: Transform and assign using UMAP
+        logger.info("[Step 4/5] Transforming and assigning with UMAP...")
+        new_labels = transform_and_assign_with_umap(
+            new_embeddings, centroid_5d, centroid_labels, umap_model
         )
 
-        # Step 4: Update Firestore
-        logger.info("[Step 4/4] Updating Firestore...")
+        # Step 5: Update Firestore
+        logger.info("[Step 5/5] Updating Firestore...")
         update_firestore_batch(db, collection_name, valid_chunk_ids, new_labels)
 
         # TODO: Optionally regenerate graph.json with updated memberships

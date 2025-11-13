@@ -84,6 +84,8 @@ resource "google_cloudfunctions2_function" "clustering_function" {
       GCP_REGION           = var.region
       FIRESTORE_COLLECTION = "kb_items"
       GCS_BUCKET           = google_storage_bucket.pipeline.name
+      UMAP_MODEL_PATH      = "models/umap_model.pkl"
+      NUMBA_NUM_THREADS    = "1"  # Fix Numba threading issues in serverless
     }
   }
 

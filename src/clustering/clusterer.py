@@ -272,6 +272,69 @@ class SemanticClusterer:
 
         return np.where(self.labels_ == cluster_id)[0]
 
+    def transform_and_assign(
+        self,
+        new_embeddings: np.ndarray,
+        cluster_centroids_5d: np.ndarray,
+        cluster_labels: np.ndarray
+    ) -> np.ndarray:
+        """
+        Transform new embeddings with UMAP and assign to nearest centroids.
+
+        This method ensures consistency between initial clustering and delta processing
+        by using the same UMAP-reduced embedding space.
+
+        Args:
+            new_embeddings: New 768D embeddings to assign (n_new, 768)
+            cluster_centroids_5d: Existing centroids in 5D UMAP space (n_clusters, 5)
+            cluster_labels: Labels for each centroid (n_clusters,)
+
+        Returns:
+            Cluster labels for new embeddings (n_new,)
+
+        Raises:
+            ValueError: If UMAP model not fitted or dimension mismatch
+        """
+        if self.umap_model is None:
+            raise ValueError(
+                "UMAP model not fitted. Load from storage first using load_umap_model()"
+            )
+
+        if new_embeddings.shape[1] != 768:
+            raise ValueError(
+                f"Expected 768D embeddings, got {new_embeddings.shape[1]}D"
+            )
+
+        if cluster_centroids_5d.shape[1] != self.umap_n_components:
+            raise ValueError(
+                f"Centroid dimension {cluster_centroids_5d.shape[1]} doesn't match "
+                f"UMAP n_components {self.umap_n_components}"
+            )
+
+        logger.info(
+            f"Transforming {len(new_embeddings)} embeddings: 768D → {self.umap_n_components}D..."
+        )
+
+        # Transform to 5D UMAP space
+        new_embeddings_5d = self.umap_model.transform(new_embeddings)
+
+        logger.info(f"Computing euclidean distances to {len(cluster_centroids_5d)} centroids...")
+
+        # Compute euclidean distance in 5D space (not cosine!)
+        from sklearn.metrics.pairwise import euclidean_distances
+        distances = euclidean_distances(new_embeddings_5d, cluster_centroids_5d)
+
+        # Assign to nearest centroid
+        nearest_indices = np.argmin(distances, axis=1)
+        assigned_labels = cluster_labels[nearest_indices]
+
+        # Log assignments
+        unique_labels, counts = np.unique(assigned_labels, return_counts=True)
+        for label, count in zip(unique_labels, counts):
+            logger.info(f"  Assigned {count} items to cluster {label}")
+
+        return assigned_labels
+
     def assign_to_existing_clusters(
         self,
         new_embeddings: np.ndarray,
@@ -280,6 +343,8 @@ class SemanticClusterer:
     ) -> np.ndarray:
         """
         Assign new embeddings to existing clusters based on nearest neighbors.
+
+        DEPRECATED: Use transform_and_assign() for UMAP consistency.
 
         Used for delta processing: assign new chunks to existing cluster structure.
 
@@ -291,6 +356,11 @@ class SemanticClusterer:
         Returns:
             Cluster labels for new embeddings
         """
+        logger.warning(
+            "assign_to_existing_clusters() is deprecated. "
+            "Use transform_and_assign() for UMAP consistency."
+        )
+
         logger.info(
             f"Assigning {len(new_embeddings)} new embeddings to existing clusters..."
         )

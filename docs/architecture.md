@@ -194,6 +194,112 @@ Google Secret Manager:
 
 ---
 
+## Clustering & UMAP Model Architecture
+
+### Overview
+
+The clustering system uses UMAP (Uniform Manifold Approximation and Projection) for dimensionality reduction combined with HDBSCAN for density-based clustering. To ensure consistency between initial clustering and delta (incremental) processing, the fitted UMAP model is persisted to Cloud Storage and reused for transforming new embeddings.
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  SHARED CLUSTERING MODULE                        │
+│                 (src/clustering/clusterer.py)                    │
+├─────────────────────────────────────────────────────────────────┤
+│  fit_predict() - Initial Clustering                              │
+│  • UMAP: 768D → 5D                                               │
+│  • HDBSCAN: Density clustering                                   │
+│  • Store UMAP model & 5D centroids                               │
+│                                                                  │
+│  transform_and_assign() - Delta Clustering                       │
+│  • Load stored UMAP model                                        │
+│  • Transform new chunks: 768D → 5D                               │
+│  • Assign to nearest 5D centroid                                 │
+└─────────────────────────────────────────────────────────────────┘
+         ▲                                    ▲
+         │                                    │
+    ┌────┴─────┐                      ┌──────┴──────┐
+    │ Initial  │                      │   Cloud     │
+    │  Load    │                      │  Function   │
+    │ Script   │                      │   (Delta)   │
+    └──────────┘                      └─────────────┘
+```
+
+### UMAP Model Storage
+
+**Location:** `gs://{project-id}-pipeline/models/umap_model.pkl`
+
+**Metadata:** `gs://{project-id}-pipeline/models/umap_metadata.json`
+
+**Metadata Schema:**
+```json
+{
+  "version": "2025-11-03",
+  "created_at": "2025-11-03T21:43:12.671Z",
+  "umap_parameters": {
+    "n_components": 5,
+    "n_neighbors": 15,
+    "metric": "cosine",
+    "min_dist": 0.0,
+    "random_state": 42
+  },
+  "model_size_bytes": 2702925,
+  "storage_path": "gs://kx-hub-pipeline/models/umap_model.pkl"
+}
+```
+
+### Cluster Metadata Schema (Firestore)
+
+**Collection:** `clusters`
+
+**Document Structure:**
+```javascript
+{
+  "id": "cluster-0",
+  "name": "Gemini AI Features & Updates",
+  "description": "Content related to Gemini AI capabilities, features, and updates",
+  "size": 42,
+  "centroid_768d": Vector([...768]),  // Reference only (original space)
+  "centroid_5d": Vector([...5]),      // Active for assignments (UMAP space)
+  "umap_version": "2025-11-03",
+  "created_at": "2025-11-03T21:43:12Z",
+  "updated_at": "2025-11-03T21:43:12Z"
+}
+```
+
+### Consistency Approach
+
+**Problem:** Initial clustering uses UMAP + HDBSCAN (768D → 5D → clusters), but delta processing previously used 768D cosine distance, causing inconsistent cluster assignments.
+
+**Solution:**
+1. **Persist UMAP model** after initial clustering to Cloud Storage
+2. **Store both centroid types** in Firestore:
+   - `centroid_768d`: Reference only (original embedding space)
+   - `centroid_5d`: Active for assignments (UMAP-reduced space)
+3. **Delta processing** loads UMAP model and transforms new embeddings to 5D before assignment
+4. **Shared clustering module** eliminates code duplication between initial load and Cloud Function
+
+**Benefits:**
+- ✅ **Consistency**: Same embedding space for initial and delta clustering
+- ✅ **Performance**: 5D euclidean distance is 5x faster than 768D cosine (~1.4s vs ~7s)
+- ✅ **Accuracy**: New chunks assigned with same algorithm as initial clustering
+- ✅ **No code duplication**: Single `SemanticClusterer` class used by both paths
+
+### Performance Metrics
+
+| Operation | Time | Space |
+|-----------|------|-------|
+| UMAP fit (825 embeddings) | ~3.6s | 768D → 5D |
+| UMAP transform (10 new embeddings) | ~0.1s | 768D → 5D |
+| UMAP model storage | <1s | ~2.7 MB |
+| Delta processing (before) | ~7s | 768D cosine |
+| Delta processing (after) | ~1.4s | 5D euclidean |
+
+**Cost Impact:** +$0.001/month (model storage only)
+
+---
+
 ## Cost Optimization & Scaling
 
 ### Strategy

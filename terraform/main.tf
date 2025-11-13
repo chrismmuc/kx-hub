@@ -603,3 +603,18 @@ resource "google_project_iam_member" "mcp_sa_aiplatform_user" {
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.mcp_server_sa.email}"
 }
+
+# Grant MCP server write access to pipeline bucket (for UMAP model storage)
+resource "google_storage_bucket_iam_member" "mcp_sa_pipeline_bucket_admin" {
+  bucket = google_storage_bucket.pipeline.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.mcp_server_sa.email}"
+}
+
+# Grant MCP server project-level storage object creator permission (for initial_load.py graph.json upload)
+# Story 2.5: Enables initial_load.py to upload graph.json to Cloud Storage
+resource "google_project_iam_member" "mcp_sa_storage_object_creator" {
+  project = var.project_id
+  role    = "roles/storage.objectCreator"
+  member  = "serviceAccount:${google_service_account.mcp_server_sa.email}"
+}

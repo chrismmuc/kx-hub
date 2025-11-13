@@ -106,7 +106,7 @@ class TestInitialLoadClusterer(unittest.TestCase):
         )
 
         # Cluster
-        labels, metrics = clusterer.cluster_embeddings(self.embeddings)
+        labels, metrics, cluster_model = clusterer.cluster_embeddings(self.embeddings)
 
         # Verify results
         self.assertEqual(len(labels), self.num_chunks)
@@ -116,6 +116,9 @@ class TestInitialLoadClusterer(unittest.TestCase):
         # Should find 2-4 clusters
         self.assertGreaterEqual(metrics['n_clusters'], 2)
         self.assertLessEqual(metrics['n_clusters'], 5)
+
+        # Ensure clustering model is returned for downstream use
+        self.assertIsNotNone(cluster_model)
 
     @patch('clustering.initial_load.firestore.Client')
     @patch('clustering.initial_load.storage.Client')
