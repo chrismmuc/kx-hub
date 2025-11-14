@@ -11,6 +11,8 @@ import os
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
+# Add mcp_server to path so firestore_client and embeddings can be imported
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/mcp_server'))
 
 from mcp_server import tools
 

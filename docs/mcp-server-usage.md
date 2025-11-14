@@ -4,7 +4,9 @@ This guide shows you how to query your kx-hub knowledge base through Claude Desk
 
 ## Available Tools
 
-The kx-hub MCP server provides four main tools:
+The kx-hub MCP server provides the following tools, organized by category:
+
+### Core Search Tools
 
 ### 1. `search_semantic` - Semantic Search
 
@@ -71,6 +73,147 @@ Get overview statistics about your knowledge base.
 - Author count
 - Tag count
 - Average chunks per document
+
+---
+
+### Knowledge Card Tools
+
+Knowledge cards provide AI-generated summaries and key takeaways for each chunk, making it easier to scan your knowledge base at a glance.
+
+#### 5. `get_knowledge_card` - Get AI Summary for a Chunk
+
+Retrieve the AI-generated summary and key takeaways for a specific chunk.
+
+**When to use:** Getting a quick summary of a chunk without reading the full content.
+
+**Example Queries:**
+```
+"Show me the summary for chunk abc-123"
+"What are the key takeaways from this chunk?"
+```
+
+**Returns:**
+- Concise summary (≤200 characters)
+- List of key takeaways (3-5 bullet points)
+- Chunk metadata (title, author, source)
+
+#### 6. `search_knowledge_cards` - Search AI Summaries
+
+Semantic search across AI-generated summaries only (not full content). Faster than full search, ideal for high-level exploration.
+
+**When to use:** Quickly scanning your knowledge base for relevant topics without diving into full content.
+
+**Example Queries:**
+```
+"Find summaries about productivity systems"
+"What insights do I have about leadership?"
+```
+
+**Returns:**
+- Knowledge card summaries and takeaways
+- No full content (lighter, faster results)
+
+---
+
+### Cluster Discovery Tools
+
+Clusters organize your knowledge base into semantic topic groups, making it easier to browse by theme.
+
+#### 7. `list_clusters` - Browse All Topic Clusters
+
+List all semantic clusters in your knowledge base, sorted by size.
+
+**When to use:** Exploring what topics are in your knowledge base.
+
+**Example Queries:**
+```
+"What topics are in my knowledge base?"
+"Show me all clusters"
+```
+
+**Returns:**
+- Cluster name and description
+- Number of chunks in each cluster
+- Cluster IDs for deeper exploration
+
+#### 8. `get_cluster` - Explore a Specific Cluster
+
+Get details about a specific cluster, including member chunks.
+
+**When to use:** Deep-diving into a specific topic area.
+
+**Example Queries:**
+```
+"Show me the Productivity & Habits cluster"
+"What's in cluster-5?"
+```
+
+**Parameters:**
+- `cluster_id`: Cluster identifier
+- `include_chunks`: Whether to include member chunks (default: true)
+- `limit`: Maximum chunks to return (default: 20)
+
+**Returns:**
+- Cluster metadata (name, description, size)
+- Member chunks with knowledge cards
+- Cluster overview
+
+#### 9. `search_within_cluster` - Search Within a Topic
+
+Semantic search restricted to a specific cluster.
+
+**When to use:** Finding specific content within a known topic area.
+
+**Example Queries:**
+```
+"Search for focus techniques in the Productivity cluster"
+"Find decision-making insights in the Psychology cluster"
+```
+
+**Returns:**
+- Search results filtered to cluster members
+- Knowledge cards for each result
+- Cluster context
+
+---
+
+## Resources
+
+The MCP server exposes cluster data as browsable resources via URIs. Claude Desktop can display these as formatted markdown.
+
+### Cluster Resources
+
+#### `kxhub://clusters` - All Clusters Overview
+
+Browse all semantic clusters with descriptions and sizes.
+
+**Example:**
+```
+"Show me the clusters resource"
+"Browse kxhub://clusters"
+```
+
+#### `kxhub://cluster/{cluster_id}` - Cluster Details
+
+View a specific cluster with member chunks and snippets.
+
+**Example:**
+```
+"Show me kxhub://cluster/productivity"
+```
+
+#### `kxhub://cluster/{cluster_id}/cards` - Cluster with Knowledge Cards
+
+View a cluster with AI-generated summaries for all members (no full content).
+
+**Example:**
+```
+"Browse kxhub://cluster/psychology/cards"
+```
+
+**Use case:** Quick overview of a topic using AI summaries instead of full text.
+
+---
 
 ## Prompt Templates
 
@@ -182,6 +325,35 @@ Use the 'related_to_chunk' prompt with chunk_id: "41094950-chunk-003"
 
 ---
 
+### Using Knowledge Cards
+
+**You:**
+> What are the main ideas in my knowledge base about productivity?
+
+**Claude uses:** `search_knowledge_cards(query="productivity", limit=10)`
+
+**Result:** Claude shows AI-generated summaries and key takeaways from 10 relevant chunks, without the full text - perfect for quick scanning.
+
+---
+
+### Browsing by Cluster
+
+**You:**
+> What topics are in my knowledge base?
+
+**Claude uses:** `list_clusters()`
+
+**Result:** Claude shows all semantic clusters (e.g., "Productivity & Habits", "AI & Machine Learning", "Psychology & Behavior") with descriptions and sizes.
+
+**You:**
+> Tell me more about the Productivity cluster
+
+**Claude uses:** `get_cluster(cluster_id="productivity", include_chunks=True, limit=20)`
+
+**Result:** Claude shows cluster description and member chunks with knowledge cards.
+
+---
+
 ## Tips for Effective Queries
 
 ### 1. Be Specific
@@ -216,6 +388,31 @@ When you want organized analysis, invoke the prompt templates explicitly:
 ```
 "Use the author_deep_dive prompt for Daniel Kahneman"
 ```
+
+### 6. Start with Clusters for Topic Discovery
+
+When exploring your knowledge base:
+1. List clusters to see available topics
+2. Explore specific clusters for deep dives
+3. Use cluster-based search for focused queries
+
+**Example workflow:**
+```
+1. "What topics are in my knowledge base?"
+2. "Show me the Psychology cluster"
+3. "Search for cognitive biases in the Psychology cluster"
+```
+
+### 7. Use Knowledge Cards for Quick Scanning
+
+Knowledge cards provide AI summaries without full content:
+- Faster results (lighter payload)
+- Perfect for high-level exploration
+- Easy to scan multiple ideas quickly
+
+**When to use full search vs knowledge cards:**
+- Full search: When you need exact quotes and context
+- Knowledge cards: When you want to scan topics quickly
 
 ## Performance
 

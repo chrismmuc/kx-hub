@@ -85,8 +85,11 @@ development_status:
     notes: "IAM permissions deployed via Terraform. Graph generation code removed from initial_load.py (deferred to Story 3.2). Infrastructure ready for Story 3.2."
 
   2-6-mcp-enhancements:
-    status: drafted
+    status: review
     story_file: docs/stories/2.6-mcp-enhancements.md
+    context_file: docs/stories/2.6-mcp-enhancements.context.xml
+    completion_date: 2025-11-14
+    notes: "All 8 ACs met. 5 new MCP tools, 3 cluster resources, full backward compatibility. 20/20 tests pass. Ready for manual validation with Claude Desktop."
 
   # Epic 3: Knowledge Graph Visualization & Export
 

@@ -20,6 +20,79 @@ import embeddings
 logger = logging.getLogger(__name__)
 
 
+def _format_knowledge_card(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Extract and format knowledge card from chunk data.
+
+    Args:
+        chunk: Chunk dictionary from Firestore
+
+    Returns:
+        Formatted knowledge card dict or None if missing
+    """
+    knowledge_card = chunk.get('knowledge_card')
+    if not knowledge_card:
+        return None
+
+    return {
+        'summary': knowledge_card.get('summary', ''),
+        'takeaways': knowledge_card.get('takeaways', [])
+    }
+
+
+def _format_cluster_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Extract and format cluster information from chunk data.
+    Fetches cluster metadata from Firestore if cluster_id exists.
+
+    Args:
+        chunk: Chunk dictionary from Firestore
+
+    Returns:
+        Formatted cluster dict or None if no cluster assignment
+    """
+    cluster_ids = chunk.get('cluster_id', [])
+
+    # Handle edge cases
+    if not cluster_ids:
+        return None
+
+    # Get primary cluster (first in array)
+    primary_cluster_id = cluster_ids[0] if isinstance(cluster_ids, list) else cluster_ids
+
+    # Handle noise cluster
+    if primary_cluster_id == 'noise':
+        return {
+            'cluster_id': 'noise',
+            'name': 'Outliers / Noise',
+            'description': 'Chunks that do not fit well into any semantic cluster'
+        }
+
+    # Fetch cluster metadata from Firestore
+    try:
+        cluster_metadata = firestore_client.get_cluster_by_id(primary_cluster_id)
+        if cluster_metadata:
+            return {
+                'cluster_id': primary_cluster_id,
+                'name': cluster_metadata.get('name', f'Cluster {primary_cluster_id}'),
+                'description': cluster_metadata.get('description', '')
+            }
+        else:
+            # Cluster metadata not found
+            return {
+                'cluster_id': primary_cluster_id,
+                'name': f'Cluster {primary_cluster_id}',
+                'description': 'Cluster metadata not available'
+            }
+    except Exception as e:
+        logger.warning(f"Failed to fetch cluster metadata for {primary_cluster_id}: {e}")
+        return {
+            'cluster_id': primary_cluster_id,
+            'name': f'Cluster {primary_cluster_id}',
+            'description': 'Error fetching cluster metadata'
+        }
+
+
 def search_semantic(
     query: str,
     limit: int = 10,
@@ -70,6 +143,10 @@ def search_semantic(
             # Content snippet (first 500 chars)
             snippet = content[:500] + "..." if len(content) > 500 else content
 
+            # Extract knowledge card and cluster info
+            knowledge_card = _format_knowledge_card(chunk)
+            cluster_info = _format_cluster_info(chunk)
+
             result = {
                 'rank': rank,
                 'chunk_id': chunk_id,
@@ -79,7 +156,9 @@ def search_semantic(
                 'tags': tags_list,
                 'chunk_info': f"{chunk_index + 1}/{total_chunks}",
                 'snippet': snippet,
-                'full_content': content
+                'full_content': content,
+                'knowledge_card': knowledge_card,
+                'cluster': cluster_info
             }
 
             results.append(result)
@@ -155,6 +234,10 @@ def search_by_metadata(
             # Content snippet
             snippet = content[:500] + "..." if len(content) > 500 else content
 
+            # Extract knowledge card and cluster info
+            knowledge_card = _format_knowledge_card(chunk)
+            cluster_info = _format_cluster_info(chunk)
+
             result = {
                 'chunk_id': chunk_id,
                 'title': title,
@@ -163,7 +246,9 @@ def search_by_metadata(
                 'tags': tags_list,
                 'chunk_info': f"{chunk_index + 1}/{total_chunks}",
                 'snippet': snippet,
-                'full_content': content
+                'full_content': content,
+                'knowledge_card': knowledge_card,
+                'cluster': cluster_info
             }
 
             results.append(result)
@@ -252,6 +337,10 @@ def get_related_chunks(chunk_id: str, limit: int = 5) -> Dict[str, Any]:
             # Content snippet
             snippet = content[:500] + "..." if len(content) > 500 else content
 
+            # Extract knowledge card and cluster info
+            knowledge_card = _format_knowledge_card(chunk)
+            cluster_info = _format_cluster_info(chunk)
+
             result = {
                 'chunk_id': related_id,
                 'title': title,
@@ -259,7 +348,9 @@ def get_related_chunks(chunk_id: str, limit: int = 5) -> Dict[str, Any]:
                 'source': source,
                 'chunk_info': f"{chunk_index + 1}/{total_chunks}",
                 'snippet': snippet,
-                'full_content': content
+                'full_content': content,
+                'knowledge_card': knowledge_card,
+                'cluster': cluster_info
             }
 
             results.append(result)
@@ -563,6 +654,333 @@ def get_recently_added(limit: int = 10, days: int = 7) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Get recently added failed: {e}")
         return {
+            'result_count': 0,
+            'error': str(e),
+            'results': []
+        }
+
+
+def get_knowledge_card(chunk_id: str) -> Dict[str, Any]:
+    """
+    Get knowledge card (AI summary and takeaways) for a specific chunk.
+
+    Args:
+        chunk_id: Chunk ID to fetch knowledge card for
+
+    Returns:
+        Dictionary with knowledge card details or error
+    """
+    try:
+        logger.info(f"Fetching knowledge card for chunk {chunk_id}")
+
+        # Fetch chunk from Firestore
+        chunk = firestore_client.get_chunk_by_id(chunk_id)
+
+        if not chunk:
+            return {
+                'error': f'Chunk not found: {chunk_id}',
+                'chunk_id': chunk_id
+            }
+
+        # Extract knowledge card
+        knowledge_card = chunk.get('knowledge_card')
+
+        if not knowledge_card:
+            return {
+                'error': f'Knowledge card not available for chunk {chunk_id}',
+                'chunk_id': chunk_id,
+                'title': chunk.get('title', 'Untitled'),
+                'source': chunk.get('source', 'unknown')
+            }
+
+        logger.info(f"Retrieved knowledge card for {chunk_id}")
+
+        return {
+            'chunk_id': chunk_id,
+            'title': chunk.get('title', 'Untitled'),
+            'author': chunk.get('author', 'Unknown'),
+            'source': chunk.get('source', 'unknown'),
+            'knowledge_card': {
+                'summary': knowledge_card.get('summary', ''),
+                'takeaways': knowledge_card.get('takeaways', [])
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Get knowledge card failed: {e}")
+        return {
+            'error': str(e),
+            'chunk_id': chunk_id
+        }
+
+
+def search_knowledge_cards(query: str, limit: int = 10) -> Dict[str, Any]:
+    """
+    Semantic search across knowledge card summaries only (not full content).
+
+    Args:
+        query: Natural language search query
+        limit: Maximum number of results (default 10)
+
+    Returns:
+        Dictionary with knowledge card search results
+    """
+    try:
+        logger.info(f"Searching knowledge cards for query: '{query}' (limit: {limit})")
+
+        # Generate embedding for query
+        query_embedding = embeddings.generate_query_embedding(query)
+
+        # Execute vector search
+        chunks = firestore_client.find_nearest(
+            embedding_vector=query_embedding,
+            limit=limit
+        )
+
+        # Format results - return only knowledge card summaries
+        results = []
+        for rank, chunk in enumerate(chunks, 1):
+            chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+            title = chunk.get('title', 'Untitled')
+            author = chunk.get('author', 'Unknown')
+            source = chunk.get('source', 'unknown')
+
+            # Extract knowledge card
+            knowledge_card = chunk.get('knowledge_card')
+
+            result = {
+                'rank': rank,
+                'chunk_id': chunk_id,
+                'title': title,
+                'author': author,
+                'source': source,
+                'knowledge_card': {
+                    'summary': knowledge_card.get('summary', '') if knowledge_card else 'Knowledge card not available',
+                    'takeaways': knowledge_card.get('takeaways', []) if knowledge_card else []
+                }
+            }
+
+            results.append(result)
+
+        logger.info(f"Found {len(results)} knowledge card results")
+
+        return {
+            'query': query,
+            'result_count': len(results),
+            'limit': limit,
+            'results': results
+        }
+
+    except Exception as e:
+        logger.error(f"Search knowledge cards failed: {e}")
+        return {
+            'query': query,
+            'result_count': 0,
+            'error': str(e),
+            'results': []
+        }
+
+
+def list_clusters() -> Dict[str, Any]:
+    """
+    List all semantic clusters with metadata.
+
+    Returns:
+        Dictionary with list of clusters sorted by size
+    """
+    try:
+        logger.info("Listing all clusters")
+
+        clusters = firestore_client.get_all_clusters()
+
+        # Format results
+        results = []
+        for cluster in clusters:
+            cluster_id = cluster.get('id', 'unknown')
+
+            # Skip noise cluster or handle specially
+            if cluster_id == 'noise':
+                result = {
+                    'cluster_id': cluster_id,
+                    'name': 'Outliers / Noise',
+                    'description': 'Chunks that do not fit well into any semantic cluster',
+                    'size': cluster.get('size', 0)
+                }
+            else:
+                result = {
+                    'cluster_id': cluster_id,
+                    'name': cluster.get('name', f'Cluster {cluster_id}'),
+                    'description': cluster.get('description', ''),
+                    'size': cluster.get('size', 0),
+                    'created_at': str(cluster.get('created_at', ''))
+                }
+
+            results.append(result)
+
+        logger.info(f"Retrieved {len(results)} clusters")
+
+        return {
+            'cluster_count': len(results),
+            'clusters': results
+        }
+
+    except Exception as e:
+        logger.error(f"List clusters failed: {e}")
+        return {
+            'cluster_count': 0,
+            'error': str(e),
+            'clusters': []
+        }
+
+
+def get_cluster(cluster_id: str, include_chunks: bool = True, limit: int = 20) -> Dict[str, Any]:
+    """
+    Get cluster details with member chunks.
+
+    Args:
+        cluster_id: Cluster ID to fetch
+        include_chunks: Whether to include member chunks (default True)
+        limit: Maximum member chunks to return (default 20)
+
+    Returns:
+        Dictionary with cluster metadata and member chunks
+    """
+    try:
+        logger.info(f"Fetching cluster {cluster_id} (include_chunks: {include_chunks})")
+
+        # Fetch cluster metadata
+        cluster = firestore_client.get_cluster_by_id(cluster_id)
+
+        if not cluster:
+            return {
+                'error': f'Cluster not found: {cluster_id}',
+                'cluster_id': cluster_id
+            }
+
+        # Build response with metadata
+        response = {
+            'cluster_id': cluster_id,
+            'name': cluster.get('name', f'Cluster {cluster_id}'),
+            'description': cluster.get('description', ''),
+            'size': cluster.get('size', 0),
+            'created_at': str(cluster.get('created_at', ''))
+        }
+
+        # Fetch member chunks if requested
+        if include_chunks:
+            member_chunks = firestore_client.get_chunks_by_cluster(cluster_id, limit=limit)
+
+            # Format member chunks with knowledge cards
+            members = []
+            for chunk in member_chunks:
+                chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+                knowledge_card = _format_knowledge_card(chunk)
+
+                member = {
+                    'chunk_id': chunk_id,
+                    'title': chunk.get('title', 'Untitled'),
+                    'author': chunk.get('author', 'Unknown'),
+                    'source': chunk.get('source', 'unknown'),
+                    'knowledge_card': knowledge_card
+                }
+
+                members.append(member)
+
+            response['member_count'] = len(members)
+            response['members'] = members
+
+        logger.info(f"Retrieved cluster {cluster_id} with {response.get('member_count', 0)} members")
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Get cluster failed: {e}")
+        return {
+            'error': str(e),
+            'cluster_id': cluster_id
+        }
+
+
+def search_within_cluster_tool(cluster_id: str, query: str, limit: int = 10) -> Dict[str, Any]:
+    """
+    Semantic search restricted to a specific cluster.
+
+    Args:
+        cluster_id: Cluster ID to search within
+        query: Natural language search query
+        limit: Maximum number of results (default 10)
+
+    Returns:
+        Dictionary with search results from the cluster
+    """
+    try:
+        logger.info(f"Searching within cluster {cluster_id} for query: '{query}' (limit: {limit})")
+
+        # Verify cluster exists
+        cluster = firestore_client.get_cluster_by_id(cluster_id)
+
+        if not cluster:
+            return {
+                'error': f'Cluster not found: {cluster_id}',
+                'cluster_id': cluster_id,
+                'query': query,
+                'result_count': 0,
+                'results': []
+            }
+
+        # Generate embedding for query
+        query_embedding = embeddings.generate_query_embedding(query)
+
+        # Execute filtered vector search
+        chunks = firestore_client.search_within_cluster(
+            cluster_id=cluster_id,
+            embedding_vector=query_embedding,
+            limit=limit
+        )
+
+        # Format results
+        results = []
+        for rank, chunk in enumerate(chunks, 1):
+            chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+            title = chunk.get('title', 'Untitled')
+            author = chunk.get('author', 'Unknown')
+            source = chunk.get('source', 'unknown')
+            content = chunk.get('content', '')
+
+            # Content snippet
+            snippet = content[:500] + "..." if len(content) > 500 else content
+
+            # Extract knowledge card
+            knowledge_card = _format_knowledge_card(chunk)
+
+            result = {
+                'rank': rank,
+                'chunk_id': chunk_id,
+                'title': title,
+                'author': author,
+                'source': source,
+                'snippet': snippet,
+                'knowledge_card': knowledge_card
+            }
+
+            results.append(result)
+
+        logger.info(f"Found {len(results)} results in cluster {cluster_id}")
+
+        return {
+            'cluster_id': cluster_id,
+            'cluster_name': cluster.get('name', f'Cluster {cluster_id}'),
+            'query': query,
+            'result_count': len(results),
+            'limit': limit,
+            'results': results
+        }
+
+    except Exception as e:
+        logger.error(f"Search within cluster failed: {e}")
+        return {
+            'cluster_id': cluster_id,
+            'query': query,
             'result_count': 0,
             'error': str(e),
             'results': []

@@ -268,6 +268,94 @@ async def main():
                         }
                     }
                 }
+            ),
+            Tool(
+                name="get_knowledge_card",
+                description="Get knowledge card (AI summary and takeaways) for a specific chunk",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "chunk_id": {
+                            "type": "string",
+                            "description": "Chunk ID to fetch knowledge card for"
+                        }
+                    },
+                    "required": ["chunk_id"]
+                }
+            ),
+            Tool(
+                name="search_knowledge_cards",
+                description="Semantic search across knowledge card summaries only (not full content)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language search query"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results (default 10)",
+                            "default": 10
+                        }
+                    },
+                    "required": ["query"]
+                }
+            ),
+            Tool(
+                name="list_clusters",
+                description="List all semantic clusters with metadata",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
+            ),
+            Tool(
+                name="get_cluster",
+                description="Get cluster details with member chunks",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "cluster_id": {
+                            "type": "string",
+                            "description": "Cluster ID to fetch"
+                        },
+                        "include_chunks": {
+                            "type": "boolean",
+                            "description": "Whether to include member chunks (default True)",
+                            "default": True
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum member chunks to return (default 20)",
+                            "default": 20
+                        }
+                    },
+                    "required": ["cluster_id"]
+                }
+            ),
+            Tool(
+                name="search_within_cluster",
+                description="Semantic search restricted to a specific cluster",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "cluster_id": {
+                            "type": "string",
+                            "description": "Cluster ID to search within"
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language search query"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results (default 10)",
+                            "default": 10
+                        }
+                    },
+                    "required": ["cluster_id", "query"]
+                }
             )
         ]
 
@@ -324,6 +412,29 @@ async def main():
                 result = tools.get_recently_added(
                     limit=arguments.get("limit", 10),
                     days=arguments.get("days", 7)
+                )
+            elif name == "get_knowledge_card":
+                result = tools.get_knowledge_card(
+                    chunk_id=arguments["chunk_id"]
+                )
+            elif name == "search_knowledge_cards":
+                result = tools.search_knowledge_cards(
+                    query=arguments["query"],
+                    limit=arguments.get("limit", 10)
+                )
+            elif name == "list_clusters":
+                result = tools.list_clusters()
+            elif name == "get_cluster":
+                result = tools.get_cluster(
+                    cluster_id=arguments["cluster_id"],
+                    include_chunks=arguments.get("include_chunks", True),
+                    limit=arguments.get("limit", 20)
+                )
+            elif name == "search_within_cluster":
+                result = tools.search_within_cluster_tool(
+                    cluster_id=arguments["cluster_id"],
+                    query=arguments["query"],
+                    limit=arguments.get("limit", 10)
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}
