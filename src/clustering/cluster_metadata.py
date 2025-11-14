@@ -195,8 +195,8 @@ class ClusterMetadataGenerator:
             centroid_5d = np.mean(embeddings_5d, axis=0).astype(np.float32)
             logger.debug(f"  Computed 5D centroid for {cluster_id}: shape {centroid_5d.shape}")
 
-        # Generate name and description via Gemini
-        name, description = self._generate_cluster_name_description(chunks)
+        # Generate name and description via Gemini (with improved sampling)
+        name, description = self._generate_cluster_name_description(chunks, embeddings, centroid_768d)
 
         # Calculate statistics
         size = len(chunks)
@@ -222,42 +222,81 @@ class ClusterMetadataGenerator:
     def _generate_cluster_name_description(
         self,
         chunks: List[Dict[str, Any]],
-        sample_size: int = 5
+        embeddings: np.ndarray,
+        centroid: np.ndarray,
+        sample_size: int = 12
     ) -> tuple[str, str]:
         """
-        Generate cluster name and description using Gemini.
+        Generate cluster name and description using Gemini with improved sampling.
 
         Args:
             chunks: Chunks in this cluster
-            sample_size: Number of chunks to sample for analysis
+            embeddings: Embeddings for all chunks (same order as chunks)
+            centroid: Cluster centroid embedding
+            sample_size: Number of chunks to sample for analysis (default: 12)
 
         Returns:
             Tuple of (name, description)
         """
-        # Sample representative chunks
-        sample_chunks = chunks[:min(sample_size, len(chunks))]
+        from sklearn.metrics.pairwise import cosine_distances
 
-        # Build prompt with chunk titles and content snippets
+        # Improved sampling strategy: mix of representative + diverse chunks
+        n_chunks = len(chunks)
+        actual_sample_size = min(sample_size, n_chunks)
+
+        if n_chunks <= sample_size:
+            # Use all chunks if cluster is small
+            sample_chunks = chunks
+        else:
+            # Compute distances from centroid
+            distances = cosine_distances(embeddings, centroid.reshape(1, -1)).flatten()
+
+            # Select mix of representative (close to centroid) + diverse (spread across cluster)
+            n_representative = actual_sample_size // 2
+            n_diverse = actual_sample_size - n_representative
+
+            # Get indices of most representative chunks (closest to centroid)
+            representative_indices = np.argsort(distances)[:n_representative]
+
+            # Get diverse chunks by stratified sampling across distance ranges
+            remaining_indices = np.argsort(distances)[n_representative:]
+            if len(remaining_indices) > n_diverse:
+                # Sample evenly across remaining chunks
+                diverse_indices = remaining_indices[::len(remaining_indices)//n_diverse][:n_diverse]
+            else:
+                diverse_indices = remaining_indices
+
+            # Combine and select chunks
+            sample_indices = np.concatenate([representative_indices, diverse_indices])
+            sample_chunks = [chunks[i] for i in sample_indices]
+
+        logger.debug(f"  Sampling {len(sample_chunks)} chunks ({len(chunks)} total) for naming")
+
+        # Build prompt with chunk titles and LONGER content snippets
         chunk_texts = []
-        for chunk in sample_chunks:
+        for i, chunk in enumerate(sample_chunks):
             title = chunk.get('title', 'Untitled')
-            content = chunk.get('content', '')[:200]  # First 200 chars
-            chunk_texts.append(f"- {title}: {content}...")
+            content = chunk.get('content', '')[:400]  # Increased from 200 to 400 chars
+            chunk_texts.append(f"{i+1}. {title}\n   {content}...")
 
-        prompt = f"""Analyze these related knowledge chunks and generate a concise cluster name and description.
+        prompt = f"""Analyze these {len(chunks)} related knowledge chunks and generate an accurate cluster name.
 
-Representative chunks:
+I'm showing you {len(sample_chunks)} representative samples from the cluster:
+
 {chr(10).join(chunk_texts)}
 
-Total chunks in cluster: {len(chunks)}
+IMPORTANT INSTRUCTIONS:
+1. Identify the DOMINANT topic or theme that appears in MOST chunks (not just a few)
+2. Look for recurring keywords, concepts, and themes across all samples
+3. Generate a cluster name that captures the MAJORITY of the content
+4. If chunks seem to mix multiple topics, identify which topic is most prevalent
+5. Be specific enough to distinguish this cluster from others
 
 Generate:
-1. A short, descriptive cluster name (3-6 words)
-2. A brief description (1-2 sentences) explaining the common theme
+NAME: <cluster name (3-6 words, must reflect the DOMINANT theme across all {len(chunks)} chunks)>
+DESCRIPTION: <1-2 sentences explaining the common theme and key recurring concepts>
 
-Format your response as:
-NAME: <cluster name>
-DESCRIPTION: <description>"""
+Format your response EXACTLY as shown above."""
 
         try:
             response = self.model.generate_content(prompt)
