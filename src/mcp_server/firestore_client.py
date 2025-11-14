@@ -703,12 +703,15 @@ def search_within_cluster(
         logger.info(f"Executing vector search within cluster {cluster_id} (limit: {limit})")
 
         # Create vector query with cluster filter
-        vector_query = db.collection(collection).find_nearest(
+        # NOTE: Filter must be applied BEFORE find_nearest() in Firestore
+        vector_query = db.collection(collection).where(
+            'cluster_id', 'array_contains', cluster_id
+        ).find_nearest(
             vector_field='embedding',
             query_vector=Vector(embedding_vector),
             distance_measure=DistanceMeasure.COSINE,
-            limit=limit * 2  # Get more results to account for filtering
-        ).where('cluster_id', 'array_contains', cluster_id)
+            limit=limit
+        )
 
         docs = vector_query.stream()
 

@@ -465,6 +465,29 @@ resource "google_firestore_index" "kb_items_vector_index" {
   depends_on = [google_firestore_database.kb_database]
 }
 
+# Composite index for cluster-filtered vector search (Story 2.6)
+# Enables search_within_cluster: filter by cluster_id + vector search on embedding
+resource "google_firestore_index" "kb_items_cluster_vector_index" {
+  project    = var.project_id
+  database   = google_firestore_database.kb_database.name
+  collection = "kb_items"
+
+  fields {
+    field_path   = "cluster_id"
+    array_config = "CONTAINS"
+  }
+
+  fields {
+    field_path = "embedding"
+    vector_config {
+      dimension = 768
+      flat {}
+    }
+  }
+
+  depends_on = [google_firestore_database.kb_database]
+}
+
 # IAM Service Account for the Embed Cloud Function
 resource "google_service_account" "embed_function_sa" {
   account_id   = "embed-function-sa"

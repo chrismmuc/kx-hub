@@ -62,7 +62,7 @@ resource "google_cloudfunctions2_function" "knowledge_cards_function" {
 
   build_config {
     runtime     = "python311"
-    entry_point = "generate_cards_handler"  # Entry point in cloud_function.py
+    entry_point = "generate_cards_handler" # Entry point in cloud_function.py
     source {
       storage_source {
         bucket = google_storage_bucket.function_source.name
@@ -72,13 +72,13 @@ resource "google_cloudfunctions2_function" "knowledge_cards_function" {
   }
 
   service_config {
-    max_instance_count    = 3  # Allow parallel execution for faster processing
+    max_instance_count    = 3     # Allow parallel execution for faster processing
     timeout_seconds       = 3600  # 60 minutes for 818 chunks (~5 sec each = ~68 min)
-    available_memory      = "1Gi"  # More memory for LLM API calls
+    available_memory      = "1Gi" # More memory for LLM API calls
     service_account_email = google_service_account.knowledge_cards_function_sa.email
     environment_variables = {
-      GCP_PROJECT         = var.project_id
-      GCP_REGION          = var.region
+      GCP_PROJECT          = var.project_id
+      GCP_REGION           = var.region
       FIRESTORE_COLLECTION = "kb_items"
     }
   }
