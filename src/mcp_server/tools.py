@@ -1103,11 +1103,11 @@ def get_related_clusters(
             }
 
         # Get centroid from source cluster
-        source_centroid = source_cluster.get('centroid')
+        source_centroid = source_cluster.get('centroid_768d')
         if not source_centroid:
             return {
                 'cluster_id': cluster_id,
-                'error': f'Cluster {cluster_id} has no centroid (vector search not possible)',
+                'error': f'Cluster {cluster_id} has no centroid_768d (vector search not possible)',
                 'result_count': 0,
                 'results': []
             }
@@ -1126,13 +1126,14 @@ def get_related_clusters(
 
         # Perform Firestore vector search
         db = firestore_client.get_firestore_client()
-        logger.info(f"Executing vector search on centroids...")
+        logger.info(f"Executing vector search on centroid_768d...")
 
         vector_query = db.collection('clusters').find_nearest(
-            vector_field='centroid',
+            vector_field='centroid_768d',
             query_vector=Vector(source_centroid),
             distance_measure=distance,
-            limit=limit + 1  # +1 because source cluster will be in results
+            limit=limit + 1,  # +1 because source cluster will be in results
+            distance_result_field='vector_distance'  # Store distance in result
         )
 
         # Format results
@@ -1142,15 +1143,15 @@ def get_related_clusters(
             if doc.id == cluster_id:
                 continue
 
-            # Skip noise clusters (cluster_id -1 or name contains "Noise")
+            # Skip noise clusters (various naming conventions)
             # Noise clusters don't represent coherent concepts
             doc_data = doc.to_dict()
             cluster_name = doc_data.get('name', '')
-            if doc.id == '-1' or doc.id == 'cluster_-1' or 'noise' in cluster_name.lower():
+            if doc.id in ('-1', 'cluster_-1', 'noise', 'cluster-noise') or 'noise' in cluster_name.lower() or 'noise' in doc.id.lower():
                 continue
 
             # Extract distance (lower = more similar)
-            distance_value = doc.get('__distance__', 0)
+            distance_value = doc_data.get('vector_distance', 0)
 
             # Convert distance to similarity score (1 = identical, 0 = opposite)
             # For COSINE: distance is 0-2 range (0=identical, 2=opposite)

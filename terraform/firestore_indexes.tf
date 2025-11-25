@@ -16,7 +16,7 @@ resource "google_firestore_index" "cluster_centroid_vector_index" {
 
   # Vector field configuration (MUST be last in the index)
   fields {
-    field_path = "centroid"
+    field_path = "centroid_768d"
     vector_config {
       dimension = 768  # text-embedding-004 produces 768-dim embeddings
       flat {}          # Flat index type (only supported type currently)
