@@ -1167,7 +1167,7 @@ def get_related_clusters(
                 'description': doc_data.get('description', ''),
                 'similarity_score': round(similarity, 3),
                 'distance': round(distance_value, 3),
-                'chunk_count': doc_data.get('chunk_count', 0)
+                'size': doc_data.get('size', 0)
             })
 
             if len(results) >= limit:
@@ -1180,7 +1180,7 @@ def get_related_clusters(
                 'cluster_id': cluster_id,
                 'name': source_cluster.get('name', f'Cluster {cluster_id}'),
                 'description': source_cluster.get('description', ''),
-                'chunk_count': source_cluster.get('chunk_count', 0)
+                'size': source_cluster.get('size', 0)
             },
             'distance_measure': distance_measure,
             'result_count': len(results),
