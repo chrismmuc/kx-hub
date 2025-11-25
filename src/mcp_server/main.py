@@ -356,6 +356,31 @@ async def main():
                     },
                     "required": ["cluster_id", "query"]
                 }
+            ),
+            Tool(
+                name="get_related_clusters",
+                description="Find clusters conceptually related to a given cluster using vector similarity on centroids (Story 3.4)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "cluster_id": {
+                            "type": "string",
+                            "description": "Source cluster ID to find relations for"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of related clusters (default 5, max 20)",
+                            "default": 5
+                        },
+                        "distance_measure": {
+                            "type": "string",
+                            "enum": ["COSINE", "EUCLIDEAN", "DOT_PRODUCT"],
+                            "description": "Distance measure for similarity (default COSINE)",
+                            "default": "COSINE"
+                        }
+                    },
+                    "required": ["cluster_id"]
+                }
             )
         ]
 
@@ -435,6 +460,12 @@ async def main():
                     cluster_id=arguments["cluster_id"],
                     query=arguments["query"],
                     limit=arguments.get("limit", 10)
+                )
+            elif name == "get_related_clusters":
+                result = tools.get_related_clusters(
+                    cluster_id=arguments["cluster_id"],
+                    limit=arguments.get("limit", 5),
+                    distance_measure=arguments.get("distance_measure", "COSINE")
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}

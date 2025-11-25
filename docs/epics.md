@@ -373,21 +373,102 @@
 
 ---
 
-## Epic 3: Advanced Knowledge Graph & System Optimization
+### Story 2.7: URL Link Storage & Backfill
 
-**Goal:** Implement advanced clustering features and system optimizations to maintain cluster quality at scale, prevent drift, and enable knowledge base growth beyond 10,000 chunks.
+**Status:** Backlog
 
-**Business Value:** Ensures long-term cluster coherence, enables automated quality maintenance, and future-proofs the clustering system for large-scale knowledge bases without manual intervention.
+**Summary:** Extend Firestore data model to capture and store URL links (book readwise_url, book source_url, highlight readwise_url) from Readwise API. Update pipeline functions to extract and store URLs, extend MCP server to return URLs in results, and create backfill script for existing 825+ chunks.
 
-**Dependencies:** Epic 2 (Story 2.3 - Clustering Consistency Fix must be complete)
+**Key Features:**
+- **Data Model Extension:** Add URL fields to Firestore kb_items schema
+  - `readwise_url` - Book review URL from Readwise
+  - `source_url` - Original source URL (article/book)
+  - `highlight_url` - Individual highlight URL (optional, for traceability)
+- **Pipeline Updates:**
+  - Modify normalize function to extract URLs from raw JSON
+  - Update embed function to store URLs in Firestore
+  - Add URL fields to markdown frontmatter for consistency
+- **MCP Server Enhancement:** Include URLs in all search tool responses
+- **Backfill Script:** Local Python script to populate URLs for existing chunks
+  - Read raw JSON from GCS
+  - Extract URLs
+  - Update Firestore documents in batches
+  - Handle missing source_url gracefully (many are null)
 
-**Estimated Complexity:** High - Advanced ML operations, Cloud Run jobs, automated drift detection
+**Dependencies:** Story 1.6 (Intelligent Chunking) - requires chunk-level data model
 
-**Status:** Planned
+**Technical Approach:**
+- Readwise API provides URLs in raw JSON (verified in sample data)
+- Add 3 new fields to Firestore schema (string type, indexed for search)
+- Reuse existing GCS→Firestore update patterns from Story 1.6
+- Backfill script similar to knowledge cards initial_load pattern
+
+**Success Metrics:**
+- All new chunks (100%) capture URLs from Readwise API
+- Backfill completes for 825+ existing chunks
+- MCP search results include clickable URLs
+- Zero cost increase (uses existing data)
+- <5 minutes execution time for backfill script
+
+**Business Value:**
+- Enables traceability back to original Readwise highlights
+- Supports "open in Readwise" workflows from Claude Desktop
+- Enables future features (web clipping, source verification)
+- Closes data model gap identified during usage
 
 ---
 
-### Story 3.1: Automated Periodic Re-clustering with Drift Detection
+## Epic 3: Knowledge Graph Enhancement & Optimization
+
+**Goal:** Enhance knowledge graph capabilities with cluster relationship discovery, automated quality maintenance, and graph regeneration to enable concept chaining and maintain cluster quality at scale.
+
+**Business Value:** Enables emergent idea discovery through cluster relationships, prevents cluster drift over time, ensures graph stays current with delta updates, and future-proofs the clustering system for knowledge bases beyond 10,000 chunks.
+
+**Dependencies:** Epic 2 (Story 2.3 - Clustering Consistency Fix must be complete)
+
+**Estimated Complexity:** High - Advanced ML operations, Firestore vector search, Cloud Run jobs, automated drift detection
+
+**Status:** Active Development (Stories 3.3-3.4 Ready, Story 3.2 Planned, Story 3.1 Backlog)
+
+---
+
+### Story 3.1: Remote MCP Server Deployment
+
+**Status:** Backlog
+
+**Summary:** Deploy MCP server as a remote service (Cloud Run or Cloud Function) to eliminate local setup requirements and enable access from multiple devices. Currently MCP server runs locally requiring manual Python environment setup on each device.
+
+**Key Features:**
+- Remote MCP server deployment (Cloud Run or Cloud Function)
+- HTTP endpoint with authentication
+- Support for multiple concurrent users
+- Zero local setup required
+- Access from any device with Claude Desktop
+
+**Dependencies:** Story 2.6 (MCP Enhancements) - requires functional MCP server
+
+**Technical Approach:**
+- Deploy existing MCP server code to Cloud Run
+- Add authentication layer (API key or OAuth)
+- Configure Claude Desktop to use remote endpoint
+- Test concurrent access patterns
+
+**Success Metrics:**
+- MCP server accessible remotely from any device
+- <1 second response time for queries (P95)
+- Zero local Python setup required
+- Support for 3+ concurrent users
+- Cost impact: <$1/month (Cloud Run free tier)
+
+**Business Value:**
+- Multi-device access (laptop, desktop, tablet)
+- No local Python environment setup
+- Simplified onboarding
+- Better reliability (always-on service)
+
+---
+
+### Story 3.2: Periodic Reclustering with Drift Detection
 
 **Status:** Planned
 
@@ -426,6 +507,103 @@
 
 ---
 
+### Story 3.3: Graph Regeneration on Delta Clustering
+
+**Status:** Backlog
+
+**Summary:** Add smart graph regeneration to delta clustering Cloud Function to keep graph.json current after new chunks are added. Currently graph.json becomes stale after delta updates, requiring manual regeneration.
+
+**Key Features:**
+- **Smart Regeneration:** Only regenerate if data change exceeds threshold (>1% new chunks)
+- **Non-blocking:** Regeneration doesn't delay delta processing
+- **Threshold-based:** Skip regeneration for small updates (<1% changes)
+- **Environment Configurable:** `GRAPH_REGEN_THRESHOLD` variable
+- **Future Enhancement:** Incremental updates instead of full regeneration
+
+**Dependencies:**
+- Story 2.5 (Storage Permissions) - prerequisite for graph.json uploads
+- Story 2.3 (Clustering Consistency) - produces graph.json
+
+**Technical Approach:**
+- Add `should_regenerate_graph()` function with 1% default threshold
+- Call graph generation after delta clustering completes
+- Upload to `gs://kx-hub-pipeline/graphs/graph.json`
+- Non-blocking error handling (graph failure doesn't fail clustering)
+
+**Success Metrics:**
+- Graph regeneration skipped for <1% changes (most runs)
+- Graph regenerated for ≥1% changes (~1-2 times/week)
+- Regeneration completes in <5 seconds for current dataset
+- Monitoring for graph regeneration failures
+- Zero impact on delta clustering performance
+
+**Business Value:**
+- Future visualization features will show current cluster structure
+- No manual intervention required to keep graph updated
+- Scales to large datasets with smart thresholding
+
+**Why Deferred:**
+- No current visualization feature using graph.json
+- Implement when Epic 3 visualization is actually needed
+- Estimated effort: 4-6 hours for Phase 1 implementation
+
+---
+
+### Story 3.4: Cluster Relationship Discovery via Vector Search
+
+**Status:** Ready for Implementation
+
+**Summary:** Enable cluster relationship discovery using Firestore native vector search on cluster centroids. Users can discover how different concept clusters relate to each other, enabling concept chaining and emergent idea discovery.
+
+**Key Features:**
+- **Firestore Vector Index:** Create vector index on `clusters.centroid` field (768-dim)
+- **MCP Tool:** New `get_related_clusters(cluster_id, limit)` tool
+- **Distance Measures:** Support COSINE, EUCLIDEAN, DOT_PRODUCT similarity
+- **Concept Exploration:** Users traverse cluster relationships to discover emergent patterns
+- **Bridge Discovery:** Find how seemingly unrelated clusters connect
+
+**Dependencies:**
+- Story 2.2 (Semantic Clustering) - produces cluster centroids
+- Story 2.6 (MCP Enhancements) - provides MCP infrastructure
+
+**Technical Approach:**
+- **Terraform:** Create Firestore vector index on centroid field
+- **MCP Tool:** Implement `get_related_clusters()` using Firestore `find_nearest()`
+- **Performance:** 5-10x faster than manual scan (<50ms P95)
+- **Cost:** ~$0.01/month (negligible)
+
+**Success Metrics:**
+- Vector index created and operational
+- MCP tool returns top-K similar clusters in <50ms (P95)
+- Related clusters have meaningful conceptual connections (manual validation)
+- All distance measures work correctly
+- Edge cases handled (invalid IDs, missing centroids)
+
+**Business Value:**
+- **Research-backed:** Aligns with modern PKM systems (Heptabase, Mem.ai, Obsidian)
+- **Discover patterns:** "Your reading on X connects to Y via Z"
+- **Explore knowledge graph:** Navigate from one concept to related concepts
+- **Synthesize insights:** Combine ideas from multiple clusters
+- **Periodic insights:** "This month's reading formed 3 new concepts that connect to..."
+
+**Example Usage:**
+```
+User: "What concepts relate to semantic search?"
+Claude: Your semantic search notes connect to:
+1. Personal Knowledge Management (87% similar)
+2. MCP and AI Context (82% similar)
+3. Reading Workflows (78% similar)
+
+Emergent pattern: "AI-augmented personal knowledge systems"
+```
+
+**Future Enhancements:**
+- Phase 2: Multi-hop graph traversal
+- Phase 3: Pre-computed relationship caching
+- Phase 4: Natural language cluster search
+
+---
+
 ## Future Epics (Beyond Current Scope)
 
 See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backlog) for planned enhancements:
@@ -453,7 +631,7 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 |------|---------|--------|------------|
 | Epic 1: Core Pipeline & KB Infrastructure | 8 | Complete | 8/8 Complete (100%) |
 | Epic 2: Enhanced Knowledge Graph & Clustering | 6 | Active | 2/6 Complete (33%) |
-| Epic 3: Advanced Knowledge Graph & System Optimization | 1 | Planned | 0/1 Complete (0%) |
+| Epic 3: Knowledge Graph Enhancement & Optimization | 4 | Active | 0/4 Complete (0%) |
 | Epic 4: Export & Distribution (Future) | TBD | Planned | 0% |
 | Epic 5: Advanced Features (Future) | TBD | Backlog | 0% |
 | Epic 6: MCP Server Enhancements (Future) | TBD | Backlog | 0% |

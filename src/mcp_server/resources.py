@@ -198,6 +198,11 @@ def format_chunk_markdown(chunk: dict) -> str:
     total_chunks = chunk.get('total_chunks', 1)
     content = chunk.get('content', '*No content available*')
 
+    # Story 2.7: Extract URL fields
+    readwise_url = chunk.get('readwise_url')
+    source_url = chunk.get('source_url')
+    highlight_url = chunk.get('highlight_url')
+
     # Build markdown
     md = f"# {title}\n\n"
     md += f"**Author:** {author}  \n"
@@ -208,6 +213,18 @@ def format_chunk_markdown(chunk: dict) -> str:
 
     md += f"**Chunk:** {chunk_index + 1} of {total_chunks}  \n"
     md += f"**ID:** `{chunk_id}`\n\n"
+
+    # Story 2.7: Add URL links section
+    if readwise_url or source_url or highlight_url:
+        md += "**Links:**  \n"
+        if readwise_url:
+            md += f"- [Readwise]({readwise_url})  \n"
+        if source_url:
+            md += f"- [Original Source]({source_url})  \n"
+        if highlight_url:
+            md += f"- [Highlight]({highlight_url})  \n"
+        md += "\n"
+
     md += "---\n\n"
     md += content
 
@@ -237,12 +254,18 @@ def format_multiple_chunks(chunks: List[dict], filter_description: str) -> str:
         total_chunks = chunk.get('total_chunks', 1)
         content = chunk.get('content', '')
 
+        # Story 2.7: Extract URL fields
+        readwise_url = chunk.get('readwise_url')
+
         # Snippet (first 300 chars)
         snippet = content[:300] + "..." if len(content) > 300 else content
 
         md += f"## {i}. {title} [{chunk_index + 1}/{total_chunks}]\n\n"
         md += f"**Author:** {author}  \n"
-        md += f"**ID:** `{chunk_id}`\n\n"
+        md += f"**ID:** `{chunk_id}`"
+        if readwise_url:
+            md += f" | [View in Readwise]({readwise_url})"
+        md += "\n\n"
         md += f"{snippet}\n\n"
         md += "---\n\n"
 
@@ -312,12 +335,18 @@ def format_cluster_details(cluster: dict, members: List[dict]) -> str:
         source = chunk.get('source', 'unknown')
         content = chunk.get('content', '')
 
+        # Story 2.7: Extract URL fields
+        readwise_url = chunk.get('readwise_url')
+
         # Snippet
         snippet = content[:200] + "..." if len(content) > 200 else content
 
         md += f"### {i}. {title}\n\n"
         md += f"**Author:** {author} | **Source:** {source}  \n"
-        md += f"**ID:** `{chunk_id}`\n\n"
+        md += f"**ID:** `{chunk_id}`"
+        if readwise_url:
+            md += f" | [Readwise]({readwise_url})"
+        md += "\n\n"
         md += f"{snippet}\n\n"
 
     md += f"\n**View with Knowledge Cards:** `kxhub://cluster/{cluster_id}/cards`\n"
@@ -356,9 +385,15 @@ def format_cluster_with_cards(cluster: dict, members: List[dict]) -> str:
         source = chunk.get('source', 'unknown')
         knowledge_card = chunk.get('knowledge_card', {})
 
+        # Story 2.7: Extract URL fields
+        readwise_url = chunk.get('readwise_url')
+
         md += f"### {i}. {title}\n\n"
         md += f"**Author:** {author} | **Source:** {source}  \n"
-        md += f"**ID:** `{chunk_id}`\n\n"
+        md += f"**ID:** `{chunk_id}`"
+        if readwise_url:
+            md += f" | [Readwise]({readwise_url})"
+        md += "\n\n"
 
         if knowledge_card:
             summary = knowledge_card.get('summary', 'No summary available')

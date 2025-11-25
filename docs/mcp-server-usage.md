@@ -175,6 +175,63 @@ Semantic search restricted to a specific cluster.
 - Knowledge cards for each result
 - Cluster context
 
+#### 10. `get_related_clusters` - Find Related Topic Clusters
+
+Discover clusters conceptually related to a given cluster using vector similarity on cluster centroids. This enables exploration of how different knowledge areas connect.
+
+**When to use:** Exploring connections between topics, finding emergent patterns, discovering "meta-concepts" that span multiple clusters.
+
+**Example Queries:**
+```
+"What clusters are related to the Semantic Search cluster?"
+"Find topics that connect to my AI notes"
+"How does this cluster relate to other areas in my knowledge base?"
+```
+
+**Parameters:**
+- `cluster_id`: Source cluster to find relations for (required)
+- `limit`: Maximum related clusters to return (default: 5, max: 20)
+- `distance_measure`: Similarity measure - COSINE (default), EUCLIDEAN, or DOT_PRODUCT
+
+**Returns:**
+- Source cluster metadata
+- List of related clusters with similarity scores (0-1, higher = more similar)
+- Distance values for each related cluster
+
+**Example Response:**
+```json
+{
+  "source_cluster": {
+    "cluster_id": "cluster_12",
+    "name": "Semantic Search",
+    "description": "Notes about semantic search techniques",
+    "chunk_count": 15
+  },
+  "related_clusters": [
+    {
+      "cluster_id": "cluster_18",
+      "name": "Personal Knowledge Management",
+      "similarity_score": 0.87,
+      "chunk_count": 31
+    },
+    {
+      "cluster_id": "cluster_25",
+      "name": "MCP and AI Context",
+      "similarity_score": 0.82,
+      "chunk_count": 12
+    }
+  ],
+  "result_count": 2
+}
+```
+
+**Use case: Concept Chain Exploration**
+```
+1. "What clusters are related to Semantic Search?"
+2. "Now show me what's related to Personal Knowledge Management"
+3. "I see a pattern emerging about AI-powered personal knowledge systems!"
+```
+
 ---
 
 ## Resources
@@ -354,6 +411,45 @@ Use the 'related_to_chunk' prompt with chunk_id: "41094950-chunk-003"
 
 ---
 
+## URL Fields in Search Results
+
+All MCP search tools now return URL fields for traceability back to Readwise:
+
+- **`readwise_url`**: Link to book review in Readwise (always present)
+- **`source_url`**: Link to original source article/book (may be null for some books)
+- **`highlight_url`**: Link to specific highlight in Readwise (optional, for detailed view)
+
+**Example Response:**
+```json
+{
+  "chunk_id": "41094950-chunk-003",
+  "title": "Geschwister Als Team",
+  "author": "Nicola Schmidt",
+  "readwise_url": "https://readwise.io/bookreview/41094950",
+  "source_url": null,
+  "highlight_url": "https://readwise.io/open/727604197",
+  "content": "..."
+}
+```
+
+**Usage in Claude Desktop:**
+
+You can use these URLs to:
+- Open highlights directly in Readwise web interface
+- Navigate to original source articles
+- Share specific highlights with others
+- Verify highlight context in Readwise
+
+**Example Queries:**
+```
+"Find content about decision making and give me the Readwise links"
+"Show me highlights from this author with URLs"
+```
+
+Claude will include clickable URLs in the response, making it easy to explore content further in Readwise.
+
+---
+
 ## Tips for Effective Queries
 
 ### 1. Be Specific
@@ -401,6 +497,27 @@ When exploring your knowledge base:
 1. "What topics are in my knowledge base?"
 2. "Show me the Psychology cluster"
 3. "Search for cognitive biases in the Psychology cluster"
+```
+
+### 8. Discover Cluster Relationships
+
+Find how different knowledge areas connect:
+```
+1. "What clusters are related to Productivity?"
+2. "Show me the connection path between AI clusters and Writing clusters"
+3. Claude chains get_related_clusters to find intermediate connections
+```
+
+**Example - Emergent Pattern Discovery:**
+```
+You: "What topics relate to my MCP notes?"
+Claude: "Your MCP notes (Cluster #25) connect to:
+  - Semantic Search (87% similar) - both focus on information retrieval
+  - PKM Systems (82% similar) - both about organizing knowledge
+  - AI Workflows (78% similar) - both enable AI-assisted tasks
+
+These four clusters together suggest you're developing thinking 
+around 'AI-augmented personal knowledge systems'."
 ```
 
 ### 7. Use Knowledge Cards for Quick Scanning

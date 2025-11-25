@@ -273,6 +273,14 @@ def parse_markdown(content: str) -> Tuple[Dict[str, Any], str]:
     if 'category' not in metadata:
         metadata['category'] = 'unknown'
 
+    # Normalize URL fields (Story 2.7: URL Link Storage)
+    if 'readwise_url' not in metadata:
+        metadata['readwise_url'] = metadata.get('url')  # Fallback to legacy url field
+    if 'source_url' not in metadata:
+        metadata['source_url'] = None
+    if 'highlight_url' not in metadata:
+        metadata['highlight_url'] = None
+
     markdown_content = parts[2].strip()
     return metadata, markdown_content
 
@@ -374,6 +382,10 @@ def write_to_firestore(
                 'source': metadata.get('source', 'unknown'),
                 'category': metadata.get('category', 'unknown'),
                 'tags': metadata.get('tags', []),
+                # Story 2.7: URL Link Storage - add URL fields
+                'readwise_url': metadata.get('readwise_url'),
+                'source_url': metadata.get('source_url'),
+                'highlight_url': metadata.get('highlight_url'),
                 'content': content,  # NEW: Store full chunk content
                 'embedding_model': 'gemini-embedding-001',
                 'content_hash': content_hash,

@@ -80,6 +80,9 @@ kb_items/
 | `source` | string | ✅ | Content source: kindle, evernote, twitter, etc. |
 | `category` | string | ✅ | Content category: books, articles, highlights, etc. |
 | `tags` | array(string) | ✅ | Array of tags from parent document |
+| `readwise_url` | string | ✅ | Readwise book review URL |
+| `source_url` | string | ❌ | Original source URL (nullable - many books lack this) |
+| `highlight_url` | string | ❌ | Readwise highlight-specific URL (optional for traceability) |
 | `content` | string | ✅ | Full chunk text (markdown with overlap) |
 | `embedding` | Vector | ✅ | 768-dimensional vector (Firestore native Vector type) |
 | `embedding_model` | string | ✅ | Model used: "gemini-embedding-001" |

@@ -20,13 +20,13 @@ flowchart TB
 
   PS_TOPIC --> WF[Cloud Workflows: Pipeline]
 
-  WF --> F2[Cloud Function: Normalize/Markdown]
+  WF --> F2[Cloud Function: Normalize/Markdown + URLs]
   F2 --> GCS_MD[(Cloud Storage: markdown-normalized)]
 
-  WF --> F3[Cloud Function: Embed & Store]
+  WF --> F3[Cloud Function: Embed & Store + URLs]
   F3 -->|gemini-embedding-001| V_EMB[Vertex AI: Embeddings API]
   V_EMB --> F3
-  F3 --> FS_KB[(Firestore: kb_items)]
+  F3 --> FS_KB[(Firestore: kb_items with URLs)]
 
   WF --> F4[Cloud Function: Knowledge Cards]
   F4 -->|Gemini 2.5 Flash| V_GEN[Vertex AI: Generative AI]

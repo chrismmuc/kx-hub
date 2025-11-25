@@ -465,8 +465,9 @@ resource "google_firestore_index" "kb_items_vector_index" {
   depends_on = [google_firestore_database.kb_database]
 }
 
-# Composite index for cluster-filtered vector search (Story 2.6)
-# Enables search_within_cluster: filter by cluster_id + vector search on embedding
+# Composite index for cluster-filtered queries (Story 2.6)
+# Note: Firestore doesn't support combining array_config with vector_config
+# in the same composite index. Vector search within cluster uses post-filtering.
 resource "google_firestore_index" "kb_items_cluster_vector_index" {
   project    = var.project_id
   database   = google_firestore_database.kb_database.name
@@ -478,11 +479,8 @@ resource "google_firestore_index" "kb_items_cluster_vector_index" {
   }
 
   fields {
-    field_path = "embedding"
-    vector_config {
-      dimension = 768
-      flat {}
-    }
+    field_path = "__name__"
+    order      = "ASCENDING"
   }
 
   depends_on = [google_firestore_database.kb_database]

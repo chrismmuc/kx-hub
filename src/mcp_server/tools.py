@@ -10,6 +10,7 @@ Tools:
 - search_by_relative_time: Query chunks using relative time periods (yesterday, last week, etc.)
 - get_reading_activity: Get reading activity summary and statistics
 - get_recently_added: Get most recently added chunks
+- get_related_clusters: Find clusters conceptually related to a given cluster (Story 3.4)
 """
 
 import logging
@@ -18,6 +19,25 @@ import firestore_client
 import embeddings
 
 logger = logging.getLogger(__name__)
+
+
+def _format_urls(chunk: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    """
+    Extract and format URL fields from chunk data.
+
+    Story 2.7: URL Link Storage - provides traceability back to Readwise.
+
+    Args:
+        chunk: Chunk dictionary from Firestore
+
+    Returns:
+        Dictionary with URL fields (values may be None)
+    """
+    return {
+        'readwise_url': chunk.get('readwise_url'),
+        'source_url': chunk.get('source_url'),
+        'highlight_url': chunk.get('highlight_url')
+    }
 
 
 def _format_knowledge_card(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -143,9 +163,10 @@ def search_semantic(
             # Content snippet (first 500 chars)
             snippet = content[:500] + "..." if len(content) > 500 else content
 
-            # Extract knowledge card and cluster info
+            # Extract knowledge card, cluster info, and URLs
             knowledge_card = _format_knowledge_card(chunk)
             cluster_info = _format_cluster_info(chunk)
+            urls = _format_urls(chunk)
 
             result = {
                 'rank': rank,
@@ -158,7 +179,8 @@ def search_semantic(
                 'snippet': snippet,
                 'full_content': content,
                 'knowledge_card': knowledge_card,
-                'cluster': cluster_info
+                'cluster': cluster_info,
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -234,9 +256,10 @@ def search_by_metadata(
             # Content snippet
             snippet = content[:500] + "..." if len(content) > 500 else content
 
-            # Extract knowledge card and cluster info
+            # Extract knowledge card, cluster info, and URLs
             knowledge_card = _format_knowledge_card(chunk)
             cluster_info = _format_cluster_info(chunk)
+            urls = _format_urls(chunk)
 
             result = {
                 'chunk_id': chunk_id,
@@ -248,7 +271,8 @@ def search_by_metadata(
                 'snippet': snippet,
                 'full_content': content,
                 'knowledge_card': knowledge_card,
-                'cluster': cluster_info
+                'cluster': cluster_info,
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -337,9 +361,10 @@ def get_related_chunks(chunk_id: str, limit: int = 5) -> Dict[str, Any]:
             # Content snippet
             snippet = content[:500] + "..." if len(content) > 500 else content
 
-            # Extract knowledge card and cluster info
+            # Extract knowledge card, cluster info, and URLs
             knowledge_card = _format_knowledge_card(chunk)
             cluster_info = _format_cluster_info(chunk)
+            urls = _format_urls(chunk)
 
             result = {
                 'chunk_id': related_id,
@@ -350,7 +375,8 @@ def get_related_chunks(chunk_id: str, limit: int = 5) -> Dict[str, Any]:
                 'snippet': snippet,
                 'full_content': content,
                 'knowledge_card': knowledge_card,
-                'cluster': cluster_info
+                'cluster': cluster_info,
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -449,6 +475,9 @@ def search_by_date_range(
             # Content snippet (first 500 chars)
             snippet = content[:500] + "..." if len(content) > 500 else content
 
+            # Extract URLs (Story 2.7)
+            urls = _format_urls(chunk)
+
             result = {
                 'rank': rank,
                 'chunk_id': chunk_id,
@@ -458,7 +487,8 @@ def search_by_date_range(
                 'tags': tags_list,
                 'chunk_info': f"{chunk_index + 1}/{total_chunks}",
                 'snippet': snippet,
-                'full_content': content
+                'full_content': content,
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -531,6 +561,9 @@ def search_by_relative_time(
             # Content snippet (first 500 chars)
             snippet = content[:500] + "..." if len(content) > 500 else content
 
+            # Extract URLs (Story 2.7)
+            urls = _format_urls(chunk)
+
             result = {
                 'rank': rank,
                 'chunk_id': chunk_id,
@@ -540,7 +573,8 @@ def search_by_relative_time(
                 'tags': tags_list,
                 'chunk_info': f"{chunk_index + 1}/{total_chunks}",
                 'snippet': snippet,
-                'full_content': content
+                'full_content': content,
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -628,6 +662,9 @@ def get_recently_added(limit: int = 10, days: int = 7) -> Dict[str, Any]:
             # Content snippet (first 500 chars)
             snippet = content[:500] + "..." if len(content) > 500 else content
 
+            # Extract URLs (Story 2.7)
+            urls = _format_urls(chunk)
+
             result = {
                 'rank': rank,
                 'chunk_id': chunk_id,
@@ -637,7 +674,8 @@ def get_recently_added(limit: int = 10, days: int = 7) -> Dict[str, Any]:
                 'tags': tags_list,
                 'chunk_info': f"{chunk_index + 1}/{total_chunks}",
                 'snippet': snippet,
-                'full_content': content
+                'full_content': content,
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -695,6 +733,9 @@ def get_knowledge_card(chunk_id: str) -> Dict[str, Any]:
 
         logger.info(f"Retrieved knowledge card for {chunk_id}")
 
+        # Extract URLs (Story 2.7)
+        urls = _format_urls(chunk)
+
         return {
             'chunk_id': chunk_id,
             'title': chunk.get('title', 'Untitled'),
@@ -703,7 +744,8 @@ def get_knowledge_card(chunk_id: str) -> Dict[str, Any]:
             'knowledge_card': {
                 'summary': knowledge_card.get('summary', ''),
                 'takeaways': knowledge_card.get('takeaways', [])
-            }
+            },
+            **urls  # Story 2.7: Include URL fields
         }
 
     except Exception as e:
@@ -748,6 +790,9 @@ def search_knowledge_cards(query: str, limit: int = 10) -> Dict[str, Any]:
             # Extract knowledge card
             knowledge_card = chunk.get('knowledge_card')
 
+            # Extract URLs (Story 2.7)
+            urls = _format_urls(chunk)
+
             result = {
                 'rank': rank,
                 'chunk_id': chunk_id,
@@ -757,7 +802,8 @@ def search_knowledge_cards(query: str, limit: int = 10) -> Dict[str, Any]:
                 'knowledge_card': {
                     'summary': knowledge_card.get('summary', '') if knowledge_card else 'Knowledge card not available',
                     'takeaways': knowledge_card.get('takeaways', []) if knowledge_card else []
-                }
+                },
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -870,18 +916,20 @@ def get_cluster(cluster_id: str, include_chunks: bool = True, limit: int = 20) -
         if include_chunks:
             member_chunks = firestore_client.get_chunks_by_cluster(cluster_id, limit=limit)
 
-            # Format member chunks with knowledge cards
+            # Format member chunks with knowledge cards and URLs
             members = []
             for chunk in member_chunks:
                 chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
                 knowledge_card = _format_knowledge_card(chunk)
+                urls = _format_urls(chunk)
 
                 member = {
                     'chunk_id': chunk_id,
                     'title': chunk.get('title', 'Untitled'),
                     'author': chunk.get('author', 'Unknown'),
                     'source': chunk.get('source', 'unknown'),
-                    'knowledge_card': knowledge_card
+                    'knowledge_card': knowledge_card,
+                    **urls  # Story 2.7: Include URL fields
                 }
 
                 members.append(member)
@@ -950,8 +998,9 @@ def search_within_cluster_tool(cluster_id: str, query: str, limit: int = 10) -> 
             # Content snippet
             snippet = content[:500] + "..." if len(content) > 500 else content
 
-            # Extract knowledge card
+            # Extract knowledge card and URLs
             knowledge_card = _format_knowledge_card(chunk)
+            urls = _format_urls(chunk)
 
             result = {
                 'rank': rank,
@@ -960,7 +1009,8 @@ def search_within_cluster_tool(cluster_id: str, query: str, limit: int = 10) -> 
                 'author': author,
                 'source': source,
                 'snippet': snippet,
-                'knowledge_card': knowledge_card
+                'knowledge_card': knowledge_card,
+                **urls  # Story 2.7: Include URL fields
             }
 
             results.append(result)
@@ -983,5 +1033,173 @@ def search_within_cluster_tool(cluster_id: str, query: str, limit: int = 10) -> 
             'query': query,
             'result_count': 0,
             'error': str(e),
+            'results': []
+        }
+
+
+def get_related_clusters(
+    cluster_id: str,
+    limit: int = 5,
+    distance_measure: str = "COSINE"
+) -> Dict[str, Any]:
+    """
+    Find clusters conceptually related to the given cluster using Firestore vector search.
+
+    Story 3.4: Cluster Relationship Discovery via Vector Search
+
+    Uses Firestore vector search on cluster centroids to find nearest neighbors.
+    Enables concept chaining and emergent idea discovery across the knowledge base.
+
+    Args:
+        cluster_id: Source cluster ID to find relations for
+        limit: Maximum number of related clusters (default 5, max 20)
+        distance_measure: COSINE (default), EUCLIDEAN, or DOT_PRODUCT
+
+    Returns:
+        Dictionary with related clusters list and metadata
+
+    Example:
+        >>> get_related_clusters("cluster_12", limit=3)
+        {
+            'source_cluster': {
+                'cluster_id': 'cluster_12',
+                'name': 'Semantic Search & Embeddings',
+                'description': '...'
+            },
+            'result_count': 3,
+            'results': [
+                {
+                    'cluster_id': 'cluster_18',
+                    'name': 'Personal Knowledge Management',
+                    'description': 'Systems for organizing personal knowledge...',
+                    'similarity_score': 0.872,
+                    'distance': 0.256,
+                    'chunk_count': 31
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        logger.info(f"Finding related clusters for {cluster_id} (limit: {limit}, distance: {distance_measure})")
+
+        # Validate limit parameter
+        if limit < 1 or limit > 20:
+            return {
+                'cluster_id': cluster_id,
+                'error': 'Limit must be between 1 and 20',
+                'result_count': 0,
+                'results': []
+            }
+
+        # Get source cluster
+        source_cluster = firestore_client.get_cluster_by_id(cluster_id)
+        if not source_cluster:
+            return {
+                'cluster_id': cluster_id,
+                'error': f'Cluster not found: {cluster_id}',
+                'result_count': 0,
+                'results': []
+            }
+
+        # Get centroid from source cluster
+        source_centroid = source_cluster.get('centroid')
+        if not source_centroid:
+            return {
+                'cluster_id': cluster_id,
+                'error': f'Cluster {cluster_id} has no centroid (vector search not possible)',
+                'result_count': 0,
+                'results': []
+            }
+
+        # Import Firestore vector search types
+        from google.cloud.firestore_v1.vector import Vector
+        from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+
+        # Map distance measure string to enum
+        measure_map = {
+            'COSINE': DistanceMeasure.COSINE,
+            'EUCLIDEAN': DistanceMeasure.EUCLIDEAN,
+            'DOT_PRODUCT': DistanceMeasure.DOT_PRODUCT
+        }
+        distance = measure_map.get(distance_measure, DistanceMeasure.COSINE)
+
+        # Perform Firestore vector search
+        db = firestore_client.get_firestore_client()
+        logger.info(f"Executing vector search on centroids...")
+
+        vector_query = db.collection('clusters').find_nearest(
+            vector_field='centroid',
+            query_vector=Vector(source_centroid),
+            distance_measure=distance,
+            limit=limit + 1  # +1 because source cluster will be in results
+        )
+
+        # Format results
+        results = []
+        for doc in vector_query.stream():
+            # Skip source cluster itself
+            if doc.id == cluster_id:
+                continue
+
+            # Skip noise clusters (cluster_id -1 or name contains "Noise")
+            # Noise clusters don't represent coherent concepts
+            doc_data = doc.to_dict()
+            cluster_name = doc_data.get('name', '')
+            if doc.id == '-1' or doc.id == 'cluster_-1' or 'noise' in cluster_name.lower():
+                continue
+
+            # Extract distance (lower = more similar)
+            distance_value = doc.get('__distance__', 0)
+
+            # Convert distance to similarity score (1 = identical, 0 = opposite)
+            # For COSINE: distance is 0-2 range (0=identical, 2=opposite)
+            if distance_measure == 'COSINE':
+                similarity = 1 - (distance_value / 2)
+            else:
+                # For EUCLIDEAN/DOT_PRODUCT: use normalized similarity
+                similarity = 1 / (1 + distance_value)
+
+            results.append({
+                'cluster_id': doc.id,
+                'name': doc_data.get('name', f'Cluster {doc.id}'),
+                'description': doc_data.get('description', ''),
+                'similarity_score': round(similarity, 3),
+                'distance': round(distance_value, 3),
+                'chunk_count': doc_data.get('chunk_count', 0)
+            })
+
+            if len(results) >= limit:
+                break
+
+        logger.info(f"Found {len(results)} related clusters for {cluster_id}")
+
+        return {
+            'source_cluster': {
+                'cluster_id': cluster_id,
+                'name': source_cluster.get('name', f'Cluster {cluster_id}'),
+                'description': source_cluster.get('description', ''),
+                'chunk_count': source_cluster.get('chunk_count', 0)
+            },
+            'distance_measure': distance_measure,
+            'result_count': len(results),
+            'limit': limit,
+            'results': results
+        }
+
+    except ImportError as e:
+        logger.error(f"Firestore vector search not available: {e}")
+        return {
+            'cluster_id': cluster_id,
+            'error': 'Firestore vector search requires google-cloud-firestore >= 2.16.0',
+            'result_count': 0,
+            'results': []
+        }
+    except Exception as e:
+        logger.error(f"Get related clusters failed: {e}")
+        return {
+            'cluster_id': cluster_id,
+            'error': str(e),
+            'result_count': 0,
             'results': []
         }

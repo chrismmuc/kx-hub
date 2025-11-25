@@ -51,13 +51,28 @@ def generate_frontmatter(book: Dict[str, Any]) -> str:
             if tag_name and tag_name not in tags:
                 tags.append(tag_name)
 
+    # Extract URL fields (Story 2.7: URL Link Storage)
+    # - readwise_url: Book review URL (always present)
+    # - source_url: Original source URL (often null for Kindle books)
+    # - highlight_url: First highlight's readwise_url (for traceability)
+    readwise_url = book.get("readwise_url")
+    source_url = book.get("source_url")  # Often null for books
+
+    # Get first highlight's readwise_url if available (for highlight-level traceability)
+    highlight_url = None
+    if highlights:
+        highlight_url = highlights[0].get("readwise_url")
+
     # Build frontmatter dict
     frontmatter_data = {
         "id": str(book["user_book_id"]),
         "title": book.get("title", "Untitled"),
         "author": book.get("author", "Unknown"),
         "source": book.get("source", "unknown"),
-        "url": book.get("readwise_url"),
+        "url": readwise_url,  # Keep legacy field for backward compatibility
+        "readwise_url": readwise_url,
+        "source_url": source_url,
+        "highlight_url": highlight_url,
         "created_at": created_at,
         "updated_at": updated_at,
         "tags": tags,
