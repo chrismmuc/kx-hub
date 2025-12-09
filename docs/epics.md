@@ -604,6 +604,196 @@ Emergent pattern: "AI-augmented personal knowledge systems"
 
 ---
 
+### Story 3.5: AI-Powered Reading Recommendations
+
+**Status:** Backlog
+
+**Summary:** Implement an on-demand MCP tool that generates personalized reading recommendations based on recent reads and top clusters. Uses Tavily Search API with domain whitelisting to find high-quality, recent articles related to the user's knowledge base, with LLM-based quality filtering and deduplication against existing content.
+
+**Key Features:**
+- **MCP Tool:** `get_reading_recommendations(scope, days, limit)` - On-demand recommendation generation
+- **Scope Options:**
+  - `recent` - Recommendations based on last N days of reading
+  - `clusters` - Recommendations based on top clusters by size
+  - `both` - Union of recent reads and top clusters (default)
+- **Quality Assurance:**
+  - Dynamic domain whitelist stored in Firestore (configurable)
+  - Tavily Search API with `include_domains` filtering
+  - Recency filtering (last 30 days of publications)
+  - Gemini-based quality scoring (depth assessment, author authority)
+  - Deduplication against existing KB (embedding similarity check)
+  - Source diversity (max 2 recommendations per domain)
+- **Smart Query Generation:**
+  - Generate queries from cluster themes + existing takeaways
+  - "Beyond what you know" queries to find new content
+  - Gap detection for stale-but-important clusters
+- **Response Structure:**
+  - Title, URL, author, domain, published date
+  - Relevance score and recency score
+  - Related cluster/article information
+  - "Why recommended" explanation linking to user's existing content
+
+**Dependencies:**
+- Story 2.6 (MCP Enhancements) - MCP infrastructure
+- Story 2.1 (Knowledge Cards) - takeaways for query generation
+- Story 2.2 (Semantic Clustering) - cluster themes for recommendations
+
+**Technical Approach:**
+- Tavily Search API for AI-native web search (~1000 free queries/month)
+- Domain whitelist in Firestore `config/recommendation_domains`
+- Gemini 2.0 Flash for quality filtering and explanation generation
+- Embedding comparison for KB deduplication
+- Processing time: ~25-35 seconds (quality over speed)
+
+**Success Metrics:**
+- Recommendations return in <60 seconds
+- >80% of recommendations rated "relevant" by user
+- Zero duplicate recommendations (already in KB)
+- >90% from whitelisted quality domains
+- Cost impact: <$0.10/month (free tier Tavily + minimal Gemini)
+
+**Business Value:**
+- Proactive knowledge discovery (find articles you'd want to read)
+- Stay current on topics you care about
+- Quality filtering eliminates noise/clickbait
+- Connects new content to existing knowledge structure
+- Future: Enable scheduled digest emails
+
+**Configuration (Firestore `config/recommendation_domains`):**
+```json
+{
+  "quality_domains": [
+    "martinfowler.com", "infoq.com", "thoughtworks.com",
+    "thenewstack.io", "oreilly.com", "acm.org",
+    "anthropic.com", "openai.com", "huggingface.co",
+    "hbr.org", "mckinsey.com", "heise.de", "golem.de"
+  ],
+  "excluded_domains": ["medium.com"],
+  "last_updated": "2025-12-08"
+}
+```
+
+**MCP Tool Interface:**
+```python
+get_reading_recommendations(
+    scope: str = "both",      # "recent" | "clusters" | "both"
+    days: int = 14,           # lookback for recent reads
+    limit: int = 10           # max recommendations
+) -> RecommendationResponse
+
+update_recommendation_domains(
+    add_domains: List[str] = None,
+    remove_domains: List[str] = None
+) -> ConfigUpdateResponse
+```
+
+---
+
+### Story 3.6: Email Digest for Reading Recommendations
+
+**Status:** Backlog
+
+**Summary:** Implement a scheduled email digest that sends personalized reading recommendations to the user on a configurable schedule (weekly/daily). Extends Story 3.5's recommendation engine with email delivery via SendGrid, allowing users to receive curated article suggestions without actively querying Claude.
+
+**Key Features:**
+- **Scheduled Delivery:** Cloud Scheduler triggers weekly (default: Monday 8am) or daily
+- **Email Template:** HTML email with recommendation cards, "why recommended" explanations
+- **SendGrid Integration:** Transactional email delivery via SendGrid API
+- **Digest Configuration:** Firestore config for schedule, recipient, preferences
+- **MCP Tool:** `configure_email_digest(enabled, schedule, email)` for setup
+- **Unsubscribe:** One-click unsubscribe link in emails
+
+**Dependencies:**
+- Story 3.5 (Reading Recommendations) - provides recommendation engine
+- SendGrid account and API key
+
+**Technical Approach:**
+- Cloud Function triggered by Cloud Scheduler
+- Reuses `get_reading_recommendations()` logic from Story 3.5
+- SendGrid API for email delivery (~100 free emails/day)
+- HTML email template with responsive design
+- Configuration in Firestore `config/email_digest`
+
+**Success Metrics:**
+- Email delivered within 5 minutes of scheduled time
+- >90% email delivery rate (SendGrid metrics)
+- Responsive HTML renders correctly in Gmail, Outlook, Apple Mail
+- Cost impact: <$0.05/month (SendGrid free tier)
+
+**Business Value:**
+- Passive knowledge discovery (recommendations come to you)
+- Stay informed without active querying
+- Weekly digest promotes consistent learning habits
+- Future: Personalized digest based on reading patterns
+
+---
+
+### Story 3.7: Save Recommendations to Readwise Reader
+
+**Status:** Backlog
+
+**Summary:** Enable users to save recommended articles directly to their Readwise Reader library via MCP tool, creating a seamless "discover → save → read → highlight" workflow. Recommendations from Story 3.5 can be sent to Reader with one command, closing the loop between discovery and consumption.
+
+**Key Features:**
+- **MCP Tool:** `save_to_reader(url, tags)` - Save single article to Readwise Reader
+- **Batch Save:** `save_recommendations_to_reader(recommendation_ids, tags)` - Save multiple recommendations
+- **Auto-Tagging:** Automatically tag saved articles with source cluster name
+- **Readwise Reader API:** Integration with Reader's "save URL" endpoint
+- **Confirmation:** Returns saved article metadata (title, estimated read time)
+- **Duplicate Detection:** Check if URL already exists in Reader before saving
+
+**Dependencies:**
+- Story 3.5 (Reading Recommendations) - provides recommendations to save
+- Readwise Reader API access (uses existing Readwise API key)
+
+**Technical Approach:**
+- Readwise Reader API: `POST /api/v3/save/` endpoint
+- Reuse existing Readwise API key from Secret Manager
+- Add `reader_client.py` for Reader-specific API calls
+- Auto-tag with cluster name for organization
+- Store saved URLs in Firestore to prevent duplicates
+
+**Success Metrics:**
+- Articles save to Reader in <3 seconds
+- 100% success rate for valid URLs
+- Auto-tags appear correctly in Reader
+- No duplicate saves (URL deduplication)
+- Cost impact: $0 (uses existing Readwise subscription)
+
+**Business Value:**
+- Complete workflow: Discover → Save → Read → Highlight → Back to KB
+- Reduces friction between recommendation and consumption
+- Articles saved to Reader get highlighted and return to kx-hub
+- Creates virtuous knowledge cycle
+
+**MCP Tool Interface:**
+```python
+save_to_reader(
+    url: str,                    # Article URL to save
+    tags: List[str] = None,      # Optional tags (auto-adds cluster tag)
+    notes: str = None            # Optional note to add
+) -> SavedArticleResponse
+
+save_recommendations_to_reader(
+    recommendation_ids: List[str],  # IDs from get_reading_recommendations
+    add_tags: List[str] = None      # Additional tags for all
+) -> BatchSaveResponse
+```
+
+**Example Usage:**
+```
+User: "What should I read next?"
+Claude: [Shows 5 recommendations]
+
+User: "Save the first two to Reader"
+Claude: [Calls save_recommendations_to_reader]
+       "Saved 2 articles to Readwise Reader:
+        - 'Platform Engineering in 2025' (tagged: platform-engineering, kx-recommended)
+        - 'AI Agents Best Practices' (tagged: ai-agents, kx-recommended)"
+```
+
+---
+
 ## Future Epics (Beyond Current Scope)
 
 See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backlog) for planned enhancements:
@@ -630,8 +820,8 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 | Epic | Stories | Status | Completion |
 |------|---------|--------|------------|
 | Epic 1: Core Pipeline & KB Infrastructure | 8 | Complete | 8/8 Complete (100%) |
-| Epic 2: Enhanced Knowledge Graph & Clustering | 6 | Active | 2/6 Complete (33%) |
-| Epic 3: Knowledge Graph Enhancement & Optimization | 4 | Active | 0/4 Complete (0%) |
+| Epic 2: Enhanced Knowledge Graph & Clustering | 7 | Complete | 7/7 Complete (100%) |
+| Epic 3: Knowledge Graph Enhancement & Optimization | 7 | Active | 2/7 Complete (29%) |
 | Epic 4: Export & Distribution (Future) | TBD | Planned | 0% |
 | Epic 5: Advanced Features (Future) | TBD | Backlog | 0% |
 | Epic 6: MCP Server Enhancements (Future) | TBD | Backlog | 0% |
