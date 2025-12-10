@@ -11,9 +11,13 @@ Tools:
 - get_reading_activity: Get reading activity summary and statistics
 - get_recently_added: Get most recently added chunks
 - get_related_clusters: Find clusters conceptually related to a given cluster (Story 3.4)
+- get_reading_recommendations: AI-powered reading recommendations (Story 3.5)
+- update_recommendation_domains: Update recommendation domain whitelist (Story 3.5)
 """
 
 import logging
+import time
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 import firestore_client
 import embeddings
@@ -1203,4 +1207,274 @@ def get_related_clusters(
             'error': str(e),
             'result_count': 0,
             'results': []
+        }
+
+
+# ============================================================================
+# Reading Recommendations (Story 3.5)
+# ============================================================================
+
+def get_reading_recommendations(
+    scope: str = "both",
+    days: int = 14,
+    limit: int = 10
+) -> Dict[str, Any]:
+    """
+    Get AI-powered reading recommendations based on KB content.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Analyzes recent reads and top clusters, searches Tavily with domain
+    whitelisting, filters for quality, and deduplicates against KB.
+
+    Args:
+        scope: "recent" (recent reads), "clusters" (top clusters), or "both" (default)
+        days: Lookback period for recent reads (default 14)
+        limit: Maximum recommendations to return (default 10)
+
+    Returns:
+        Dictionary with:
+        - generated_at: Timestamp
+        - processing_time_seconds: Total time taken
+        - scope: Scope used
+        - days_analyzed: Days lookback
+        - queries_used: List of search queries
+        - recommendations: List of recommendation objects
+        - filtered_out: Counts of filtered items
+
+    Example:
+        >>> get_reading_recommendations(scope="clusters", days=7, limit=5)
+        {
+            "generated_at": "2025-12-10T10:00:00Z",
+            "processing_time_seconds": 35,
+            "recommendations": [
+                {
+                    "title": "Platform Engineering in 2025",
+                    "url": "https://martinfowler.com/...",
+                    "domain": "martinfowler.com",
+                    "depth_score": 4,
+                    "why_recommended": "Connects to your reading cluster: Platform Engineering"
+                }
+            ]
+        }
+    """
+    start_time = time.time()
+
+    try:
+        logger.info(f"Generating reading recommendations: scope={scope}, days={days}, limit={limit}")
+
+        # Validate scope
+        if scope not in ("recent", "clusters", "both"):
+            return {
+                'error': f"Invalid scope: {scope}. Must be 'recent', 'clusters', or 'both'",
+                'recommendations': []
+            }
+
+        # Import recommendation modules
+        import recommendation_queries
+        import recommendation_filter
+        import tavily_client
+
+        # Step 1: Get recommendation config (domain whitelist)
+        config = firestore_client.get_recommendation_config()
+        quality_domains = config.get('quality_domains', [])
+        excluded_domains = config.get('excluded_domains', [])
+
+        logger.info(f"Using {len(quality_domains)} whitelisted domains")
+
+        # Step 2: Generate smart search queries
+        queries = recommendation_queries.generate_search_queries(
+            scope=scope,
+            days=days,
+            max_queries=8
+        )
+
+        if not queries:
+            return {
+                'generated_at': datetime.utcnow().isoformat() + 'Z',
+                'processing_time_seconds': round(time.time() - start_time, 1),
+                'scope': scope,
+                'days_analyzed': days,
+                'error': 'No queries generated - insufficient KB content',
+                'queries_used': [],
+                'recommendations': [],
+                'filtered_out': {}
+            }
+
+        query_strings = [q['query'] for q in queries]
+        logger.info(f"Generated {len(queries)} search queries")
+
+        # Step 3: Search Tavily
+        all_results = []
+        all_contexts = []
+
+        for query_dict in queries:
+            query_str = recommendation_queries.format_query_for_tavily(query_dict)
+
+            try:
+                search_result = tavily_client.search(
+                    query=query_str,
+                    include_domains=quality_domains if quality_domains else None,
+                    exclude_domains=excluded_domains if excluded_domains else None,
+                    days=30,  # Last 30 days for recency
+                    max_results=5
+                )
+
+                for result in search_result.get('results', []):
+                    all_results.append(result)
+                    all_contexts.append(query_dict)
+
+            except Exception as e:
+                logger.warning(f"Tavily search failed for query '{query_str[:50]}...': {e}")
+                continue
+
+        logger.info(f"Tavily returned {len(all_results)} total results")
+
+        if not all_results:
+            return {
+                'generated_at': datetime.utcnow().isoformat() + 'Z',
+                'processing_time_seconds': round(time.time() - start_time, 1),
+                'scope': scope,
+                'days_analyzed': days,
+                'queries_used': query_strings,
+                'recommendations': [],
+                'filtered_out': {'no_results': True}
+            }
+
+        # Step 4: Filter for quality and deduplicate
+        filter_result = recommendation_filter.filter_recommendations(
+            recommendations=all_results,
+            query_contexts=all_contexts,
+            min_depth_score=3,
+            max_per_domain=2,
+            check_duplicates=True
+        )
+
+        filtered_recs = filter_result.get('recommendations', [])
+        filtered_out = filter_result.get('filtered_out', {})
+
+        # Step 5: Sort by depth score and limit
+        filtered_recs.sort(key=lambda x: x.get('depth_score', 0), reverse=True)
+        final_recs = filtered_recs[:limit]
+
+        processing_time = round(time.time() - start_time, 1)
+        logger.info(
+            f"Recommendations complete: {len(final_recs)} recommendations "
+            f"in {processing_time}s"
+        )
+
+        return {
+            'generated_at': datetime.utcnow().isoformat() + 'Z',
+            'processing_time_seconds': processing_time,
+            'scope': scope,
+            'days_analyzed': days,
+            'queries_used': query_strings,
+            'recommendations': final_recs,
+            'filtered_out': filtered_out
+        }
+
+    except Exception as e:
+        logger.error(f"Get reading recommendations failed: {e}")
+        return {
+            'generated_at': datetime.utcnow().isoformat() + 'Z',
+            'processing_time_seconds': round(time.time() - start_time, 1),
+            'scope': scope,
+            'error': str(e),
+            'recommendations': []
+        }
+
+
+def update_recommendation_domains(
+    add_domains: Optional[List[str]] = None,
+    remove_domains: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Update the domain whitelist for reading recommendations.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Args:
+        add_domains: Domains to add to the quality whitelist
+        remove_domains: Domains to remove from the whitelist
+
+    Returns:
+        Dictionary with:
+        - success: Boolean
+        - quality_domains: Updated list of whitelisted domains
+        - excluded_domains: List of blocked domains
+        - changes: Summary of changes made
+
+    Example:
+        >>> update_recommendation_domains(add_domains=["newsite.com"])
+        {
+            "success": true,
+            "quality_domains": ["martinfowler.com", "newsite.com", ...],
+            "changes": {"domains_added": ["newsite.com"]}
+        }
+    """
+    try:
+        logger.info(
+            f"Updating recommendation domains: "
+            f"+{len(add_domains or [])} -{len(remove_domains or [])}"
+        )
+
+        result = firestore_client.update_recommendation_config(
+            add_domains=add_domains,
+            remove_domains=remove_domains,
+            updated_by="mcp_tool"
+        )
+
+        if result.get('success'):
+            config = result.get('config', {})
+            return {
+                'success': True,
+                'quality_domains': config.get('quality_domains', []),
+                'excluded_domains': config.get('excluded_domains', []),
+                'domain_count': len(config.get('quality_domains', [])),
+                'changes': result.get('changes', {})
+            }
+        else:
+            return {
+                'success': False,
+                'error': result.get('error', 'Unknown error')
+            }
+
+    except Exception as e:
+        logger.error(f"Update recommendation domains failed: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def get_recommendation_config() -> Dict[str, Any]:
+    """
+    Get current recommendation configuration including domain whitelist.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Returns:
+        Dictionary with:
+        - quality_domains: List of whitelisted domains
+        - excluded_domains: List of blocked domains
+        - domain_count: Number of whitelisted domains
+        - last_updated: When config was last modified
+    """
+    try:
+        logger.info("Getting recommendation config")
+
+        config = firestore_client.get_recommendation_config()
+
+        return {
+            'quality_domains': config.get('quality_domains', []),
+            'excluded_domains': config.get('excluded_domains', []),
+            'domain_count': len(config.get('quality_domains', [])),
+            'last_updated': str(config.get('last_updated', '')),
+            'updated_by': config.get('updated_by', '')
+        }
+
+    except Exception as e:
+        logger.error(f"Get recommendation config failed: {e}")
+        return {
+            'error': str(e)
         }

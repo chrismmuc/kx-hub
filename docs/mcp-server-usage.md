@@ -234,6 +234,146 @@ Discover clusters conceptually related to a given cluster using vector similarit
 
 ---
 
+### Reading Recommendation Tools
+
+These tools help you discover new articles to read based on your knowledge base content.
+
+#### 11. `get_reading_recommendations` - AI-Powered Reading Recommendations
+
+Get personalized reading recommendations based on your recent reads and top interest clusters. Uses Tavily Search to find high-quality articles from trusted sources.
+
+**When to use:** Finding new articles to read, discovering content that extends your existing knowledge.
+
+**Example Queries:**
+```
+"What should I read next?"
+"Give me reading recommendations based on my recent highlights"
+"Find new articles about my top interest areas"
+```
+
+**Parameters:**
+- `scope`: What to base recommendations on
+  - `"recent"` - Recent reads only (last N days)
+  - `"clusters"` - Top clusters by size
+  - `"both"` (default) - Both recent reads and clusters
+- `days`: Lookback period for recent reads (default: 14)
+- `limit`: Maximum recommendations to return (default: 10)
+
+**Returns:**
+```json
+{
+  "generated_at": "2025-12-10T14:30:00Z",
+  "processing_time_seconds": 35,
+  "scope": "both",
+  "days_analyzed": 14,
+  "queries_used": ["platform engineering latest developments 2024 2025", "..."],
+  "recommendations": [
+    {
+      "title": "The Future of Platform Engineering",
+      "url": "https://martinfowler.com/articles/...",
+      "domain": "martinfowler.com",
+      "snippet": "...",
+      "published_date": "2025-12-01",
+      "depth_score": 4,
+      "why_recommended": "Connects to your reading cluster: Platform Engineering"
+    }
+  ],
+  "filtered_out": {
+    "duplicate_count": 3,
+    "low_quality_count": 2,
+    "diversity_cap_count": 1
+  }
+}
+```
+
+**Quality Filtering:**
+- Articles are scored for depth (1-5 scale, only 3+ are included)
+- Duplicates against your KB are filtered out
+- Maximum 2 recommendations per domain for diversity
+- Only searches trusted sources from domain whitelist
+
+**Example Conversation:**
+```
+You: "What should I read next based on my recent highlights?"
+
+Claude uses: get_reading_recommendations(scope="recent", days=7, limit=5)
+
+Claude: "Based on your recent reading about Platform Engineering and Developer Experience,
+I recommend:
+
+1. 'Platform Engineering in 2025' (martinfowler.com)
+   - Depth: ★★★★☆
+   - Why: Connects to your Platform Engineering cluster
+
+2. 'The Rise of Internal Developer Platforms' (infoq.com)
+   - Depth: ★★★★★
+   - Why: Extends your learning about developer experience
+
+..."
+```
+
+#### 12. `update_recommendation_domains` - Manage Domain Whitelist
+
+Add or remove domains from the trusted sources whitelist for recommendations.
+
+**When to use:** Customizing which sources to include in recommendations.
+
+**Example Queries:**
+```
+"Add techcrunch.com to my recommendation sources"
+"Remove medium.com from my reading sources"
+"What domains are in my recommendation whitelist?"
+```
+
+**Parameters:**
+- `add_domains`: List of domains to add (e.g., ["newsite.com"])
+- `remove_domains`: List of domains to remove
+
+**Returns:**
+```json
+{
+  "success": true,
+  "quality_domains": ["martinfowler.com", "infoq.com", "newsite.com", "..."],
+  "domain_count": 15,
+  "changes": {
+    "domains_added": ["newsite.com"],
+    "domains_removed": []
+  }
+}
+```
+
+**Default Whitelist:**
+The system starts with these trusted sources:
+- martinfowler.com, infoq.com, thoughtworks.com
+- thenewstack.io, oreilly.com, acm.org
+- anthropic.com, openai.com, huggingface.co
+- hbr.org, mckinsey.com
+- heise.de, golem.de, arxiv.org
+
+#### 13. `get_recommendation_config` - View Recommendation Settings
+
+View the current recommendation configuration including domain whitelist.
+
+**When to use:** Checking your current recommendation settings.
+
+**Example Query:**
+```
+"Show me my recommendation settings"
+"What sources are in my whitelist?"
+```
+
+**Returns:**
+```json
+{
+  "quality_domains": ["martinfowler.com", "infoq.com", "..."],
+  "excluded_domains": ["medium.com"],
+  "domain_count": 14,
+  "last_updated": "2025-12-10T12:00:00Z"
+}
+```
+
+---
+
 ## Resources
 
 The MCP server exposes cluster data as browsable resources via URIs. Claude Desktop can display these as formatted markdown.

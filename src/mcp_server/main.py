@@ -381,6 +381,59 @@ async def main():
                     },
                     "required": ["cluster_id"]
                 }
+            ),
+            # Story 3.5: Reading Recommendations
+            Tool(
+                name="get_reading_recommendations",
+                description="Get AI-powered reading recommendations based on your KB content. Analyzes recent reads and clusters, searches quality sources, and filters for depth.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "scope": {
+                            "type": "string",
+                            "enum": ["recent", "clusters", "both"],
+                            "description": "Scope for recommendations: 'recent' (recent reads), 'clusters' (top clusters), or 'both' (default)",
+                            "default": "both"
+                        },
+                        "days": {
+                            "type": "integer",
+                            "description": "Lookback period for recent reads in days (default 14)",
+                            "default": 14
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum recommendations to return (default 10)",
+                            "default": 10
+                        }
+                    }
+                }
+            ),
+            Tool(
+                name="update_recommendation_domains",
+                description="Update the domain whitelist for reading recommendations. Add or remove trusted sources.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "add_domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Domains to add to the quality whitelist (e.g., ['newsite.com'])"
+                        },
+                        "remove_domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Domains to remove from the whitelist"
+                        }
+                    }
+                }
+            ),
+            Tool(
+                name="get_recommendation_config",
+                description="Get current recommendation configuration including domain whitelist",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
             )
         ]
 
@@ -467,6 +520,20 @@ async def main():
                     limit=arguments.get("limit", 5),
                     distance_measure=arguments.get("distance_measure", "COSINE")
                 )
+            # Story 3.5: Reading Recommendations
+            elif name == "get_reading_recommendations":
+                result = tools.get_reading_recommendations(
+                    scope=arguments.get("scope", "both"),
+                    days=arguments.get("days", 14),
+                    limit=arguments.get("limit", 10)
+                )
+            elif name == "update_recommendation_domains":
+                result = tools.update_recommendation_domains(
+                    add_domains=arguments.get("add_domains"),
+                    remove_domains=arguments.get("remove_domains")
+                )
+            elif name == "get_recommendation_config":
+                result = tools.get_recommendation_config()
             else:
                 result = {"error": f"Unknown tool: {name}"}
 

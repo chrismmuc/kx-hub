@@ -125,9 +125,10 @@ development_status:
     notes: "get_related_clusters() MCP tool implemented. Vector index on centroids. 6/6 tests pass. Bug fixes applied."
 
   3-5-reading-recommendations:
-    status: drafted
+    status: review
     story_file: docs/stories/3.5-reading-recommendations.md
-    notes: "AI-powered reading recommendations via Tavily Search API with quality filtering."
+    context_file: docs/stories/3.5-reading-recommendations.context.xml
+    notes: "Implementation complete. 3 MCP tools, 4 new modules, 19 unit tests (15 pass). Requires Tavily API key for integration testing."
 
   3-6-email-digest:
     status: drafted

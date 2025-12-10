@@ -729,3 +729,277 @@ def search_within_cluster(
     except Exception as e:
         logger.error(f"Failed to execute vector search within cluster {cluster_id}: {e}")
         return []
+
+
+# ============================================================================
+# Configuration Management (Story 3.5)
+# ============================================================================
+
+# Default domain whitelist for reading recommendations
+DEFAULT_QUALITY_DOMAINS = [
+    "martinfowler.com",
+    "infoq.com",
+    "thoughtworks.com",
+    "thenewstack.io",
+    "oreilly.com",
+    "acm.org",
+    "anthropic.com",
+    "openai.com",
+    "huggingface.co",
+    "hbr.org",
+    "mckinsey.com",
+    "heise.de",
+    "golem.de",
+    "arxiv.org"
+]
+
+DEFAULT_EXCLUDED_DOMAINS = [
+    "medium.com"
+]
+
+
+def get_recommendation_config() -> Dict[str, Any]:
+    """
+    Get reading recommendation configuration from Firestore.
+
+    Fetches config/recommendation_domains document with domain whitelist.
+    Creates default config if document doesn't exist.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Returns:
+        Dictionary with:
+        - quality_domains: List of whitelisted domains
+        - excluded_domains: List of blocked domains
+        - last_updated: Timestamp of last update
+        - updated_by: Who made the last update
+    """
+    try:
+        db = get_firestore_client()
+
+        logger.info("Fetching recommendation config from config/recommendation_domains")
+
+        doc_ref = db.collection('config').document('recommendation_domains')
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            logger.info("Config not found, creating default configuration")
+            # Create default config
+            default_config = {
+                'quality_domains': DEFAULT_QUALITY_DOMAINS,
+                'excluded_domains': DEFAULT_EXCLUDED_DOMAINS,
+                'last_updated': datetime.utcnow(),
+                'updated_by': 'initial_setup'
+            }
+            doc_ref.set(default_config)
+            return default_config
+
+        config = doc.to_dict()
+        logger.info(f"Retrieved recommendation config: {len(config.get('quality_domains', []))} domains")
+        return config
+
+    except Exception as e:
+        logger.error(f"Failed to get recommendation config: {e}")
+        # Return defaults on error
+        return {
+            'quality_domains': DEFAULT_QUALITY_DOMAINS,
+            'excluded_domains': DEFAULT_EXCLUDED_DOMAINS,
+            'error': str(e)
+        }
+
+
+def update_recommendation_config(
+    add_domains: Optional[List[str]] = None,
+    remove_domains: Optional[List[str]] = None,
+    add_excluded: Optional[List[str]] = None,
+    remove_excluded: Optional[List[str]] = None,
+    updated_by: str = "mcp_tool"
+) -> Dict[str, Any]:
+    """
+    Update reading recommendation configuration in Firestore.
+
+    Modifies config/recommendation_domains document.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Args:
+        add_domains: Domains to add to quality_domains whitelist
+        remove_domains: Domains to remove from quality_domains whitelist
+        add_excluded: Domains to add to excluded_domains blocklist
+        remove_excluded: Domains to remove from excluded_domains blocklist
+        updated_by: Identifier for who made the update
+
+    Returns:
+        Dictionary with updated configuration and operation summary
+    """
+    try:
+        db = get_firestore_client()
+
+        logger.info("Updating recommendation config")
+
+        # Get current config
+        doc_ref = db.collection('config').document('recommendation_domains')
+        doc = doc_ref.get()
+
+        if doc.exists:
+            current = doc.to_dict()
+        else:
+            current = {
+                'quality_domains': DEFAULT_QUALITY_DOMAINS.copy(),
+                'excluded_domains': DEFAULT_EXCLUDED_DOMAINS.copy()
+            }
+
+        # Track changes
+        changes = {
+            'domains_added': [],
+            'domains_removed': [],
+            'excluded_added': [],
+            'excluded_removed': []
+        }
+
+        # Update quality_domains
+        quality_domains = set(current.get('quality_domains', []))
+
+        if add_domains:
+            for domain in add_domains:
+                domain = domain.lower().strip()
+                if domain and domain not in quality_domains:
+                    quality_domains.add(domain)
+                    changes['domains_added'].append(domain)
+
+        if remove_domains:
+            for domain in remove_domains:
+                domain = domain.lower().strip()
+                if domain in quality_domains:
+                    quality_domains.discard(domain)
+                    changes['domains_removed'].append(domain)
+
+        # Update excluded_domains
+        excluded_domains = set(current.get('excluded_domains', []))
+
+        if add_excluded:
+            for domain in add_excluded:
+                domain = domain.lower().strip()
+                if domain and domain not in excluded_domains:
+                    excluded_domains.add(domain)
+                    changes['excluded_added'].append(domain)
+
+        if remove_excluded:
+            for domain in remove_excluded:
+                domain = domain.lower().strip()
+                if domain in excluded_domains:
+                    excluded_domains.discard(domain)
+                    changes['excluded_removed'].append(domain)
+
+        # Prepare updated config
+        updated_config = {
+            'quality_domains': sorted(list(quality_domains)),
+            'excluded_domains': sorted(list(excluded_domains)),
+            'last_updated': datetime.utcnow(),
+            'updated_by': updated_by
+        }
+
+        # Save to Firestore
+        doc_ref.set(updated_config)
+
+        logger.info(
+            f"Updated recommendation config: "
+            f"+{len(changes['domains_added'])} -{len(changes['domains_removed'])} domains"
+        )
+
+        return {
+            'success': True,
+            'config': updated_config,
+            'changes': changes
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to update recommendation config: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def get_top_clusters(limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Get top clusters by size for recommendation query generation.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Args:
+        limit: Maximum number of clusters to return
+
+    Returns:
+        List of cluster dictionaries sorted by size descending
+    """
+    try:
+        db = get_firestore_client()
+
+        logger.info(f"Fetching top {limit} clusters by size")
+
+        query = db.collection('clusters').order_by(
+            'size', direction=firestore.Query.DESCENDING
+        ).limit(limit)
+
+        docs = query.stream()
+
+        clusters = []
+        for doc in docs:
+            cluster_data = doc.to_dict()
+            cluster_data['id'] = doc.id
+            # Skip noise cluster
+            if doc.id not in ('noise', 'cluster_-1', '-1'):
+                clusters.append(cluster_data)
+
+        logger.info(f"Retrieved {len(clusters)} top clusters")
+        return clusters
+
+    except Exception as e:
+        logger.error(f"Failed to get top clusters: {e}")
+        return []
+
+
+def get_recent_chunks_with_cards(days: int = 14, limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Get recent chunks that have knowledge cards for recommendation query generation.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Args:
+        days: Look back this many days
+        limit: Maximum chunks to return
+
+    Returns:
+        List of chunk dictionaries with knowledge_card field
+    """
+    try:
+        db = get_firestore_client()
+        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+
+        now = datetime.utcnow()
+        start_dt = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        logger.info(f"Fetching recent chunks with knowledge cards (last {days} days)")
+
+        query = db.collection(collection)
+        query = query.where('created_at', '>=', start_dt)
+        query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+        query = query.limit(limit)
+
+        docs = query.stream()
+
+        chunks = []
+        for doc in docs:
+            chunk_data = doc.to_dict()
+            # Only include chunks with knowledge cards
+            if chunk_data.get('knowledge_card'):
+                chunk_data['id'] = doc.id
+                chunks.append(chunk_data)
+
+        logger.info(f"Retrieved {len(chunks)} recent chunks with knowledge cards")
+        return chunks
+
+    except Exception as e:
+        logger.error(f"Failed to get recent chunks with cards: {e}")
+        return []
