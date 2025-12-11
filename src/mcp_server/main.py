@@ -434,6 +434,66 @@ async def main():
                     "type": "object",
                     "properties": {}
                 }
+            ),
+            # Story 3.8: Ranking Configuration
+            Tool(
+                name="get_ranking_config",
+                description="Get current ranking configuration for recommendations including weights (relevance, recency, depth, authority) and settings (recency decay, diversity, slots)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
+            ),
+            Tool(
+                name="update_ranking_config",
+                description="Update ranking configuration for recommendations. Set factor weights (must sum to 1.0) or adjust recency decay, diversity, and slot settings.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "weights": {
+                            "type": "object",
+                            "description": "Factor weights (must sum to 1.0): {relevance, recency, depth, authority}",
+                            "properties": {
+                                "relevance": {"type": "number", "description": "Weight for semantic relevance (default 0.5)"},
+                                "recency": {"type": "number", "description": "Weight for publication freshness (default 0.25)"},
+                                "depth": {"type": "number", "description": "Weight for content quality (default 0.15)"},
+                                "authority": {"type": "number", "description": "Weight for author/source credibility (default 0.1)"}
+                            }
+                        },
+                        "settings": {
+                            "type": "object",
+                            "description": "Ranking settings for recency, diversity, and slots",
+                            "properties": {
+                                "recency": {
+                                    "type": "object",
+                                    "properties": {
+                                        "half_life_days": {"type": "integer", "description": "Days until recency score halves (default 90)"},
+                                        "max_age_days": {"type": "integer", "description": "Maximum article age in days (default 365)"},
+                                        "tavily_days_filter": {"type": "integer", "description": "Days to search in Tavily (default 180)"}
+                                    }
+                                },
+                                "diversity": {
+                                    "type": "object",
+                                    "properties": {
+                                        "shown_ttl_days": {"type": "integer", "description": "Days to track shown URLs (default 7)"},
+                                        "novelty_bonus": {"type": "number", "description": "Score bonus for unseen URLs (default 0.1)"},
+                                        "domain_duplicate_penalty": {"type": "number", "description": "Penalty per duplicate domain (default 0.05)"},
+                                        "stochastic_temperature": {"type": "number", "description": "Randomization level 0-1 (default 0.3)"}
+                                    }
+                                },
+                                "slots": {
+                                    "type": "object",
+                                    "properties": {
+                                        "relevance_count": {"type": "integer", "description": "Top relevance slots (default 2)"},
+                                        "serendipity_count": {"type": "integer", "description": "Discovery slots (default 1)"},
+                                        "stale_refresh_count": {"type": "integer", "description": "Refresh slots (default 1)"},
+                                        "trending_count": {"type": "integer", "description": "Fresh content slots (default 1)"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             )
         ]
 
@@ -534,6 +594,14 @@ async def main():
                 )
             elif name == "get_recommendation_config":
                 result = tools.get_recommendation_config()
+            # Story 3.8: Ranking Configuration
+            elif name == "get_ranking_config":
+                result = tools.get_ranking_config()
+            elif name == "update_ranking_config":
+                result = tools.update_ranking_config(
+                    weights=arguments.get("weights"),
+                    settings=arguments.get("settings")
+                )
             else:
                 result = {"error": f"Unknown tool: {name}"}
 

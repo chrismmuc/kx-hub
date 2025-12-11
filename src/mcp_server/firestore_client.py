@@ -1005,6 +1005,384 @@ def get_recent_chunks_with_cards(days: int = 14, limit: int = 50) -> List[Dict[s
         return []
 
 
+# ============================================================================
+# Ranking Configuration (Story 3.8)
+# ============================================================================
+
+DEFAULT_RANKING_WEIGHTS = {
+    'relevance': 0.50,
+    'recency': 0.25,
+    'depth': 0.15,
+    'authority': 0.10
+}
+
+DEFAULT_RANKING_SETTINGS = {
+    'recency': {
+        'half_life_days': 90,
+        'max_age_days': 365,
+        'tavily_days_filter': 180
+    },
+    'diversity': {
+        'shown_ttl_days': 7,
+        'novelty_bonus': 0.10,
+        'domain_duplicate_penalty': 0.05,
+        'max_per_domain': 2,
+        'stochastic_temperature': 0.3
+    },
+    'slots': {
+        'relevance_count': 2,
+        'serendipity_count': 1,
+        'stale_refresh_count': 1,
+        'trending_count': 1
+    }
+}
+
+
+def get_ranking_config() -> Dict[str, Any]:
+    """
+    Get ranking configuration from Firestore.
+
+    Story 3.8 AC#7: Configuration management.
+
+    Fetches config/ranking_weights and config/ranking_settings documents.
+    Creates defaults if documents don't exist.
+
+    Returns:
+        Dictionary with:
+        - weights: Factor weights (relevance, recency, depth, authority)
+        - settings: Recency, diversity, and slot settings
+        - last_updated: Timestamp of last update
+    """
+    try:
+        db = get_firestore_client()
+
+        # Fetch ranking weights
+        weights_ref = db.collection('config').document('ranking_weights')
+        weights_doc = weights_ref.get()
+
+        if weights_doc.exists:
+            weights = weights_doc.to_dict()
+        else:
+            # Create default weights
+            logger.info("Creating default ranking weights config")
+            weights = {
+                **DEFAULT_RANKING_WEIGHTS,
+                'last_updated': datetime.utcnow(),
+                'updated_by': 'initial_setup'
+            }
+            weights_ref.set(weights)
+
+        # Fetch ranking settings
+        settings_ref = db.collection('config').document('ranking_settings')
+        settings_doc = settings_ref.get()
+
+        if settings_doc.exists:
+            settings = settings_doc.to_dict()
+        else:
+            # Create default settings
+            logger.info("Creating default ranking settings config")
+            settings = {
+                **DEFAULT_RANKING_SETTINGS,
+                'last_updated': datetime.utcnow(),
+                'updated_by': 'initial_setup'
+            }
+            settings_ref.set(settings)
+
+        logger.info("Retrieved ranking configuration")
+
+        return {
+            'weights': {
+                'relevance': weights.get('relevance', DEFAULT_RANKING_WEIGHTS['relevance']),
+                'recency': weights.get('recency', DEFAULT_RANKING_WEIGHTS['recency']),
+                'depth': weights.get('depth', DEFAULT_RANKING_WEIGHTS['depth']),
+                'authority': weights.get('authority', DEFAULT_RANKING_WEIGHTS['authority'])
+            },
+            'settings': {
+                'recency': settings.get('recency', DEFAULT_RANKING_SETTINGS['recency']),
+                'diversity': settings.get('diversity', DEFAULT_RANKING_SETTINGS['diversity']),
+                'slots': settings.get('slots', DEFAULT_RANKING_SETTINGS['slots'])
+            },
+            'weights_last_updated': str(weights.get('last_updated', '')),
+            'settings_last_updated': str(settings.get('last_updated', ''))
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get ranking config: {e}")
+        # Return defaults on error
+        return {
+            'weights': DEFAULT_RANKING_WEIGHTS,
+            'settings': DEFAULT_RANKING_SETTINGS,
+            'error': str(e)
+        }
+
+
+def update_ranking_config(
+    weights: Optional[Dict[str, float]] = None,
+    settings: Optional[Dict[str, Any]] = None,
+    updated_by: str = "mcp_tool"
+) -> Dict[str, Any]:
+    """
+    Update ranking configuration in Firestore.
+
+    Story 3.8 AC#7: Configuration management.
+
+    Args:
+        weights: New factor weights (must sum to 1.0)
+        settings: New ranking settings (recency, diversity, slots)
+        updated_by: Identifier for who made the update
+
+    Returns:
+        Dictionary with:
+        - success: Boolean
+        - config: Updated configuration
+        - error: Error message if failed
+    """
+    try:
+        db = get_firestore_client()
+
+        changes = {}
+
+        # Update weights if provided
+        if weights:
+            # Validate weights sum to 1.0
+            weight_sum = sum(weights.values())
+            if abs(weight_sum - 1.0) > 0.01:
+                return {
+                    'success': False,
+                    'error': f'Weights must sum to 1.0, got {weight_sum}'
+                }
+
+            weights_ref = db.collection('config').document('ranking_weights')
+            weights_data = {
+                **weights,
+                'last_updated': datetime.utcnow(),
+                'updated_by': updated_by
+            }
+            weights_ref.set(weights_data, merge=True)
+            changes['weights_updated'] = True
+            logger.info(f"Updated ranking weights: {weights}")
+
+        # Update settings if provided
+        if settings:
+            settings_ref = db.collection('config').document('ranking_settings')
+            settings_data = {
+                **settings,
+                'last_updated': datetime.utcnow(),
+                'updated_by': updated_by
+            }
+            settings_ref.set(settings_data, merge=True)
+            changes['settings_updated'] = True
+            logger.info(f"Updated ranking settings")
+
+        # Fetch updated config
+        updated_config = get_ranking_config()
+
+        return {
+            'success': True,
+            'config': updated_config,
+            'changes': changes
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to update ranking config: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+# ============================================================================
+# Shown Recommendations Tracking (Story 3.8)
+# ============================================================================
+
+DEFAULT_SHOWN_TTL_DAYS = 7
+
+
+def record_shown_recommendations(
+    user_id: str,
+    recommendations: List[Dict[str, Any]],
+    ttl_days: int = DEFAULT_SHOWN_TTL_DAYS
+) -> Dict[str, Any]:
+    """
+    Record shown recommendations to Firestore for deduplication.
+
+    Story 3.8 AC#3, AC#6: Track shown URLs to avoid repetition.
+
+    Creates documents in shown_recommendations/{user_id}/items collection
+    with TTL-based expiration for automatic cleanup.
+
+    Args:
+        user_id: User identifier (or "default" for single-user)
+        recommendations: List of recommendation dicts with url, slot, score
+        ttl_days: Days until expiration (default 7)
+
+    Returns:
+        Dictionary with:
+        - success: Boolean
+        - recorded_count: Number of URLs recorded
+        - error: Error message if failed
+    """
+    try:
+        import hashlib
+        from datetime import timedelta
+
+        db = get_firestore_client()
+
+        now = datetime.utcnow()
+        expires_at = now + timedelta(days=ttl_days)
+
+        recorded = 0
+        batch = db.batch()
+
+        for rec in recommendations:
+            url = rec.get('url')
+            if not url:
+                continue
+
+            # Create URL hash for document ID (Firestore-safe)
+            url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+            doc_id = f"{url_hash}_{now.strftime('%Y%m%d%H%M%S')}"
+
+            doc_ref = db.collection('shown_recommendations').document(user_id).collection('items').document(doc_id)
+
+            doc_data = {
+                'url': url,
+                'url_hash': url_hash,
+                'shown_at': now,
+                'expires_at': expires_at,
+                'slot_type': rec.get('slot', 'UNKNOWN'),
+                'combined_score': rec.get('combined_score', 0),
+                'final_score': rec.get('final_score', 0)
+            }
+
+            batch.set(doc_ref, doc_data)
+            recorded += 1
+
+        # Commit batch
+        if recorded > 0:
+            batch.commit()
+            logger.info(f"Recorded {recorded} shown recommendations for user {user_id}")
+
+        return {
+            'success': True,
+            'recorded_count': recorded,
+            'expires_at': expires_at.isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to record shown recommendations: {e}")
+        return {
+            'success': False,
+            'recorded_count': 0,
+            'error': str(e)
+        }
+
+
+def get_shown_urls(
+    user_id: str,
+    ttl_days: int = DEFAULT_SHOWN_TTL_DAYS
+) -> List[str]:
+    """
+    Get URLs shown to user within TTL period.
+
+    Story 3.8 AC#6: Exclude previously shown recommendations.
+
+    Args:
+        user_id: User identifier (or "default" for single-user)
+        ttl_days: Look back this many days (default 7)
+
+    Returns:
+        List of URLs shown within TTL period
+    """
+    try:
+        from datetime import timedelta
+
+        db = get_firestore_client()
+
+        now = datetime.utcnow()
+        cutoff = now - timedelta(days=ttl_days)
+
+        logger.info(f"Fetching shown URLs for user {user_id} since {cutoff}")
+
+        # Query items collection for non-expired entries
+        query = db.collection('shown_recommendations').document(user_id).collection('items')
+        query = query.where('shown_at', '>=', cutoff)
+
+        docs = query.stream()
+
+        urls = []
+        for doc in docs:
+            data = doc.to_dict()
+            url = data.get('url')
+            if url:
+                urls.append(url)
+
+        logger.info(f"Found {len(urls)} shown URLs for user {user_id}")
+        return urls
+
+    except Exception as e:
+        logger.error(f"Failed to get shown URLs: {e}")
+        return []
+
+
+def cleanup_expired_shown_recommendations(user_id: str = "default") -> Dict[str, Any]:
+    """
+    Clean up expired shown recommendation records.
+
+    Story 3.8: TTL-based cleanup (alternative to Firestore TTL policy).
+
+    Note: If using Firestore TTL policy (recommended), this is not needed.
+    This function provides manual cleanup for development/testing.
+
+    Args:
+        user_id: User identifier (or "default" for single-user)
+
+    Returns:
+        Dictionary with cleanup results
+    """
+    try:
+        db = get_firestore_client()
+
+        now = datetime.utcnow()
+
+        # Query expired items
+        query = db.collection('shown_recommendations').document(user_id).collection('items')
+        query = query.where('expires_at', '<', now)
+
+        docs = query.stream()
+
+        deleted = 0
+        batch = db.batch()
+
+        for doc in docs:
+            batch.delete(doc.reference)
+            deleted += 1
+
+            # Commit in batches of 500 (Firestore limit)
+            if deleted % 500 == 0:
+                batch.commit()
+                batch = db.batch()
+
+        # Final commit
+        if deleted % 500 != 0:
+            batch.commit()
+
+        logger.info(f"Cleaned up {deleted} expired shown recommendations for user {user_id}")
+
+        return {
+            'success': True,
+            'deleted_count': deleted
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to cleanup expired recommendations: {e}")
+        return {
+            'success': False,
+            'deleted_count': 0,
+            'error': str(e)
+        }
+
+
 def get_kb_credibility_signals() -> Dict[str, Any]:
     """
     Get all authors and source domains from the KB for credibility scoring.

@@ -2,16 +2,22 @@
 Quality filtering and deduplication for reading recommendations.
 
 Story 3.5: AI-Powered Reading Recommendations
+Story 3.8: Enhanced Recommendation Ranking
 
 Provides:
 - Gemini-based content depth scoring (1-5 scale)
 - "Why recommended" explanation generation
 - Source diversity cap (max 2 per domain)
 - KB deduplication via embedding similarity
+- Recency scoring with exponential decay (Story 3.8)
+- Multi-factor combined scoring (Story 3.8)
+- Stochastic sampling with temperature (Story 3.8)
 """
 
 import logging
+import math
 import os
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from collections import defaultdict
 
@@ -34,6 +40,400 @@ MIN_DEPTH_SCORE = 3
 
 # Global model cache
 _gemini_model = None
+
+# ============================================================================
+# Story 3.8: Enhanced Ranking Functions
+# ============================================================================
+
+# Default ranking weights (sum must equal 1.0)
+DEFAULT_RANKING_WEIGHTS = {
+    'relevance': 0.50,  # Semantic similarity to KB content
+    'recency': 0.25,    # Publication freshness
+    'depth': 0.15,      # Content quality (Gemini score)
+    'authority': 0.10   # Author recognition from KB
+}
+
+# Default recency settings
+DEFAULT_RECENCY_HALF_LIFE_DAYS = 90
+DEFAULT_MAX_AGE_DAYS = 365
+
+# Default diversity settings
+DEFAULT_NOVELTY_BONUS = 0.10
+DEFAULT_DOMAIN_DUPLICATE_PENALTY = 0.05
+DEFAULT_STOCHASTIC_TEMPERATURE = 0.3
+
+
+def calculate_recency_score(
+    published_date: Optional[datetime],
+    half_life_days: int = DEFAULT_RECENCY_HALF_LIFE_DAYS,
+    max_age_days: int = DEFAULT_MAX_AGE_DAYS
+) -> float:
+    """
+    Calculate recency score using exponential decay.
+
+    Story 3.8 AC#1: Recency-aware scoring
+
+    The score decays exponentially based on article age:
+    - Score of 1.0 for articles published today
+    - Score of 0.5 at half_life_days age
+    - Score of 0.25 at 2x half_life_days
+    - Score of 0.0 for articles older than max_age_days (filtered out)
+
+    Args:
+        published_date: Article publication datetime (None = neutral score)
+        half_life_days: Days until score drops to 0.5 (default 90)
+        max_age_days: Maximum age in days before filtering (default 365)
+
+    Returns:
+        Recency score between 0.0 and 1.0
+
+    Examples:
+        >>> calculate_recency_score(datetime.now())  # Today
+        1.0
+        >>> calculate_recency_score(datetime.now() - timedelta(days=90))  # 90 days
+        0.5
+        >>> calculate_recency_score(datetime.now() - timedelta(days=180))  # 180 days
+        0.25
+        >>> calculate_recency_score(datetime.now() - timedelta(days=400))  # >365 days
+        0.0
+    """
+    # Handle missing publication date gracefully
+    if published_date is None:
+        logger.debug("No published_date provided, using neutral score 0.5")
+        return 0.5
+
+    now = datetime.utcnow()
+    age_days = (now - published_date).days
+
+    # Filter out articles older than max_age
+    if age_days > max_age_days:
+        return 0.0
+
+    # Articles from the future or today get max score
+    if age_days <= 0:
+        return 1.0
+
+    # Exponential decay: score = exp(-ln(2) * age / half_life)
+    # This ensures score = 0.5 when age = half_life
+    decay_rate = math.log(2) / half_life_days
+    score = math.exp(-decay_rate * age_days)
+
+    return round(score, 4)
+
+
+def calculate_combined_score(
+    result: Dict[str, Any],
+    weights: Optional[Dict[str, float]] = None,
+    novelty_bonus: float = 0.0,
+    domain_penalty: float = 0.0
+) -> Dict[str, Any]:
+    """
+    Calculate combined ranking score from multiple weighted factors.
+
+    Story 3.8 AC#2: Multi-factor ranking
+    Story 3.8 AC#8: Transparent scoring
+
+    Combines:
+    - relevance_score: Semantic similarity (from Tavily or embedding)
+    - recency_score: Publication freshness (exponential decay)
+    - depth_score: Content quality (Gemini 1-5 scale normalized)
+    - authority_score: Author/source credibility from KB
+
+    Args:
+        result: Recommendation dict with individual scores
+        weights: Factor weights (default: 50/25/15/10 split)
+        novelty_bonus: Bonus for never-shown recommendations
+        domain_penalty: Penalty for domain duplicates
+
+    Returns:
+        Dictionary with:
+        - combined_score: Final weighted score
+        - score_breakdown: Individual factor scores
+        - weights_used: Weights applied
+        - adjustments: Novelty bonus and domain penalty applied
+        - final_score: Combined score after adjustments
+    """
+    if weights is None:
+        weights = DEFAULT_RANKING_WEIGHTS.copy()
+
+    # Validate weights sum to 1.0
+    weight_sum = sum(weights.values())
+    if abs(weight_sum - 1.0) > 0.01:
+        logger.warning(f"Ranking weights sum to {weight_sum}, expected 1.0")
+
+    # Extract individual scores (normalize to 0-1 range)
+    scores = {
+        'relevance': min(1.0, max(0.0, result.get('relevance_score', 0.5))),
+        'recency': min(1.0, max(0.0, result.get('recency_score', 0.5))),
+        'depth': min(1.0, max(0.0, (result.get('depth_score', 3) / 5.0))),
+        'authority': min(1.0, max(0.0, result.get('credibility_score', 0.0)))
+    }
+
+    # Calculate weighted combined score
+    combined = sum(weights.get(k, 0) * scores[k] for k in scores)
+
+    # Apply adjustments
+    adjustments = {
+        'novelty_bonus': novelty_bonus,
+        'domain_penalty': domain_penalty
+    }
+    final_score = combined + novelty_bonus - domain_penalty
+    final_score = min(1.0, max(0.0, final_score))  # Clamp to 0-1
+
+    return {
+        'combined_score': round(combined, 3),
+        'score_breakdown': {k: round(v, 3) for k, v in scores.items()},
+        'weights_used': weights,
+        'adjustments': adjustments,
+        'final_score': round(final_score, 3)
+    }
+
+
+def diversified_sample(
+    results: List[Dict[str, Any]],
+    n: int,
+    temperature: float = DEFAULT_STOCHASTIC_TEMPERATURE,
+    score_key: str = 'combined_score'
+) -> List[Dict[str, Any]]:
+    """
+    Sample results with controlled randomness using softmax temperature.
+
+    Story 3.8 AC#3: Result diversity via stochastic sampling
+
+    Temperature controls randomness:
+    - temperature=0: Deterministic (always returns top-N by score)
+    - temperature=0.3: Mild randomization (default, favors high scores)
+    - temperature=1.0: High randomization (more uniform distribution)
+
+    Args:
+        results: List of recommendations with combined_score
+        n: Number of samples to return
+        temperature: Softmax temperature (0=deterministic, 1=random)
+        score_key: Key to use for scoring (default: combined_score)
+
+    Returns:
+        List of n sampled recommendations
+    """
+    if not results:
+        return []
+
+    if len(results) <= n:
+        return results
+
+    # Temperature 0 = deterministic top-N
+    if temperature == 0:
+        return sorted(results, key=lambda x: x.get(score_key, 0), reverse=True)[:n]
+
+    try:
+        import numpy as np
+
+        # Extract scores
+        scores = np.array([r.get(score_key, 0) for r in results])
+
+        # Handle edge case of all-zero scores
+        if np.sum(scores) == 0:
+            scores = np.ones(len(results))
+
+        # Softmax with temperature
+        exp_scores = np.exp(scores / temperature)
+        probabilities = exp_scores / exp_scores.sum()
+
+        # Sample without replacement
+        indices = np.random.choice(
+            len(results),
+            size=min(n, len(results)),
+            replace=False,
+            p=probabilities
+        )
+
+        # Return sampled results (preserve order by score)
+        sampled = [results[i] for i in sorted(indices)]
+        return sampled
+
+    except ImportError:
+        logger.warning("NumPy not available, falling back to deterministic sampling")
+        return sorted(results, key=lambda x: x.get(score_key, 0), reverse=True)[:n]
+
+
+def parse_published_date(date_str: Optional[str]) -> Optional[datetime]:
+    """
+    Parse publication date string into datetime.
+
+    Handles multiple formats from Tavily and other sources.
+
+    Args:
+        date_str: Date string in various formats
+
+    Returns:
+        datetime object or None if parsing fails
+    """
+    if not date_str:
+        return None
+
+    formats = [
+        '%Y-%m-%d',
+        '%Y-%m-%dT%H:%M:%S',
+        '%Y-%m-%dT%H:%M:%SZ',
+        '%Y-%m-%dT%H:%M:%S.%f',
+        '%Y-%m-%dT%H:%M:%S.%fZ',
+        '%Y-%m-%dT%H:%M:%S%z',
+    ]
+
+    for fmt in formats:
+        try:
+            # Truncate to format length for timezone-aware formats
+            return datetime.strptime(date_str[:len(date_str)], fmt)
+        except (ValueError, TypeError):
+            continue
+
+    logger.debug(f"Could not parse date: {date_str}")
+    return None
+
+
+# ============================================================================
+# Story 3.8: Slot-Based Rotation
+# ============================================================================
+
+class SlotType:
+    """Slot types for recommendation rotation strategy."""
+    RELEVANCE = "RELEVANCE"       # Top combined score from active clusters
+    SERENDIPITY = "SERENDIPITY"   # From related but unexplored cluster
+    STALE_REFRESH = "STALE_REFRESH"  # From clusters with oldest content
+    TRENDING = "TRENDING"         # Highest recency score
+
+
+def assign_slots(
+    recommendations: List[Dict[str, Any]],
+    slot_config: Optional[Dict[str, int]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Assign slot types to recommendations for strategic variety.
+
+    Story 3.8 AC#4: Slot-based rotation
+
+    Slot Strategy:
+    - Slots 1-2 (RELEVANCE): Highest combined score from user's interests
+    - Slot 3 (SERENDIPITY): Discovery pick from related cluster
+    - Slot 4 (STALE_REFRESH): From cluster needing fresh content
+    - Slot 5 (TRENDING): Highest recency score, may sacrifice relevance
+
+    Args:
+        recommendations: List of scored recommendations
+        slot_config: Dict with slot counts per type (default: 2,1,1,1)
+
+    Returns:
+        Recommendations with 'slot' and 'slot_reason' fields added
+    """
+    if not recommendations:
+        return []
+
+    # Default slot configuration (total = 5)
+    if slot_config is None:
+        slot_config = {
+            'relevance_count': 2,
+            'serendipity_count': 1,
+            'stale_refresh_count': 1,
+            'trending_count': 1
+        }
+
+    # Sort by different criteria for slot assignment
+    by_combined = sorted(
+        recommendations,
+        key=lambda x: x.get('final_score', x.get('combined_score', 0)),
+        reverse=True
+    )
+    by_recency = sorted(
+        recommendations,
+        key=lambda x: x.get('recency_score', 0),
+        reverse=True
+    )
+
+    # Track assigned URLs to avoid duplicates
+    assigned_urls = set()
+    result = []
+
+    # Slot 1-2: RELEVANCE (top combined scores)
+    relevance_count = slot_config.get('relevance_count', 2)
+    for rec in by_combined:
+        if len([r for r in result if r.get('slot') == SlotType.RELEVANCE]) >= relevance_count:
+            break
+        if rec.get('url') not in assigned_urls:
+            rec['slot'] = SlotType.RELEVANCE
+            rec['slot_reason'] = f"Top combined score ({rec.get('final_score', rec.get('combined_score', 0)):.2f})"
+            result.append(rec)
+            assigned_urls.add(rec.get('url'))
+
+    # Slot 3: SERENDIPITY (from different clusters than RELEVANCE)
+    serendipity_count = slot_config.get('serendipity_count', 1)
+    relevance_clusters = set()
+    for rec in result:
+        cluster = rec.get('related_to', {}).get('cluster_id')
+        if cluster:
+            relevance_clusters.add(cluster)
+
+    for rec in by_combined:
+        if len([r for r in result if r.get('slot') == SlotType.SERENDIPITY]) >= serendipity_count:
+            break
+        if rec.get('url') in assigned_urls:
+            continue
+        # Prefer recommendations from different clusters
+        rec_cluster = rec.get('related_to', {}).get('cluster_id')
+        if rec_cluster and rec_cluster not in relevance_clusters:
+            rec['slot'] = SlotType.SERENDIPITY
+            rec['slot_reason'] = f"Discovery from cluster: {rec.get('related_to', {}).get('cluster_name', 'related topic')}"
+            result.append(rec)
+            assigned_urls.add(rec.get('url'))
+            break
+
+    # If no serendipity from different cluster, take next best
+    if len([r for r in result if r.get('slot') == SlotType.SERENDIPITY]) < serendipity_count:
+        for rec in by_combined:
+            if len([r for r in result if r.get('slot') == SlotType.SERENDIPITY]) >= serendipity_count:
+                break
+            if rec.get('url') not in assigned_urls:
+                rec['slot'] = SlotType.SERENDIPITY
+                rec['slot_reason'] = "Broadens your reading perspective"
+                result.append(rec)
+                assigned_urls.add(rec.get('url'))
+
+    # Slot 4: STALE_REFRESH (lower relevance but good quality)
+    stale_count = slot_config.get('stale_refresh_count', 1)
+    # Use recommendations from the middle of the combined list
+    mid_start = len(result)
+    for rec in by_combined[mid_start:]:
+        if len([r for r in result if r.get('slot') == SlotType.STALE_REFRESH]) >= stale_count:
+            break
+        if rec.get('url') not in assigned_urls and rec.get('depth_score', 0) >= 3:
+            rec['slot'] = SlotType.STALE_REFRESH
+            rec['slot_reason'] = "Refreshes an area of interest"
+            result.append(rec)
+            assigned_urls.add(rec.get('url'))
+
+    # Slot 5: TRENDING (highest recency)
+    trending_count = slot_config.get('trending_count', 1)
+    for rec in by_recency:
+        if len([r for r in result if r.get('slot') == SlotType.TRENDING]) >= trending_count:
+            break
+        if rec.get('url') not in assigned_urls:
+            rec['slot'] = SlotType.TRENDING
+            recency = rec.get('recency_score', 0)
+            rec['slot_reason'] = f"Fresh content (recency: {recency:.2f})"
+            result.append(rec)
+            assigned_urls.add(rec.get('url'))
+
+    # Fill remaining slots with best available
+    total_slots = sum(slot_config.values())
+    for rec in by_combined:
+        if len(result) >= total_slots:
+            break
+        if rec.get('url') not in assigned_urls:
+            rec['slot'] = SlotType.RELEVANCE
+            rec['slot_reason'] = "Additional relevant content"
+            result.append(rec)
+            assigned_urls.add(rec.get('url'))
+
+    logger.info(f"Assigned slots to {len(result)} recommendations")
+    return result
 
 
 def get_gemini_model() -> GenerativeModel:

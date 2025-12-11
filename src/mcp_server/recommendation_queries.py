@@ -2,21 +2,155 @@
 Smart query generation for reading recommendations.
 
 Story 3.5: AI-Powered Reading Recommendations
+Story 3.8: Enhanced Query Variation
 
 Generates search queries from KB context:
 - Recent read themes
 - Top cluster topics
 - Knowledge card takeaways for "beyond what you know" queries
 - Stale cluster detection for gap filling
+- Cluster rotation based on time/session seed (Story 3.8)
+- Synonym and perspective variation (Story 3.8)
 """
 
 import logging
+import hashlib
+import random
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from collections import Counter
 
 import firestore_client
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Story 3.8: Query Variation Enhancements
+# ============================================================================
+
+# Synonym expansions for common terms
+SYNONYM_MAP = {
+    'architecture': ['system design', 'software architecture', 'design patterns'],
+    'microservices': ['distributed systems', 'service mesh', 'containerization'],
+    'platform': ['developer platform', 'internal platform', 'platform engineering'],
+    'ai': ['artificial intelligence', 'machine learning', 'deep learning'],
+    'ml': ['machine learning', 'predictive modeling', 'data science'],
+    'devops': ['site reliability', 'infrastructure', 'CI/CD'],
+    'security': ['cybersecurity', 'application security', 'zero trust'],
+    'data': ['data engineering', 'data pipelines', 'analytics'],
+    'cloud': ['cloud native', 'cloud computing', 'serverless'],
+    'api': ['REST API', 'GraphQL', 'API design'],
+}
+
+# Query perspective templates
+PERSPECTIVE_TEMPLATES = [
+    "{topic} latest developments 2024 2025",
+    "{topic} best practices insights",
+    "advanced {topic} techniques",
+    "future of {topic}",
+    "{topic} case studies real world",
+    "{topic} emerging trends",
+    "beyond {topic} basics",
+    "{topic} expert analysis",
+]
+
+
+def get_session_seed() -> int:
+    """
+    Generate a time-based seed for session-consistent randomization.
+
+    Story 3.8 AC#5: Query variation with time-based seed.
+
+    Uses current hour as seed so queries vary throughout the day
+    but remain consistent within the same hour.
+
+    Returns:
+        Integer seed based on current time
+    """
+    now = datetime.utcnow()
+    # Combine date and hour for daily rotation with hourly variation
+    seed_str = f"{now.year}{now.month}{now.day}{now.hour}"
+    return int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
+
+
+def expand_with_synonyms(term: str) -> List[str]:
+    """
+    Expand a term with synonyms for query variation.
+
+    Story 3.8 AC#5: Synonym expansion.
+
+    Args:
+        term: Original search term
+
+    Returns:
+        List containing original term plus synonyms
+    """
+    term_lower = term.lower()
+    expanded = [term]
+
+    # Check each word in the term for synonyms
+    for key, synonyms in SYNONYM_MAP.items():
+        if key in term_lower:
+            expanded.extend(synonyms[:2])  # Add up to 2 synonyms
+            break
+
+    return list(dict.fromkeys(expanded))  # Deduplicate while preserving order
+
+
+def vary_query_perspective(
+    topic: str,
+    session_seed: Optional[int] = None
+) -> str:
+    """
+    Generate varied query using different perspective templates.
+
+    Story 3.8 AC#5: Perspective variation in query phrasing.
+
+    Args:
+        topic: The topic to search for
+        session_seed: Seed for consistent randomization (default: time-based)
+
+    Returns:
+        Query string with varied perspective
+    """
+    if session_seed is None:
+        session_seed = get_session_seed()
+
+    # Use seed to select template consistently within session
+    random.seed(session_seed + hash(topic))
+    template = random.choice(PERSPECTIVE_TEMPLATES)
+
+    return template.format(topic=topic)
+
+
+def rotate_clusters(
+    clusters: List[Dict[str, Any]],
+    session_seed: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """
+    Rotate cluster order based on session seed for variety.
+
+    Story 3.8 AC#5: Cluster rotation based on session.
+
+    Args:
+        clusters: List of cluster dictionaries
+        session_seed: Seed for rotation (default: time-based)
+
+    Returns:
+        Rotated list of clusters
+    """
+    if not clusters or len(clusters) <= 1:
+        return clusters
+
+    if session_seed is None:
+        session_seed = get_session_seed()
+
+    # Calculate rotation amount based on seed
+    rotation = session_seed % len(clusters)
+
+    # Rotate the list
+    return clusters[rotation:] + clusters[:rotation]
 
 
 def get_recent_read_themes(days: int = 14, limit: int = 50) -> Dict[str, Any]:
@@ -201,15 +335,20 @@ def get_stale_cluster_themes(
 def generate_search_queries(
     scope: str = "both",
     days: int = 14,
-    max_queries: int = 8
+    max_queries: int = 8,
+    use_variation: bool = True
 ) -> List[Dict[str, Any]]:
     """
     Generate smart search queries for Tavily based on KB context.
+
+    Story 3.5: Base query generation
+    Story 3.8 AC#5: Enhanced query variation
 
     Args:
         scope: "recent" (recent reads), "clusters" (top clusters), or "both"
         days: Lookback period for recent reads
         max_queries: Maximum number of queries to generate
+        use_variation: Enable Story 3.8 query variation (default True)
 
     Returns:
         List of query dictionaries:
@@ -218,20 +357,29 @@ def generate_search_queries(
         - context: Additional context (cluster_id, etc.)
     """
     try:
-        logger.info(f"Generating search queries: scope={scope}, days={days}")
+        logger.info(f"Generating search queries: scope={scope}, days={days}, variation={use_variation}")
 
         queries = []
+        session_seed = get_session_seed() if use_variation else None
 
         # Get cluster themes if scope includes clusters
         if scope in ("clusters", "both"):
             cluster_themes = get_top_cluster_themes(limit=5)
 
+            # Story 3.8: Rotate clusters based on session
+            if use_variation:
+                cluster_themes = rotate_clusters(cluster_themes, session_seed)
+
             for cluster in cluster_themes:
                 # Generate query from cluster name
                 name = cluster['name']
 
-                # Create "beyond" query using cluster theme
-                query = f"{name} latest developments 2024 2025"
+                # Story 3.8: Use varied query perspective
+                if use_variation:
+                    query = vary_query_perspective(name, session_seed)
+                else:
+                    query = f"{name} latest developments 2024 2025"
+
                 queries.append({
                     'query': query,
                     'source': 'cluster',
@@ -247,7 +395,12 @@ def generate_search_queries(
 
             # Generate queries from themes
             for theme in recent.get('themes', [])[:3]:
-                query = f"{theme} best practices insights 2024 2025"
+                # Story 3.8: Use varied query perspective
+                if use_variation:
+                    query = vary_query_perspective(theme, session_seed)
+                else:
+                    query = f"{theme} best practices insights 2024 2025"
+
                 queries.append({
                     'query': query,
                     'source': 'theme',

@@ -1217,20 +1217,31 @@ def get_related_clusters(
 def get_reading_recommendations(
     scope: str = "both",
     days: int = 14,
-    limit: int = 10
+    limit: int = 10,
+    user_id: str = "default"
 ) -> Dict[str, Any]:
     """
     Get AI-powered reading recommendations based on KB content.
 
     Story 3.5: AI-Powered Reading Recommendations
+    Story 3.8: Enhanced Recommendation Ranking
 
     Analyzes recent reads and top clusters, searches Tavily with domain
     whitelisting, filters for quality, and deduplicates against KB.
+
+    Story 3.8 Enhancements:
+    - Multi-factor ranking with configurable weights
+    - Recency scoring with exponential decay
+    - Slot-based rotation (RELEVANCE, SERENDIPITY, STALE_REFRESH, TRENDING)
+    - Shown recommendations tracking for deduplication
+    - Stochastic sampling for controlled diversity
+    - Query variation with time-based rotation
 
     Args:
         scope: "recent" (recent reads), "clusters" (top clusters), or "both" (default)
         days: Lookback period for recent reads (default 14)
         limit: Maximum recommendations to return (default 10)
+        user_id: User identifier for shown tracking (default "default")
 
     Returns:
         Dictionary with:
@@ -1239,7 +1250,13 @@ def get_reading_recommendations(
         - scope: Scope used
         - days_analyzed: Days lookback
         - queries_used: List of search queries
-        - recommendations: List of recommendation objects
+        - recommendations: List of recommendation objects with:
+            - title, url, domain, content
+            - combined_score, final_score (Story 3.8)
+            - score_breakdown: {relevance, recency, depth, authority} (Story 3.8)
+            - slot, slot_reason (Story 3.8)
+            - depth_score, credibility_score, why_recommended
+        - ranking_config: Weights and settings used (Story 3.8)
         - filtered_out: Counts of filtered items
 
     Example:
@@ -1252,10 +1269,15 @@ def get_reading_recommendations(
                     "title": "Platform Engineering in 2025",
                     "url": "https://martinfowler.com/...",
                     "domain": "martinfowler.com",
+                    "slot": "RELEVANCE",
+                    "slot_reason": "Top combined score (0.82)",
+                    "combined_score": 0.82,
+                    "score_breakdown": {"relevance": 0.9, "recency": 0.75, "depth": 0.8, "authority": 0.6},
                     "depth_score": 4,
                     "why_recommended": "Connects to your reading cluster: Platform Engineering"
                 }
-            ]
+            ],
+            "ranking_config": {"weights": {"relevance": 0.5, "recency": 0.25, ...}}
         }
     """
     start_time = time.time()
@@ -1282,17 +1304,39 @@ def get_reading_recommendations(
 
         logger.info(f"Using {len(quality_domains)} whitelisted domains")
 
+        # Story 3.8: Get ranking configuration
+        ranking_config = firestore_client.get_ranking_config()
+        weights = ranking_config.get('weights', recommendation_filter.DEFAULT_RANKING_WEIGHTS)
+        settings = ranking_config.get('settings', {})
+
+        recency_settings = settings.get('recency', {})
+        diversity_settings = settings.get('diversity', {})
+        slot_config = settings.get('slots', {})
+
+        half_life_days = recency_settings.get('half_life_days', recommendation_filter.DEFAULT_RECENCY_HALF_LIFE_DAYS)
+        max_age_days = recency_settings.get('max_age_days', recommendation_filter.DEFAULT_MAX_AGE_DAYS)
+        tavily_days = recency_settings.get('tavily_days_filter', 180)
+        novelty_bonus = diversity_settings.get('novelty_bonus', recommendation_filter.DEFAULT_NOVELTY_BONUS)
+        domain_penalty = diversity_settings.get('domain_duplicate_penalty', recommendation_filter.DEFAULT_DOMAIN_DUPLICATE_PENALTY)
+        temperature = diversity_settings.get('stochastic_temperature', recommendation_filter.DEFAULT_STOCHASTIC_TEMPERATURE)
+
+        # Story 3.8 AC#6: Get previously shown URLs
+        shown_ttl = diversity_settings.get('shown_ttl_days', 7)
+        shown_urls = firestore_client.get_shown_urls(user_id=user_id, ttl_days=shown_ttl)
+        logger.info(f"Excluding {len(shown_urls)} previously shown URLs")
+
         # Step 2: Get KB credibility signals (all known authors and source domains)
         kb_credibility = firestore_client.get_kb_credibility_signals()
         known_authors = kb_credibility.get('authors', [])
         known_domains = kb_credibility.get('domains', [])
         logger.info(f"KB credibility: {len(known_authors)} authors, {len(known_domains)} domains")
 
-        # Step 3: Generate smart search queries
+        # Step 3: Generate smart search queries (Story 3.8: with variation)
         queries = recommendation_queries.generate_search_queries(
             scope=scope,
             days=days,
-            max_queries=8
+            max_queries=8,
+            use_variation=True  # Story 3.8 AC#5
         )
 
         if not queries:
@@ -1310,7 +1354,7 @@ def get_reading_recommendations(
         query_strings = [q['query'] for q in queries]
         logger.info(f"Generated {len(queries)} search queries")
 
-        # Step 3: Search Tavily
+        # Step 4: Search Tavily
         all_results = []
         all_contexts = []
 
@@ -1321,12 +1365,34 @@ def get_reading_recommendations(
                 search_result = tavily_client.search(
                     query=query_str,
                     exclude_domains=excluded_domains if excluded_domains else None,
-                    days=30,  # Last 30 days for recency
+                    days=tavily_days,  # Story 3.8: configurable recency filter
                     max_results=5,
                     search_depth="advanced"  # Better quality ranking
                 )
 
                 for result in search_result.get('results', []):
+                    # Story 3.8 AC#6: Skip previously shown URLs
+                    if result.get('url') in shown_urls:
+                        logger.debug(f"Skipping previously shown: {result.get('url')}")
+                        continue
+
+                    # Story 3.8 AC#1: Calculate recency score
+                    pub_date = recommendation_filter.parse_published_date(result.get('published_date'))
+                    recency_score = recommendation_filter.calculate_recency_score(
+                        pub_date, half_life_days, max_age_days
+                    )
+
+                    # Skip articles that are too old (recency_score = 0)
+                    if recency_score == 0:
+                        logger.debug(f"Skipping old article: {result.get('title')}")
+                        continue
+
+                    result['recency_score'] = recency_score
+                    result['relevance_score'] = result.get('score', 0.5)
+
+                    # Add cluster context for slot assignment
+                    result['related_to'] = query_dict.get('context', {})
+
                     all_results.append(result)
                     all_contexts.append(query_dict)
 
@@ -1334,7 +1400,7 @@ def get_reading_recommendations(
                 logger.warning(f"Tavily search failed for query '{query_str[:50]}...': {e}")
                 continue
 
-        logger.info(f"Tavily returned {len(all_results)} total results")
+        logger.info(f"Tavily returned {len(all_results)} total results (after shown/age filtering)")
 
         if not all_results:
             return {
@@ -1344,15 +1410,16 @@ def get_reading_recommendations(
                 'days_analyzed': days,
                 'queries_used': query_strings,
                 'recommendations': [],
-                'filtered_out': {'no_results': True}
+                'filtered_out': {'no_results': True, 'shown_excluded': len(shown_urls)},
+                'ranking_config': {'weights': weights, 'settings': settings}
             }
 
-        # Step 4: Filter for quality and deduplicate
+        # Step 5: Filter for quality and deduplicate
         filter_result = recommendation_filter.filter_recommendations(
             recommendations=all_results,
             query_contexts=all_contexts,
             min_depth_score=3,
-            max_per_domain=2,
+            max_per_domain=diversity_settings.get('max_per_domain', 2),
             check_duplicates=True,
             known_authors=known_authors,
             known_sources=known_domains,  # Source domains from source_url
@@ -1362,16 +1429,53 @@ def get_reading_recommendations(
         filtered_recs = filter_result.get('recommendations', [])
         filtered_out = filter_result.get('filtered_out', {})
 
-        # Step 5: Sort by combined score (depth + credibility + recency) and limit
-        filtered_recs.sort(
-            key=lambda x: (
-                x.get('depth_score', 0) +
-                x.get('credibility_score', 0) +
-                x.get('recency_score', 0)
-            ),
-            reverse=True
+        # Story 3.8 AC#2: Calculate combined scores with multi-factor ranking
+        domain_counts = {}
+        for rec in filtered_recs:
+            domain = rec.get('domain', '')
+
+            # Calculate novelty bonus (never shown before)
+            is_novel = rec.get('url') not in shown_urls
+            rec_novelty = novelty_bonus if is_novel else 0.0
+
+            # Calculate domain duplicate penalty
+            domain_counts[domain] = domain_counts.get(domain, 0) + 1
+            rec_penalty = domain_penalty * (domain_counts[domain] - 1) if domain_counts[domain] > 1 else 0.0
+
+            # Calculate combined score
+            score_result = recommendation_filter.calculate_combined_score(
+                rec, weights, novelty_bonus=rec_novelty, domain_penalty=rec_penalty
+            )
+
+            rec['combined_score'] = score_result['combined_score']
+            rec['final_score'] = score_result['final_score']
+            rec['score_breakdown'] = score_result['score_breakdown']
+            rec['ranking_adjustments'] = score_result['adjustments']
+
+        # Story 3.8 AC#3: Stochastic sampling for diversity
+        # Over-sample to give diversity algorithm more to work with
+        sample_size = min(limit * 2, len(filtered_recs))
+        sampled_recs = recommendation_filter.diversified_sample(
+            filtered_recs,
+            n=sample_size,
+            temperature=temperature,
+            score_key='final_score'
         )
-        final_recs = filtered_recs[:limit]
+
+        # Story 3.8 AC#4: Assign slots for variety
+        slotted_recs = recommendation_filter.assign_slots(sampled_recs, slot_config)
+
+        # Take final limit
+        final_recs = slotted_recs[:limit]
+
+        # Story 3.8 AC#6: Record shown recommendations
+        if final_recs:
+            record_result = firestore_client.record_shown_recommendations(
+                user_id=user_id,
+                recommendations=final_recs,
+                ttl_days=shown_ttl
+            )
+            logger.info(f"Recorded {record_result.get('recorded_count', 0)} shown recommendations")
 
         processing_time = round(time.time() - start_time, 1)
         logger.info(
@@ -1386,7 +1490,11 @@ def get_reading_recommendations(
             'days_analyzed': days,
             'queries_used': query_strings,
             'recommendations': final_recs,
-            'filtered_out': filtered_out
+            'filtered_out': filtered_out,
+            'ranking_config': {
+                'weights': weights,
+                'settings': settings
+            }
         }
 
     except Exception as e:
@@ -1492,5 +1600,93 @@ def get_recommendation_config() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Get recommendation config failed: {e}")
         return {
+            'error': str(e)
+        }
+
+
+# ============================================================================
+# Story 3.8: Ranking Configuration Tools
+# ============================================================================
+
+def get_ranking_config() -> Dict[str, Any]:
+    """
+    Get current ranking configuration for recommendations.
+
+    Story 3.8 AC#7: Configuration management
+
+    Returns:
+        Dictionary with:
+        - weights: Factor weights (relevance, recency, depth, authority)
+        - settings: Recency, diversity, and slot settings
+        - weights_last_updated: When weights were last modified
+        - settings_last_updated: When settings were last modified
+    """
+    try:
+        logger.info("Getting ranking config")
+
+        config = firestore_client.get_ranking_config()
+
+        return {
+            'weights': config.get('weights', {}),
+            'settings': config.get('settings', {}),
+            'weights_last_updated': config.get('weights_last_updated', ''),
+            'settings_last_updated': config.get('settings_last_updated', ''),
+            'error': config.get('error')
+        }
+
+    except Exception as e:
+        logger.error(f"Get ranking config failed: {e}")
+        return {
+            'error': str(e)
+        }
+
+
+def update_ranking_config(
+    weights: Optional[Dict[str, float]] = None,
+    settings: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Update ranking configuration for recommendations.
+
+    Story 3.8 AC#7: Configuration management
+
+    Args:
+        weights: Factor weights dict with keys: relevance, recency, depth, authority
+                 Values must sum to 1.0
+        settings: Settings dict with optional keys:
+                  - recency: {half_life_days, max_age_days, tavily_days_filter}
+                  - diversity: {shown_ttl_days, novelty_bonus, domain_duplicate_penalty, max_per_domain, stochastic_temperature}
+                  - slots: {relevance_count, serendipity_count, stale_refresh_count, trending_count}
+
+    Returns:
+        Dictionary with:
+        - success: Boolean
+        - config: Updated configuration
+        - changes: Summary of changes made
+        - error: Error message if failed
+
+    Example:
+        >>> update_ranking_config(weights={"relevance": 0.6, "recency": 0.2, "depth": 0.1, "authority": 0.1})
+        {
+            "success": true,
+            "config": {...},
+            "changes": {"weights_updated": true}
+        }
+    """
+    try:
+        logger.info("Updating ranking config")
+
+        result = firestore_client.update_ranking_config(
+            weights=weights,
+            settings=settings,
+            updated_by="mcp_tool"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Update ranking config failed: {e}")
+        return {
+            'success': False,
             'error': str(e)
         }

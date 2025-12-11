@@ -506,5 +506,412 @@ class TestFirestoreConfigMethods(unittest.TestCase):
         self.assertEqual(result['excluded_domains'], ['blocked.com'])
 
 
+# ============================================================================
+# Story 3.8: Enhanced Ranking Tests
+# ============================================================================
+
+class TestRecencyScoring(unittest.TestCase):
+    """Test suite for recency scoring (Story 3.8 AC#1)."""
+
+    def test_recency_score_today(self):
+        """Articles published today should score 1.0."""
+        from mcp_server.recommendation_filter import calculate_recency_score
+        from datetime import datetime
+
+        today = datetime.utcnow()
+        score = calculate_recency_score(today)
+        self.assertAlmostEqual(score, 1.0, places=2)
+
+    def test_recency_score_half_life(self):
+        """Score should be ~0.5 at half_life_days."""
+        from mcp_server.recommendation_filter import calculate_recency_score
+        from datetime import datetime, timedelta
+
+        half_life = 90
+        date = datetime.utcnow() - timedelta(days=half_life)
+        score = calculate_recency_score(date, half_life_days=half_life)
+        self.assertAlmostEqual(score, 0.5, places=1)
+
+    def test_recency_score_double_half_life(self):
+        """Score should be ~0.25 at 2x half_life_days."""
+        from mcp_server.recommendation_filter import calculate_recency_score
+        from datetime import datetime, timedelta
+
+        half_life = 90
+        date = datetime.utcnow() - timedelta(days=half_life * 2)
+        score = calculate_recency_score(date, half_life_days=half_life)
+        self.assertAlmostEqual(score, 0.25, places=1)
+
+    def test_recency_score_max_age_filter(self):
+        """Articles older than max_age_days should score 0."""
+        from mcp_server.recommendation_filter import calculate_recency_score
+        from datetime import datetime, timedelta
+
+        max_age = 365
+        date = datetime.utcnow() - timedelta(days=max_age + 10)
+        score = calculate_recency_score(date, max_age_days=max_age)
+        self.assertEqual(score, 0.0)
+
+    def test_recency_score_none_date(self):
+        """Missing date should return neutral score 0.5."""
+        from mcp_server.recommendation_filter import calculate_recency_score
+
+        score = calculate_recency_score(None)
+        self.assertEqual(score, 0.5)
+
+
+class TestCombinedScoring(unittest.TestCase):
+    """Test suite for multi-factor ranking (Story 3.8 AC#2)."""
+
+    def test_combined_score_default_weights(self):
+        """Test combined score with default weights."""
+        from mcp_server.recommendation_filter import calculate_combined_score
+
+        result_dict = {
+            'relevance_score': 0.8,
+            'recency_score': 0.6,
+            'depth_score': 4,  # 1-5 scale
+            'credibility_score': 0.5
+        }
+
+        score_result = calculate_combined_score(result_dict)
+
+        self.assertIn('combined_score', score_result)
+        self.assertIn('final_score', score_result)
+        self.assertIn('score_breakdown', score_result)
+        self.assertGreater(score_result['combined_score'], 0)
+        self.assertLessEqual(score_result['combined_score'], 1.0)
+
+    def test_combined_score_custom_weights(self):
+        """Test combined score with custom weights."""
+        from mcp_server.recommendation_filter import calculate_combined_score
+
+        result_dict = {
+            'relevance_score': 1.0,
+            'recency_score': 0.0,
+            'depth_score': 5,
+            'credibility_score': 0.0
+        }
+
+        weights = {'relevance': 1.0, 'recency': 0.0, 'depth': 0.0, 'authority': 0.0}
+        score_result = calculate_combined_score(result_dict, weights)
+
+        # With 100% weight on relevance and relevance=1.0, should be ~1.0
+        self.assertAlmostEqual(score_result['combined_score'], 1.0, places=1)
+
+    def test_combined_score_with_adjustments(self):
+        """Test novelty bonus and domain penalty."""
+        from mcp_server.recommendation_filter import calculate_combined_score
+
+        result_dict = {
+            'relevance_score': 0.5,
+            'recency_score': 0.5,
+            'depth_score': 2.5,
+            'credibility_score': 0.5
+        }
+
+        score_result = calculate_combined_score(
+            result_dict,
+            novelty_bonus=0.1,
+            domain_penalty=0.05
+        )
+
+        # Final score should include adjustments
+        self.assertEqual(score_result['adjustments']['novelty_bonus'], 0.1)
+        self.assertEqual(score_result['adjustments']['domain_penalty'], 0.05)
+
+
+class TestStochasticSampling(unittest.TestCase):
+    """Test suite for stochastic sampling (Story 3.8 AC#3)."""
+
+    def test_deterministic_sampling_temp_zero(self):
+        """Temperature 0 should return top-N by score."""
+        from mcp_server.recommendation_filter import diversified_sample
+
+        results = [
+            {'combined_score': 0.9, 'url': 'a'},
+            {'combined_score': 0.8, 'url': 'b'},
+            {'combined_score': 0.7, 'url': 'c'},
+            {'combined_score': 0.6, 'url': 'd'},
+        ]
+
+        sampled = diversified_sample(results, n=2, temperature=0)
+
+        self.assertEqual(len(sampled), 2)
+        self.assertEqual(sampled[0]['url'], 'a')
+        self.assertEqual(sampled[1]['url'], 'b')
+
+    def test_sampling_returns_correct_count(self):
+        """Sampling should return requested number of items."""
+        from mcp_server.recommendation_filter import diversified_sample
+
+        results = [{'combined_score': i/10, 'url': str(i)} for i in range(10)]
+
+        sampled = diversified_sample(results, n=5, temperature=0.3)
+
+        self.assertEqual(len(sampled), 5)
+
+    def test_sampling_handles_small_input(self):
+        """Sampling should handle input smaller than n."""
+        from mcp_server.recommendation_filter import diversified_sample
+
+        results = [
+            {'combined_score': 0.9, 'url': 'a'},
+            {'combined_score': 0.8, 'url': 'b'},
+        ]
+
+        sampled = diversified_sample(results, n=5, temperature=0.3)
+
+        self.assertEqual(len(sampled), 2)
+
+
+class TestSlotBasedRotation(unittest.TestCase):
+    """Test suite for slot-based rotation (Story 3.8 AC#4)."""
+
+    def test_assign_slots_basic(self):
+        """Test slot assignment with default config."""
+        from mcp_server.recommendation_filter import assign_slots, SlotType
+
+        recommendations = [
+            {'url': 'a', 'final_score': 0.9, 'recency_score': 0.7, 'depth_score': 4},
+            {'url': 'b', 'final_score': 0.8, 'recency_score': 0.9, 'depth_score': 4},
+            {'url': 'c', 'final_score': 0.7, 'recency_score': 0.5, 'depth_score': 3},
+            {'url': 'd', 'final_score': 0.6, 'recency_score': 0.4, 'depth_score': 4},
+            {'url': 'e', 'final_score': 0.5, 'recency_score': 0.3, 'depth_score': 3},
+        ]
+
+        result = assign_slots(recommendations)
+
+        # Should have slots assigned
+        self.assertTrue(all('slot' in r for r in result))
+        self.assertTrue(all('slot_reason' in r for r in result))
+
+        # Should have RELEVANCE slots
+        relevance_slots = [r for r in result if r['slot'] == SlotType.RELEVANCE]
+        self.assertGreater(len(relevance_slots), 0)
+
+    def test_assign_slots_with_custom_config(self):
+        """Test slot assignment with custom slot config."""
+        from mcp_server.recommendation_filter import assign_slots, SlotType
+
+        recommendations = [
+            {'url': f'{i}', 'final_score': 0.9 - i*0.1, 'recency_score': 0.5, 'depth_score': 3}
+            for i in range(10)
+        ]
+
+        config = {
+            'relevance_count': 3,
+            'serendipity_count': 0,
+            'stale_refresh_count': 0,
+            'trending_count': 0
+        }
+
+        result = assign_slots(recommendations, config)
+
+        # Should have exactly 3 RELEVANCE slots
+        relevance_slots = [r for r in result if r['slot'] == SlotType.RELEVANCE]
+        self.assertEqual(len(relevance_slots), 3)
+
+
+class TestQueryVariation(unittest.TestCase):
+    """Test suite for query variation (Story 3.8 AC#5)."""
+
+    def test_session_seed_consistency(self):
+        """Same hour should produce same seed."""
+        from mcp_server.recommendation_queries import get_session_seed
+
+        seed1 = get_session_seed()
+        seed2 = get_session_seed()
+
+        self.assertEqual(seed1, seed2)
+
+    def test_expand_with_synonyms(self):
+        """Test synonym expansion."""
+        from mcp_server.recommendation_queries import expand_with_synonyms
+
+        expanded = expand_with_synonyms('microservices architecture')
+
+        self.assertIn('microservices architecture', expanded)
+        self.assertGreater(len(expanded), 1)  # Should have synonyms
+
+    def test_vary_query_perspective(self):
+        """Test query perspective variation."""
+        from mcp_server.recommendation_queries import vary_query_perspective
+
+        query1 = vary_query_perspective('platform engineering', session_seed=123)
+        query2 = vary_query_perspective('platform engineering', session_seed=123)
+
+        # Same seed should produce same query
+        self.assertEqual(query1, query2)
+
+        # Different seed should produce different query
+        query3 = vary_query_perspective('platform engineering', session_seed=456)
+        # Note: May occasionally be the same by chance, so we just verify it's valid
+        self.assertIn('platform engineering', query3)
+
+    def test_rotate_clusters(self):
+        """Test cluster rotation."""
+        from mcp_server.recommendation_queries import rotate_clusters
+
+        clusters = [
+            {'name': 'A'},
+            {'name': 'B'},
+            {'name': 'C'},
+            {'name': 'D'},
+        ]
+
+        rotated = rotate_clusters(clusters, session_seed=100)
+
+        self.assertEqual(len(rotated), 4)
+        # Order should be different from original (unless seed happens to = 0 mod 4)
+        # Just verify all items are present
+        names = [c['name'] for c in rotated]
+        self.assertEqual(sorted(names), ['A', 'B', 'C', 'D'])
+
+
+class TestDateParsing(unittest.TestCase):
+    """Test suite for date parsing."""
+
+    def test_parse_iso_date(self):
+        """Test parsing ISO date format."""
+        from mcp_server.recommendation_filter import parse_published_date
+
+        result = parse_published_date('2025-12-01')
+        self.assertIsNotNone(result)
+        self.assertEqual(result.year, 2025)
+        self.assertEqual(result.month, 12)
+        self.assertEqual(result.day, 1)
+
+    def test_parse_iso_datetime(self):
+        """Test parsing ISO datetime format."""
+        from mcp_server.recommendation_filter import parse_published_date
+
+        result = parse_published_date('2025-12-01T10:30:00Z')
+        self.assertIsNotNone(result)
+        self.assertEqual(result.hour, 10)
+
+    def test_parse_none_date(self):
+        """Test parsing None returns None."""
+        from mcp_server.recommendation_filter import parse_published_date
+
+        result = parse_published_date(None)
+        self.assertIsNone(result)
+
+    def test_parse_invalid_date(self):
+        """Test parsing invalid date returns None."""
+        from mcp_server.recommendation_filter import parse_published_date
+
+        result = parse_published_date('not-a-date')
+        self.assertIsNone(result)
+
+
+class TestShownRecommendationsTracking(unittest.TestCase):
+    """Test suite for shown recommendations tracking (Story 3.8 AC#6)."""
+
+    @patch('mcp_server.firestore_client.get_firestore_client')
+    def test_record_shown_recommendations(self, mock_get_db):
+        """Test recording shown recommendations."""
+        from mcp_server import firestore_client
+
+        mock_db = MagicMock()
+        mock_batch = MagicMock()
+        mock_db.batch.return_value = mock_batch
+        mock_get_db.return_value = mock_db
+
+        recommendations = [
+            {'url': 'https://example.com/1', 'combined_score': 0.8, 'slot': 'RELEVANCE'},
+            {'url': 'https://example.com/2', 'combined_score': 0.7, 'slot': 'TRENDING'},
+        ]
+
+        result = firestore_client.record_shown_recommendations(
+            user_id='test_user',
+            recommendations=recommendations
+        )
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['recorded_count'], 2)
+        mock_batch.commit.assert_called_once()
+
+    @patch('mcp_server.firestore_client.get_firestore_client')
+    def test_get_shown_urls(self, mock_get_db):
+        """Test retrieving shown URLs."""
+        from mcp_server import firestore_client
+
+        mock_doc1 = MagicMock()
+        mock_doc1.to_dict.return_value = {'url': 'https://example.com/1'}
+        mock_doc2 = MagicMock()
+        mock_doc2.to_dict.return_value = {'url': 'https://example.com/2'}
+
+        mock_query = MagicMock()
+        mock_query.stream.return_value = [mock_doc1, mock_doc2]
+        mock_query.where.return_value = mock_query
+
+        mock_collection = MagicMock()
+        mock_collection.return_value = mock_query
+
+        mock_doc_ref = MagicMock()
+        mock_doc_ref.collection.return_value = mock_query
+
+        mock_db = MagicMock()
+        mock_db.collection.return_value.document.return_value = mock_doc_ref
+        mock_get_db.return_value = mock_db
+
+        urls = firestore_client.get_shown_urls(user_id='test_user')
+
+        self.assertEqual(len(urls), 2)
+        self.assertIn('https://example.com/1', urls)
+
+
+class TestRankingConfig(unittest.TestCase):
+    """Test suite for ranking configuration (Story 3.8 AC#7)."""
+
+    @patch('mcp_server.firestore_client.get_firestore_client')
+    def test_get_ranking_config_creates_defaults(self, mock_get_db):
+        """Test that default config is created if not exists."""
+        from mcp_server import firestore_client
+
+        mock_doc = MagicMock()
+        mock_doc.exists = False
+
+        mock_doc_ref = MagicMock()
+        mock_doc_ref.get.return_value = mock_doc
+
+        mock_collection = MagicMock()
+        mock_collection.document.return_value = mock_doc_ref
+
+        mock_db = MagicMock()
+        mock_db.collection.return_value = mock_collection
+        mock_get_db.return_value = mock_db
+
+        result = firestore_client.get_ranking_config()
+
+        # Should return default weights
+        self.assertIn('weights', result)
+        self.assertIn('relevance', result['weights'])
+        self.assertEqual(result['weights']['relevance'], 0.5)
+
+    @patch('mcp_server.firestore_client.get_firestore_client')
+    def test_update_ranking_config_validates_weights(self, mock_get_db):
+        """Test that invalid weights are rejected."""
+        from mcp_server import firestore_client
+
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+
+        # Weights don't sum to 1.0
+        invalid_weights = {
+            'relevance': 0.5,
+            'recency': 0.5,
+            'depth': 0.5,
+            'authority': 0.5
+        }
+
+        result = firestore_client.update_ranking_config(weights=invalid_weights)
+
+        self.assertFalse(result['success'])
+        self.assertIn('error', result)
+        self.assertIn('sum to 1.0', result['error'])
+
+
 if __name__ == '__main__':
     unittest.main()
