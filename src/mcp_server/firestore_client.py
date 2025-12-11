@@ -1003,3 +1003,81 @@ def get_recent_chunks_with_cards(days: int = 14, limit: int = 50) -> List[Dict[s
     except Exception as e:
         logger.error(f"Failed to get recent chunks with cards: {e}")
         return []
+
+
+def get_kb_credibility_signals() -> Dict[str, Any]:
+    """
+    Get all authors and source domains from the KB for credibility scoring.
+
+    Story 3.5: AI-Powered Reading Recommendations
+
+    Extracts unique authors and domains from source_url to identify
+    trusted sources based on user's reading history.
+
+    Returns:
+        Dictionary with:
+        - authors: List of unique author names (sorted by frequency)
+        - domains: List of unique domains from source_url (sorted by frequency)
+        - author_count: Total unique authors
+        - domain_count: Total unique domains
+    """
+    try:
+        from collections import Counter
+        from urllib.parse import urlparse
+
+        db = get_firestore_client()
+        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+
+        logger.info("Fetching KB credibility signals (all authors and source domains)")
+
+        docs = db.collection(collection).stream()
+
+        authors = Counter()
+        domains = Counter()
+
+        for doc in docs:
+            data = doc.to_dict()
+
+            # Count authors
+            author = data.get('author')
+            if author and author.strip():
+                authors[author.strip()] += 1
+
+            # Extract domain from source_url
+            source_url = data.get('source_url')
+            if source_url:
+                try:
+                    parsed = urlparse(source_url)
+                    domain = parsed.netloc.replace('www.', '')
+                    if domain and domain not in ('readwise.io',):  # Skip meta-sources
+                        domains[domain] += 1
+                except Exception:
+                    pass
+
+        # Get top authors and domains (limit to reasonable size for matching)
+        top_authors = [author for author, _ in authors.most_common(100)]
+        top_domains = [domain for domain, _ in domains.most_common(50)]
+
+        result = {
+            'authors': top_authors,
+            'domains': top_domains,
+            'author_count': len(authors),
+            'domain_count': len(domains)
+        }
+
+        logger.info(
+            f"KB credibility signals: {len(top_authors)} authors, "
+            f"{len(top_domains)} domains"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get KB credibility signals: {e}")
+        return {
+            'authors': [],
+            'domains': [],
+            'author_count': 0,
+            'domain_count': 0,
+            'error': str(e)
+        }

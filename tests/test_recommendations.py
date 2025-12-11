@@ -285,6 +285,36 @@ class TestRecommendationFilter(unittest.TestCase):
         # Title similarity check may flag this
         self.assertIn('similarity_score', result)
 
+    @patch('mcp_server.recommendation_filter.score_content_depth')
+    def test_trusted_source_boosts_credibility(self, mock_depth):
+        """Trusted sources should boost credibility even if not in KB."""
+        from mcp_server import recommendation_filter
+
+        # Mock depth scoring to return passing score
+        mock_depth.return_value = {'depth_score': 4, 'reasoning': 'Good content'}
+
+        recommendations = [{
+            'title': 'Great Article',
+            'url': 'https://trusted.com/post',
+            'domain': 'trusted.com',
+            'content': 'Deep dive content',
+            'published_date': '2025-12-01'  # Recent date
+        }]
+        contexts = [{'source': 'search', 'context': {}}]
+
+        result = recommendation_filter.filter_recommendations(
+            recommendations=recommendations,
+            query_contexts=contexts,
+            check_duplicates=False,
+            known_authors=[],
+            known_sources=[],
+            trusted_sources=['trusted.com']
+        )
+
+        rec = result['recommendations'][0]
+        self.assertGreaterEqual(rec['credibility_score'], 0.5)
+        self.assertIn('Trusted', rec['why_recommended'])
+
 
 class TestGetReadingRecommendations(unittest.TestCase):
     """Test suite for the main get_reading_recommendations() tool."""

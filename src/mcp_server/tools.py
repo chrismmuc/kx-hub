@@ -1282,7 +1282,13 @@ def get_reading_recommendations(
 
         logger.info(f"Using {len(quality_domains)} whitelisted domains")
 
-        # Step 2: Generate smart search queries
+        # Step 2: Get KB credibility signals (all known authors and source domains)
+        kb_credibility = firestore_client.get_kb_credibility_signals()
+        known_authors = kb_credibility.get('authors', [])
+        known_domains = kb_credibility.get('domains', [])
+        logger.info(f"KB credibility: {len(known_authors)} authors, {len(known_domains)} domains")
+
+        # Step 3: Generate smart search queries
         queries = recommendation_queries.generate_search_queries(
             scope=scope,
             days=days,
@@ -1314,10 +1320,10 @@ def get_reading_recommendations(
             try:
                 search_result = tavily_client.search(
                     query=query_str,
-                    include_domains=quality_domains if quality_domains else None,
                     exclude_domains=excluded_domains if excluded_domains else None,
                     days=30,  # Last 30 days for recency
-                    max_results=5
+                    max_results=5,
+                    search_depth="advanced"  # Better quality ranking
                 )
 
                 for result in search_result.get('results', []):
@@ -1347,14 +1353,24 @@ def get_reading_recommendations(
             query_contexts=all_contexts,
             min_depth_score=3,
             max_per_domain=2,
-            check_duplicates=True
+            check_duplicates=True,
+            known_authors=known_authors,
+            known_sources=known_domains,  # Source domains from source_url
+            trusted_sources=quality_domains  # Publicly credible sources used for boosting
         )
 
         filtered_recs = filter_result.get('recommendations', [])
         filtered_out = filter_result.get('filtered_out', {})
 
-        # Step 5: Sort by depth score and limit
-        filtered_recs.sort(key=lambda x: x.get('depth_score', 0), reverse=True)
+        # Step 5: Sort by combined score (depth + credibility + recency) and limit
+        filtered_recs.sort(
+            key=lambda x: (
+                x.get('depth_score', 0) +
+                x.get('credibility_score', 0) +
+                x.get('recency_score', 0)
+            ),
+            reverse=True
+        )
         final_recs = filtered_recs[:limit]
 
         processing_time = round(time.time() - start_time, 1)

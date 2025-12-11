@@ -125,10 +125,11 @@ development_status:
     notes: "get_related_clusters() MCP tool implemented. Vector index on centroids. 6/6 tests pass. Bug fixes applied."
 
   3-5-reading-recommendations:
-    status: review
+    status: done
     story_file: docs/stories/3.5-reading-recommendations.md
     context_file: docs/stories/3.5-reading-recommendations.context.xml
-    notes: "Implementation complete. 3 MCP tools, 4 new modules, 19 unit tests (15 pass). Requires Tavily API key for integration testing."
+    completion_date: 2025-12-11
+    notes: "Complete. 3 MCP tools, 20 unit tests. KB credibility scoring (authors+domains), trusted source boost, recency filtering, advanced search."
 
   3-6-email-digest:
     status: drafted
@@ -154,5 +155,5 @@ epic-2:
 
 epic-3:
   status: in-progress
-  completion: 2/7 (29%)
-  notes: "Story 3.3 deferred, Story 3.4 done. Stories 3.1, 3.2 in backlog. Stories 3.5-3.7 (recommendations suite) drafted/backlog."
+  completion: 3/7 (43%)
+  notes: "Story 3.3 deferred, Stories 3.4-3.5 done. Stories 3.1, 3.2 in backlog. Stories 3.6-3.7 drafted."

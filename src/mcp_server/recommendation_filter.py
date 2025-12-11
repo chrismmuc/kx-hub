@@ -249,15 +249,21 @@ def filter_recommendations(
     query_contexts: List[Dict[str, Any]],
     min_depth_score: int = MIN_DEPTH_SCORE,
     max_per_domain: int = MAX_PER_DOMAIN,
-    check_duplicates: bool = True
+    check_duplicates: bool = True,
+    known_authors: Optional[List[str]] = None,
+    known_sources: Optional[List[str]] = None,
+    trusted_sources: Optional[List[str]] = None,
+    max_age_days: int = 90
 ) -> Dict[str, Any]:
     """
     Filter and score recommendations for quality.
 
     Applies:
-    - Gemini depth scoring
+    - Recency filter (max_age_days)
+    - Gemini depth scoring (with author/source credibility boost)
     - Source diversity cap
     - KB deduplication
+    - Trusted source boost for public credibility
 
     Args:
         recommendations: List of raw recommendations from Tavily
@@ -265,6 +271,10 @@ def filter_recommendations(
         min_depth_score: Minimum depth score to include (default 3)
         max_per_domain: Max recommendations per domain (default 2)
         check_duplicates: Whether to check KB for duplicates
+        known_authors: Authors from user's KB (credibility signal)
+        known_sources: Sources/domains from user's KB (credibility signal)
+        trusted_sources: Publicly credible sources whitelist to boost ranking
+        max_age_days: Maximum age in days for articles (default 90, 0=no limit)
 
     Returns:
         Dictionary with:
@@ -277,7 +287,8 @@ def filter_recommendations(
         filtered_out = {
             'duplicate_count': 0,
             'low_quality_count': 0,
-            'diversity_cap_count': 0
+            'diversity_cap_count': 0,
+            'too_old_count': 0
         }
 
         domain_counts = defaultdict(int)
@@ -290,13 +301,46 @@ def filter_recommendations(
             if url:
                 url_to_context[url] = ctx
 
+        from datetime import datetime, timedelta
+
+        # Calculate cutoff date for recency filter
+        now = datetime.utcnow()
+        cutoff_date = now - timedelta(days=max_age_days) if max_age_days > 0 else None
+
         for rec in recommendations:
             url = rec.get('url', '')
             domain = rec.get('domain', '')
             title = rec.get('title', '')
             content = rec.get('content', '')
+            published_date_str = rec.get('published_date')
+            domain_clean = domain.replace('www.', '').lower()
 
-            # 1. Check domain diversity cap
+            # 1. Check recency (filter out old articles)
+            recency_score = 0.0
+            article_date = None
+            if published_date_str:
+                try:
+                    # Parse various date formats from Tavily
+                    for fmt in ('%Y-%m-%d', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%SZ'):
+                        try:
+                            article_date = datetime.strptime(published_date_str[:19], fmt[:len(published_date_str)])
+                            break
+                        except ValueError:
+                            continue
+
+                    if article_date and cutoff_date and article_date < cutoff_date:
+                        filtered_out['too_old_count'] += 1
+                        logger.debug(f"Filtered (too old {published_date_str}): {title[:50]}...")
+                        continue
+
+                    # Calculate recency score (0-1, higher = more recent)
+                    if article_date:
+                        days_old = (now - article_date).days
+                        recency_score = max(0, 1 - (days_old / 90))  # Linear decay over 90 days
+                except Exception as e:
+                    logger.debug(f"Could not parse date '{published_date_str}': {e}")
+
+            # 2. Check domain diversity cap
             if domain_counts[domain] >= max_per_domain:
                 filtered_out['diversity_cap_count'] += 1
                 logger.debug(f"Filtered (diversity): {title[:50]}...")
@@ -319,9 +363,47 @@ def filter_recommendations(
                 logger.debug(f"Filtered (low quality {depth_score}): {title[:50]}...")
                 continue
 
-            # 4. Generate "why recommended"
+            # 4. Calculate KB credibility score
+            credibility_score = 0.0
+            credibility_reasons = []
+
+            # Check if author matches known authors (case-insensitive partial match)
+            if known_authors:
+                title_lower = title.lower()
+                content_lower = content.lower()
+                for author in known_authors:
+                    author_lower = author.lower()
+                    if author_lower in title_lower or author_lower in content_lower:
+                        credibility_score += 0.5
+                        credibility_reasons.append(f"Author: {author}")
+                        break
+
+            # Check if domain matches known source domains from KB
+            if known_sources:
+                for known_domain in known_sources:
+                    known_clean = known_domain.replace('www.', '').lower()
+                    # Match exact domain or subdomain (e.g., s.hbr.org matches hbr.org)
+                    if domain_clean == known_clean or domain_clean.endswith('.' + known_clean):
+                        credibility_score += 0.3
+                        credibility_reasons.append(f"Source: {known_domain}")
+                        break
+
+            # Boost if domain is in trusted public sources (whitelist), even if not in KB yet
+            if trusted_sources:
+                for trusted_domain in trusted_sources:
+                    trusted_clean = trusted_domain.replace('www.', '').lower()
+                    if domain_clean == trusted_clean or domain_clean.endswith('.' + trusted_clean):
+                        credibility_score += 0.5
+                        credibility_reasons.append(f"Trusted: {trusted_domain}")
+                        break
+
+            # 5. Generate "why recommended"
             query_context = url_to_context.get(url, {'source': 'search', 'context': {}})
             why_recommended = generate_why_recommended(rec, query_context)
+
+            # Add credibility info to why_recommended if present
+            if credibility_reasons:
+                why_recommended += f" (Trusted: {', '.join(credibility_reasons)})"
 
             # Build filtered recommendation
             filtered_rec = {
@@ -333,6 +415,8 @@ def filter_recommendations(
                 'relevance_score': rec.get('score', 0.0),
                 'depth_score': depth_score,
                 'depth_reasoning': depth_result.get('reasoning', ''),
+                'credibility_score': credibility_score,
+                'recency_score': round(recency_score, 2),
                 'why_recommended': why_recommended,
                 'related_to': query_context.get('context', {})
             }
