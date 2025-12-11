@@ -2,9 +2,9 @@
 
 **Project:** kx-hub - Personal AI Knowledge Base (Google Cloud + Vertex AI)
 
-**PRD Version:** V3
+**PRD Version:** V4
 
-**Last Updated:** 2025-10-30
+**Last Updated:** 2025-12-11
 
 ---
 
@@ -794,24 +794,423 @@ Claude: [Calls save_recommendations_to_reader]
 
 ---
 
+## Epic 4: Intelligent Reading Synthesis & Automated Curation
+
+**Goal:** Build an AI-powered reading assistant that synthesizes insights across multiple articles, automatically extracts key passages, identifies knowledge amplification vs. novel insights, and integrates seamlessly with Readwise Reader to reduce reading burden while maximizing knowledge capture.
+
+**Business Value:** Transforms passive article consumption into active knowledge synthesis. Users receive curated, pre-digested content that highlights how new articles reinforce existing knowledge or introduce genuinely novel concepts—enabling informed decisions about what to read in depth vs. skim.
+
+**Dependencies:** Epic 3 (Story 3.5 - Reading Recommendations provides article pipeline)
+
+**Estimated Complexity:** Very High - Multi-document synthesis, comparative embeddings, Reader API integration, novel insight detection algorithms
+
+**Status:** Planned
+
+---
+
+### Story 4.1: Cross-Article Synthesis Engine
+
+**Status:** Backlog
+
+**Summary:** Build a synthesis engine that generates unified summaries across multiple related articles, identifying common themes, complementary perspectives, and contradictions. Unlike single-article summaries, this creates a "meta-summary" that synthesizes knowledge from an article cohort (e.g., 5-10 articles on a topic).
+
+**Key Features:**
+- **Cohort Assembly:** Group articles by cluster, topic, or time window
+- **Multi-Document Synthesis:** Generate synthesis using Gemini 2.0 Pro with long context
+- **Theme Extraction:** Identify 3-5 core themes across the cohort
+- **Perspective Mapping:** Surface complementary and contradictory viewpoints
+- **Key Quote Aggregation:** Extract most impactful quotes from each article
+- **Synthesis Quality Scoring:** Measure coherence, coverage, and insight density
+
+**Dependencies:**
+- Story 3.5 (Reading Recommendations) - article pipeline
+- Story 2.2 (Clustering) - thematic grouping
+
+**Technical Approach:**
+- Gemini 2.0 Pro for long-context multi-document processing
+- Hierarchical summarization: article → cohort → synthesis
+- Semantic deduplication of overlapping points
+- Contradiction detection via embedding comparison
+
+**Success Metrics:**
+- Synthesis quality score >0.8 (coherence + coverage)
+- Processing time <30 seconds for 10 articles
+- >90% of themes validated by user as accurate
+- Cost impact: ~$0.05/synthesis (Gemini Pro tokens)
+
+**Business Value:**
+- Read one synthesis instead of 10 articles
+- Understand topic landscape quickly
+- Identify which articles deserve deep reading
+- Surface non-obvious connections
+
+---
+
+### Story 4.2: Knowledge Amplification Detection
+
+**Status:** Backlog
+
+**Summary:** Implement a comparison system that identifies when new articles reinforce or amplify concepts already present in the user's knowledge base. Surfaces "confirmation signals" showing which existing mental models are being strengthened by new reading.
+
+**Key Features:**
+- **KB Similarity Scoring:** Compare new article embeddings against existing KB chunks
+- **Amplification Categories:**
+  - **Strong Reinforcement:** 85%+ similarity to existing chunks
+  - **Moderate Reinforcement:** 70-85% similarity (same concept, new angle)
+  - **Tangential Connection:** 50-70% similarity (related but distinct)
+- **Cluster Mapping:** Show which clusters are being amplified
+- **Confidence Growth:** Track cumulative confidence in concepts over time
+- **Visualization:** "Your understanding of X is supported by N sources"
+
+**Dependencies:**
+- Story 1.5 (Firestore Vector Search) - similarity queries
+- Story 2.2 (Clustering) - cluster context
+
+**Technical Approach:**
+- Multi-chunk comparison using Firestore `find_nearest()`
+- Weighted similarity aggregation per cluster
+- Historical tracking in Firestore `concept_confidence` collection
+- Threshold-based categorization (configurable)
+
+**Success Metrics:**
+- Amplification detection accuracy >85%
+- Processing time <5 seconds per article
+- Correct cluster mapping >90%
+- User validates "reinforcement" labels in >80% of cases
+
+**Business Value:**
+- Know when you're reading "more of the same"
+- Build confidence in well-supported ideas
+- Identify information bubbles
+- Skip redundant reading
+
+---
+
+### Story 4.3: Novel Insight Identification
+
+**Status:** Backlog
+
+**Summary:** Detect genuinely novel ideas, perspectives, or information that are NOT present in the user's existing knowledge base. Surfaces "expansion signals" highlighting where new reading extends rather than confirms existing mental models.
+
+**Key Features:**
+- **Novelty Scoring:** Inverse of amplification—low similarity = high novelty
+- **Novelty Categories:**
+  - **Paradigm Shift:** <30% similarity, challenges existing models
+  - **Gap Filler:** 30-50% similarity, fills knowledge gaps
+  - **Edge Extension:** 50-70% similarity, extends existing concepts
+- **Orphan Detection:** Ideas that don't connect to any existing cluster
+- **Bridge Discovery:** Ideas that connect previously unrelated clusters
+- **"New to You" Highlights:** Surface specific passages with novelty scores
+
+**Dependencies:**
+- Story 4.2 (Knowledge Amplification) - similarity infrastructure
+- Story 3.4 (Cluster Relationships) - cluster connection discovery
+
+**Technical Approach:**
+- Invert amplification scores for novelty
+- Orphan detection: no cluster above 50% similarity
+- Bridge detection: high similarity to 2+ distant clusters
+- Passage-level novelty scoring via chunk embeddings
+
+**Success Metrics:**
+- Novelty detection accuracy >80%
+- False positive rate <15% (flagging familiar as novel)
+- Bridge discoveries validated as insightful >75%
+- Processing time <10 seconds per article
+
+**Business Value:**
+- Prioritize reading that expands knowledge
+- Discover truly new ideas efficiently
+- Avoid illusion of learning (reading familiar content)
+- Identify paradigm-shifting content
+
+---
+
+### Story 4.4: Automatic Key Passage Highlighting
+
+**Status:** Backlog
+
+**Summary:** Automatically extract and highlight the most important passages from articles before or after reading, using AI to identify key insights, actionable takeaways, and quotable statements. Creates "pre-highlights" that guide attention during reading or serve as reading substitutes.
+
+**Key Features:**
+- **AI-Powered Extraction:** Gemini identifies 5-10 key passages per article
+- **Highlight Categories:**
+  - **Core Insight:** Central argument or thesis
+  - **Actionable Takeaway:** Practical applications
+  - **Quotable Statement:** Memorable, shareable quotes
+  - **Evidence/Data:** Supporting statistics or research
+  - **Contrarian View:** Challenges to conventional wisdom
+- **Novelty-Weighted Highlighting:** Prioritize passages with high novelty scores
+- **Configurable Density:** User controls highlight density (sparse vs. dense)
+- **Pre-Read Mode:** Generate highlights before reading for guided attention
+- **Post-Read Mode:** Generate highlights after reading for synthesis
+
+**Dependencies:**
+- Story 4.3 (Novel Insight Identification) - novelty scoring
+- Readwise Reader API - highlight storage
+
+**Technical Approach:**
+- Gemini 2.0 Flash for fast extraction
+- Multi-pass extraction: first pass finds candidates, second pass ranks
+- Category classification via prompt engineering
+- Integration with Reader highlight API
+
+**Success Metrics:**
+- Highlight quality score >4.0/5.0 (user ratings)
+- Coverage: >80% of user-selected highlights overlapping with AI highlights
+- Processing time <15 seconds per article
+- Highlight categories balanced (no over-representation)
+
+**Business Value:**
+- Read articles in 2 minutes instead of 15
+- Never miss the key insight
+- Create highlights without reading
+- Guide attention to what matters
+
+---
+
+### Story 4.5: Readwise Reader Notes Integration
+
+**Status:** Backlog
+
+**Summary:** Automatically inject AI-generated synthesis, amplification signals, and novelty insights as document notes in Readwise Reader. Users see contextual kx-hub intelligence directly in their Reader interface without leaving the app.
+
+**Key Features:**
+- **Document Notes Injection:** Add structured note to saved articles
+  - Synthesis summary (if part of cohort)
+  - Amplification signals (which KB concepts reinforced)
+  - Novelty signals (what's genuinely new)
+  - Related cluster context
+- **Readwise API Integration:**
+  - `PATCH` document notes via Reader API
+  - Or use Readwise highlight API with special formatting
+- **Note Format Options:**
+  - Structured markdown (default)
+  - Collapsible sections
+  - Bullet-point summary
+- **Timing Options:**
+  - On-save: Inject immediately when article saved
+  - Batch: Process in daily/weekly batch
+  - On-demand: User triggers via MCP tool
+- **Ghostreader Consideration:** Option to replace/augment default AI summary
+
+**Dependencies:**
+- Story 4.2 (Amplification Detection) - amplification signals
+- Story 4.3 (Novel Insight) - novelty signals
+- Story 4.1 (Cross-Article Synthesis) - synthesis content
+- Readwise Reader API access
+
+**Technical Approach:**
+- Reader API: `PATCH /api/v3/documents/{id}/` with `notes` field
+- Alternative: Create highlight with note attached
+- Structured markdown formatting for readability
+- Batch processing via Cloud Function (story 3.6 pattern)
+
+**Success Metrics:**
+- Notes injection success rate >98%
+- Note renders correctly in Reader (all clients)
+- User engagement: >50% of users read injected notes
+- API rate limit compliance (240 req/min)
+
+**Business Value:**
+- Context without context-switching
+- See kx-hub intelligence in your reader
+- Make read/skip decisions in Reader
+- Single interface for reading + intelligence
+
+**Note Format Example:**
+```markdown
+## 🧠 kx-hub Intelligence
+
+### Synthesis
+This article is part of a 7-article cohort on Platform Engineering.
+Core themes: developer experience, cognitive load, self-service infrastructure.
+
+### 📈 Amplifies Your Knowledge
+- **Platform Engineering** cluster (87% similarity)
+- Reinforces your notes on Team Topologies (3 chunks)
+- Extends your understanding of cognitive load
+
+### 🆕 Novel Insights
+- **Gap Filler:** Platform-as-a-Product concept (43% novel)
+- **Bridge:** Connects Developer Experience ↔ Product Management
+
+### Related in Your KB
+- "Team Topologies highlights" (92% similar)
+- "Internal Developer Platform notes" (88% similar)
+```
+
+---
+
+### Story 4.6: Synthesis Storage & Cluster Enrichment
+
+**Status:** Backlog
+
+**Summary:** Store multi-article syntheses as first-class knowledge artifacts in Firestore, enriching clusters with aggregate insights. Syntheses become queryable, browsable knowledge that transcends individual articles.
+
+**Key Features:**
+- **Synthesis Collection:** New Firestore collection `syntheses`
+  - Linked to source article IDs
+  - Linked to clusters
+  - Timestamped for freshness
+  - Quality scored
+- **Cluster Enrichment:** Attach synthesis to cluster metadata
+  - Cluster summary (synthesized from top 10 chunks)
+  - Key themes across cluster
+  - Notable authors in cluster
+- **Synthesis Search:** MCP tool to search/retrieve syntheses
+  - `search_syntheses(query)` - semantic search
+  - `get_cluster_synthesis(cluster_id)` - cluster summary
+- **Synthesis Lifecycle:**
+  - Auto-refresh when cluster changes significantly
+  - Version history for comparison
+  - Staleness detection and regeneration
+
+**Dependencies:**
+- Story 4.1 (Cross-Article Synthesis Engine) - synthesis generation
+- Story 2.2 (Clustering) - cluster infrastructure
+
+**Technical Approach:**
+- Firestore collection `syntheses` with document structure
+- Embedding storage for semantic search
+- Cloud Function for periodic refresh
+- MCP tools for access
+
+**Success Metrics:**
+- All clusters with >5 members have synthesis
+- Synthesis search returns relevant results >85%
+- Refresh triggers correctly on cluster changes
+- Cost impact: ~$0.10/month (periodic regeneration)
+
+**Business Value:**
+- Knowledge that grows over time
+- Cluster-level understanding without reading chunks
+- Synthesis as conversation context
+- Longitudinal insight tracking
+
+**Firestore Document Structure:**
+```json
+{
+  "synthesis_id": "synth-20251211-cluster-28",
+  "cluster_id": "cluster-28",
+  "source_chunk_ids": ["chunk-1", "chunk-2", ...],
+  "source_article_count": 12,
+  "generated_at": "2025-12-11T10:30:00Z",
+  "synthesis_type": "cluster",
+  "content": {
+    "summary": "Platform Engineering focuses on...",
+    "themes": ["developer experience", "self-service", "cognitive load"],
+    "key_insights": ["...", "..."],
+    "notable_authors": ["Martin Fowler", "Gregor Hohpe"],
+    "contradictions": ["..."],
+    "open_questions": ["..."]
+  },
+  "embedding": [0.1, 0.2, ...],
+  "quality_score": 0.87,
+  "version": 2,
+  "staleness_check_at": "2025-12-18T10:30:00Z"
+}
+```
+
+---
+
+### Story 4.7: Reader-Tagged Synthesis Documents
+
+**Status:** Backlog
+
+**Summary:** Create special synthesis documents in Readwise Reader that aggregate kx-hub intelligence, tagged for easy filtering. Users can browse their "kx-hub synthesis" feed in Reader to see AI-generated knowledge summaries alongside regular reading material.
+
+**Key Features:**
+- **Synthesis as Reader Document:** Save synthesis as special document in Reader
+  - URL: Custom `kxhub://synthesis/{id}` or hosted endpoint
+  - Title: "kx-hub Synthesis: [Topic]"
+  - Content: Full synthesis markdown
+  - Tags: `kx-synthesis`, cluster name, date
+- **Weekly Digest Document:** Aggregate synthesis saved weekly
+  - All new articles from week
+  - Cluster updates
+  - Novelty highlights
+  - Save as single Reader document
+- **Reader Integration:**
+  - Use Reader save API with custom content
+  - Tag-based filtering in Reader
+  - Searchable within Reader
+- **Highlightable Syntheses:** User can highlight synthesis passages
+  - Highlights flow back to Readwise
+  - Eventually back to kx-hub (virtuous cycle)
+
+**Dependencies:**
+- Story 4.6 (Synthesis Storage) - synthesis content
+- Story 3.7 (Save to Reader) - Reader API patterns
+
+**Technical Approach:**
+- Generate static HTML/Markdown for synthesis
+- Host via Cloud Run endpoint (or use data: URL)
+- Save to Reader via `POST /api/v3/save/`
+- Tag with `kx-synthesis` for filtering
+
+**Success Metrics:**
+- Synthesis documents appear correctly in Reader
+- Tags applied successfully
+- Content renders readably on all clients
+- User engages with synthesis documents (opens, highlights)
+
+**Business Value:**
+- All knowledge in one place (Reader)
+- Synthesis as reading material
+- Browsable synthesis history
+- Natural Reader workflow maintained
+
+---
+
+## Epic 4 Summary
+
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 4.1 | Cross-Article Synthesis Engine | High |
+| 4.2 | Knowledge Amplification Detection | Medium |
+| 4.3 | Novel Insight Identification | Medium |
+| 4.4 | Automatic Key Passage Highlighting | High |
+| 4.5 | Readwise Reader Notes Integration | Medium |
+| 4.6 | Synthesis Storage & Cluster Enrichment | Medium |
+| 4.7 | Reader-Tagged Synthesis Documents | Low |
+
+**Recommended Implementation Order:**
+1. Story 4.2 (Amplification) + 4.3 (Novelty) - foundation
+2. Story 4.1 (Synthesis Engine) - core capability
+3. Story 4.4 (Auto-Highlighting) - high user value
+4. Story 4.6 (Storage) - persistence
+5. Story 4.5 (Reader Notes) + 4.7 (Reader Documents) - integration
+
+**Cost Analysis:**
+| Component | Monthly Cost |
+|-----------|-------------|
+| Gemini Pro (synthesis) | ~$0.50 |
+| Gemini Flash (highlights) | ~$0.20 |
+| Firestore (synthesis storage) | ~$0.05 |
+| Reader API calls | $0 (existing subscription) |
+| **Total** | **~$0.75/month** |
+
+---
+
 ## Future Epics (Beyond Current Scope)
 
 See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backlog) for planned enhancements:
 
-- **Epic 4:** Export & Distribution
+- **Epic 5:** Export & Distribution
   - GitHub export (Markdown + graph.json)
   - Obsidian vault sync
-  - Weekly email digest
+  - Static knowledge graph visualization
 
-- **Epic 5:** Advanced Features
+- **Epic 6:** Advanced Integrations
   - DayOne Journal import
-  - Current article recommendations
-  - Multi-source integration
+  - Multi-source integration (Pocket, Instapaper)
+  - Mobile companion app
 
-- **Epic 6:** MCP Server Enhancements
-  - Cluster-based browsing tools
-  - Knowledge card search and display
-  - Advanced query templates
+- **Epic 7:** Analytics & Insights
+  - Reading habit analytics
+  - Knowledge growth tracking
+  - Cluster evolution visualization
 
 ---
 
@@ -821,10 +1220,11 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 |------|---------|--------|------------|
 | Epic 1: Core Pipeline & KB Infrastructure | 8 | Complete | 8/8 Complete (100%) |
 | Epic 2: Enhanced Knowledge Graph & Clustering | 7 | Complete | 7/7 Complete (100%) |
-| Epic 3: Knowledge Graph Enhancement & Optimization | 7 | Active | 2/7 Complete (29%) |
-| Epic 4: Export & Distribution (Future) | TBD | Planned | 0% |
-| Epic 5: Advanced Features (Future) | TBD | Backlog | 0% |
-| Epic 6: MCP Server Enhancements (Future) | TBD | Backlog | 0% |
+| Epic 3: Knowledge Graph Enhancement & Optimization | 8 | Active | 2/8 Complete (25%) |
+| Epic 4: Intelligent Reading Synthesis & Automated Curation | 7 | Planned | 0/7 (0%) |
+| Epic 5: Export & Distribution (Future) | TBD | Backlog | 0% |
+| Epic 6: Advanced Integrations (Future) | TBD | Backlog | 0% |
+| Epic 7: Analytics & Insights (Future) | TBD | Backlog | 0% |
 
 ---
 
