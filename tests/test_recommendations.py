@@ -316,6 +316,298 @@ class TestRecommendationFilter(unittest.TestCase):
         self.assertIn('Trusted', rec['why_recommended'])
 
 
+# ============================================================================
+# Story 3.10: Enhanced KB Deduplication Tests
+# ============================================================================
+
+class TestEnhancedKBDeduplication(unittest.TestCase):
+    """Test suite for enhanced KB deduplication (Story 3.10)."""
+
+    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    def test_url_based_deduplication(self, mock_find_url):
+        """Test URL-based duplicate detection (AC #1)."""
+        from mcp_server.recommendation_filter import check_kb_duplicate
+
+        # Setup: URL exists in KB
+        mock_find_url.return_value = {
+            'id': 'existing-chunk-1',
+            'title': 'Existing Article'
+        }
+
+        result = check_kb_duplicate(
+            title='Some New Title',
+            content='Some content',
+            url='https://example.com/article'
+        )
+
+        self.assertTrue(result['is_duplicate'])
+        self.assertEqual(result['match_type'], 'url')
+        self.assertEqual(result['similarity_score'], 1.0)
+        self.assertEqual(result['similar_chunk_id'], 'existing-chunk-1')
+
+    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    def test_title_containment_vibe_coding(self, mock_title_search, mock_find_url):
+        """Test title containment: 'Vibe Coding' vs 'Beyond Vibe Coding' (AC #2)."""
+        from mcp_server.recommendation_filter import check_kb_duplicate
+
+        mock_find_url.return_value = None  # URL not found
+
+        # KB has "Vibe Coding"
+        mock_title_search.return_value = [
+            {
+                'id': 'vibe-coding-chunk',
+                'title': 'Vibe Coding',
+                'author': 'Gene Kim, Steve Yegge, and Dario Amodei'
+            }
+        ]
+
+        # Recommendation is "Beyond Vibe Coding"
+        result = check_kb_duplicate(
+            title='Beyond Vibe Coding: From Coder to AI-Era Developer',
+            content='AI-powered coding assistants...',
+            url='https://oreilly.com/beyond-vibe-coding'
+        )
+
+        self.assertTrue(result['is_duplicate'])
+        self.assertEqual(result['match_type'], 'title_containment')
+        self.assertGreaterEqual(result['similarity_score'], 0.9)
+
+    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    def test_title_containment_reverse(self, mock_title_search, mock_find_url):
+        """Test reverse title containment: KB has long title, rec has short."""
+        from mcp_server.recommendation_filter import check_kb_duplicate
+
+        mock_find_url.return_value = None
+
+        # KB has full title
+        mock_title_search.return_value = [
+            {
+                'id': 'full-title-chunk',
+                'title': 'The Complete Guide to Platform Engineering'
+            }
+        ]
+
+        # Recommendation has shorter title
+        result = check_kb_duplicate(
+            title='Platform Engineering',
+            content='Content about platforms...',
+            url=None
+        )
+
+        self.assertTrue(result['is_duplicate'])
+        self.assertEqual(result['match_type'], 'title_containment')
+
+    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    def test_title_prefix_stripping(self, mock_title_search, mock_find_url):
+        """Test that common prefixes are stripped: 'The DevOps Handbook' vs 'DevOps Handbook'."""
+        from mcp_server.recommendation_filter import check_kb_duplicate
+
+        mock_find_url.return_value = None
+
+        mock_title_search.return_value = [
+            {
+                'id': 'devops-chunk',
+                'title': 'DevOps Handbook'
+            }
+        ]
+
+        result = check_kb_duplicate(
+            title='The DevOps Handbook: Second Edition',
+            content='DevOps content...',
+            url=None
+        )
+
+        self.assertTrue(result['is_duplicate'])
+        self.assertEqual(result['match_type'], 'title_containment')
+
+    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    @patch('mcp_server.recommendation_filter.firestore_client.find_nearest')
+    @patch('mcp_server.recommendation_filter.embeddings.generate_query_embedding')
+    def test_no_false_positives(self, mock_embed, mock_find_nearest, mock_title_search, mock_find_url):
+        """Test that unrelated content is NOT flagged as duplicate."""
+        from mcp_server.recommendation_filter import check_kb_duplicate
+
+        mock_find_url.return_value = None
+        mock_title_search.return_value = []
+        mock_embed.return_value = [0.1] * 768
+        mock_find_nearest.return_value = [
+            {
+                'id': 'unrelated-chunk',
+                'title': 'Completely Different Topic About Cooking'
+            }
+        ]
+
+        result = check_kb_duplicate(
+            title='Machine Learning Fundamentals',
+            content='Deep dive into neural networks...',
+            url='https://example.com/ml-guide'
+        )
+
+        self.assertFalse(result['is_duplicate'])
+        self.assertIsNone(result['match_type'])
+
+    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    @patch('mcp_server.recommendation_filter.firestore_client.find_nearest')
+    @patch('mcp_server.recommendation_filter.embeddings.generate_query_embedding')
+    def test_embedding_similarity_fallback(self, mock_embed, mock_find_nearest, mock_title_search, mock_find_url):
+        """Test embedding similarity when other methods don't match (AC #4)."""
+        from mcp_server.recommendation_filter import check_kb_duplicate
+
+        mock_find_url.return_value = None
+        mock_title_search.return_value = []  # No title match
+        mock_embed.return_value = [0.1] * 768
+
+        # Similar content via embedding
+        mock_find_nearest.return_value = [
+            {
+                'id': 'similar-chunk',
+                'title': 'Platform Engineering Best Practices'
+            }
+        ]
+
+        result = check_kb_duplicate(
+            title='Best Practices for Platform Engineering Teams',
+            content='Platform teams should focus on...',
+            url=None
+        )
+
+        # Should detect via embedding + word overlap (Jaccard > 0.4)
+        self.assertTrue(result['is_duplicate'])
+        self.assertEqual(result['match_type'], 'embedding')
+
+    def test_error_handling(self):
+        """Test graceful error handling."""
+        from mcp_server.recommendation_filter import check_kb_duplicate
+
+        # Mock error by patching with exception
+        with patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url') as mock:
+            mock.side_effect = Exception('Database error')
+
+            result = check_kb_duplicate(
+                title='Test',
+                content='Test content',
+                url='https://example.com'
+            )
+
+            # Should not raise, should return safe default
+            self.assertFalse(result['is_duplicate'])
+            self.assertIn('error', result)
+
+
+class TestURLNormalization(unittest.TestCase):
+    """Test suite for URL normalization (Story 3.10 AC #1)."""
+
+    def test_normalize_removes_www(self):
+        """Test www prefix is removed."""
+        from mcp_server.firestore_client import normalize_url
+
+        result = normalize_url('https://www.example.com/article')
+        self.assertEqual(result, 'https://example.com/article')
+
+    def test_normalize_removes_trailing_slash(self):
+        """Test trailing slash is removed."""
+        from mcp_server.firestore_client import normalize_url
+
+        result = normalize_url('https://example.com/article/')
+        self.assertEqual(result, 'https://example.com/article')
+
+    def test_normalize_removes_query_params(self):
+        """Test query parameters are removed."""
+        from mcp_server.firestore_client import normalize_url
+
+        result = normalize_url('https://example.com/article?utm_source=twitter&ref=123')
+        self.assertEqual(result, 'https://example.com/article')
+
+    def test_normalize_lowercase(self):
+        """Test URL is lowercased."""
+        from mcp_server.firestore_client import normalize_url
+
+        result = normalize_url('HTTPS://EXAMPLE.COM/Article')
+        self.assertEqual(result, 'https://example.com/article')
+
+    def test_normalize_empty_string(self):
+        """Test empty string handling."""
+        from mcp_server.firestore_client import normalize_url
+
+        result = normalize_url('')
+        self.assertEqual(result, '')
+
+    def test_normalize_none(self):
+        """Test None handling."""
+        from mcp_server.firestore_client import normalize_url
+
+        result = normalize_url(None)
+        self.assertEqual(result, '')
+
+
+class TestFindBySourceURL(unittest.TestCase):
+    """Test suite for find_by_source_url (Story 3.10 AC #1)."""
+
+    @patch('mcp_server.firestore_client.get_firestore_client')
+    def test_find_exact_match(self, mock_get_db):
+        """Test finding chunk by exact URL match."""
+        from mcp_server import firestore_client
+
+        mock_doc = MagicMock()
+        mock_doc.id = 'chunk-123'
+        mock_doc.to_dict.return_value = {
+            'title': 'Test Article',
+            'source_url': 'https://example.com/article'
+        }
+
+        mock_query = MagicMock()
+        mock_query.stream.return_value = [mock_doc]
+        mock_query.limit.return_value = mock_query
+
+        mock_collection = MagicMock()
+        mock_collection.where.return_value = mock_query
+
+        mock_db = MagicMock()
+        mock_db.collection.return_value = mock_collection
+        mock_get_db.return_value = mock_db
+
+        result = firestore_client.find_by_source_url('https://example.com/article')
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result['id'], 'chunk-123')
+        self.assertEqual(result['title'], 'Test Article')
+
+    @patch('mcp_server.firestore_client.get_firestore_client')
+    def test_find_no_match(self, mock_get_db):
+        """Test URL not found returns None."""
+        from mcp_server import firestore_client
+
+        mock_query = MagicMock()
+        mock_query.stream.return_value = []
+        mock_query.limit.return_value = mock_query
+
+        mock_collection = MagicMock()
+        mock_collection.where.return_value = mock_query
+
+        mock_db = MagicMock()
+        mock_db.collection.return_value = mock_collection
+        mock_get_db.return_value = mock_db
+
+        result = firestore_client.find_by_source_url('https://example.com/not-found')
+
+        self.assertIsNone(result)
+
+    def test_find_empty_url(self):
+        """Test empty URL returns None."""
+        from mcp_server import firestore_client
+
+        result = firestore_client.find_by_source_url('')
+        self.assertIsNone(result)
+
+        result = firestore_client.find_by_source_url(None)
+        self.assertIsNone(result)
+
+
 class TestGetReadingRecommendations(unittest.TestCase):
     """Test suite for the main get_reading_recommendations() tool."""
 
@@ -344,23 +636,53 @@ class TestGetReadingRecommendations(unittest.TestCase):
         self.assertIn('No queries', result['error'])
         self.assertEqual(result['recommendations'], [])
 
+    @patch('recommendation_filter.assign_slots')
+    @patch('recommendation_filter.diversified_sample')
+    @patch('recommendation_filter.calculate_combined_score')
     @patch('recommendation_filter.filter_recommendations')
     @patch('tavily_client.search')
     @patch('recommendation_queries.format_query_for_tavily')
     @patch('recommendation_queries.generate_search_queries')
     @patch('firestore_client.get_recommendation_config')
-    def test_full_flow(self, mock_config, mock_queries, mock_format, mock_tavily, mock_filter):
-        """Test full recommendation flow."""
+    @patch('firestore_client.get_ranking_config')
+    @patch('firestore_client.get_kb_credibility_signals')
+    @patch('firestore_client.get_shown_urls')
+    @patch('firestore_client.record_shown_recommendations')
+    @patch('recommendation_filter.get_mode_config')
+    @patch('recommendation_filter.calculate_recency_score')
+    @patch('recommendation_filter.parse_published_date')
+    def test_full_flow(self, mock_parse_date, mock_recency, mock_mode_config, mock_record,
+                       mock_shown_urls, mock_credibility, mock_ranking_config, mock_config,
+                       mock_queries, mock_format, mock_tavily, mock_filter,
+                       mock_combined, mock_sample, mock_slots):
+        """Test full recommendation flow with Story 3.9 parameters."""
         from mcp_server import tools
 
         mock_config.return_value = {
             'quality_domains': ['example.com'],
             'excluded_domains': []
         }
+        mock_ranking_config.return_value = {
+            'weights': {'relevance': 0.5, 'recency': 0.25, 'depth': 0.15, 'authority': 0.1},
+            'settings': {}
+        }
+        mock_mode_config.return_value = {
+            'description': 'Test mode',
+            'weights': {'relevance': 0.5, 'recency': 0.25, 'depth': 0.15, 'authority': 0.1},
+            'temperature': 0.3,
+            'tavily_days': 180,
+            'min_depth_score': 3,
+            'slots': {}
+        }
+        mock_credibility.return_value = {'authors': [], 'domains': []}
+        mock_shown_urls.return_value = []
+        mock_record.return_value = {'recorded_count': 1}
         mock_queries.return_value = [
             {'query': 'test query', 'source': 'cluster', 'context': {'cluster_name': 'Test'}}
         ]
         mock_format.return_value = 'test query'
+        mock_parse_date.return_value = None
+        mock_recency.return_value = 0.8
         mock_tavily.return_value = {
             'results': [
                 {
@@ -377,12 +699,41 @@ class TestGetReadingRecommendations(unittest.TestCase):
                 {
                     'title': 'Test Article',
                     'url': 'https://example.com/article',
+                    'domain': 'example.com',
                     'depth_score': 4,
                     'why_recommended': 'Test reason'
                 }
             ],
             'filtered_out': {'duplicate_count': 0}
         }
+        mock_combined.return_value = {
+            'combined_score': 0.8,
+            'final_score': 0.85,
+            'score_breakdown': {'relevance': 0.9, 'recency': 0.8, 'depth': 0.8, 'authority': 0.5},
+            'adjustments': {'novelty_bonus': 0.1, 'domain_penalty': 0.0}
+        }
+        mock_sample.return_value = [
+            {
+                'title': 'Test Article',
+                'url': 'https://example.com/article',
+                'domain': 'example.com',
+                'depth_score': 4,
+                'combined_score': 0.8,
+                'final_score': 0.85
+            }
+        ]
+        mock_slots.return_value = [
+            {
+                'title': 'Test Article',
+                'url': 'https://example.com/article',
+                'domain': 'example.com',
+                'depth_score': 4,
+                'combined_score': 0.8,
+                'final_score': 0.85,
+                'slot': 'RELEVANCE',
+                'slot_reason': 'Top combined score'
+            }
+        ]
 
         result = tools.get_reading_recommendations(scope='both', days=14, limit=10)
 
@@ -390,6 +741,8 @@ class TestGetReadingRecommendations(unittest.TestCase):
         self.assertEqual(len(result['recommendations']), 1)
         self.assertIn('generated_at', result)
         self.assertIn('queries_used', result)
+        self.assertIn('mode', result)
+        self.assertEqual(result['mode'], 'balanced')
 
 
 class TestUpdateRecommendationDomains(unittest.TestCase):

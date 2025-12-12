@@ -282,6 +282,54 @@ def get_top_cluster_themes(limit: int = 5) -> List[Dict[str, Any]]:
         return []
 
 
+def get_clusters_by_ids(cluster_ids: List[str]) -> List[Dict[str, Any]]:
+    """
+    Get cluster themes for specific cluster IDs.
+
+    Story 3.9 AC#1: Cluster filtering support
+
+    Args:
+        cluster_ids: List of cluster IDs to fetch
+
+    Returns:
+        List of dictionaries with cluster info:
+        - cluster_id: Cluster identifier
+        - name: Cluster name (theme)
+        - description: Cluster description
+        - size: Number of chunks in cluster
+    """
+    try:
+        logger.info(f"Getting cluster themes for {len(cluster_ids)} specific clusters")
+
+        themes = []
+        for cid in cluster_ids:
+            cluster = firestore_client.get_cluster_by_id(cid)
+
+            if not cluster:
+                logger.warning(f"Cluster not found: {cid}")
+                continue
+
+            name = cluster.get('name', '')
+
+            # Skip noise or unnamed clusters
+            if not name or 'noise' in name.lower():
+                continue
+
+            themes.append({
+                'cluster_id': cid,
+                'name': name,
+                'description': cluster.get('description', ''),
+                'size': cluster.get('size', 0)
+            })
+
+        logger.info(f"Fetched {len(themes)} cluster themes from specific IDs")
+        return themes
+
+    except Exception as e:
+        logger.error(f"Failed to get clusters by IDs: {e}")
+        return []
+
+
 def get_stale_cluster_themes(
     stale_days: int = 30,
     min_size: int = 5
@@ -336,19 +384,22 @@ def generate_search_queries(
     scope: str = "both",
     days: int = 14,
     max_queries: int = 8,
-    use_variation: bool = True
+    use_variation: bool = True,
+    cluster_ids: Optional[List[str]] = None
 ) -> List[Dict[str, Any]]:
     """
     Generate smart search queries for Tavily based on KB context.
 
     Story 3.5: Base query generation
     Story 3.8 AC#5: Enhanced query variation
+    Story 3.9 AC#1: Cluster filtering support
 
     Args:
         scope: "recent" (recent reads), "clusters" (top clusters), or "both"
         days: Lookback period for recent reads
         max_queries: Maximum number of queries to generate
         use_variation: Enable Story 3.8 query variation (default True)
+        cluster_ids: Optional list of specific cluster IDs to use (Story 3.9)
 
     Returns:
         List of query dictionaries:
@@ -357,14 +408,22 @@ def generate_search_queries(
         - context: Additional context (cluster_id, etc.)
     """
     try:
-        logger.info(f"Generating search queries: scope={scope}, days={days}, variation={use_variation}")
+        logger.info(
+            f"Generating search queries: scope={scope}, days={days}, "
+            f"variation={use_variation}, cluster_ids={cluster_ids}"
+        )
 
         queries = []
         session_seed = get_session_seed() if use_variation else None
 
         # Get cluster themes if scope includes clusters
         if scope in ("clusters", "both"):
-            cluster_themes = get_top_cluster_themes(limit=5)
+            # Story 3.9: Use specific clusters if provided, otherwise top clusters
+            if cluster_ids:
+                cluster_themes = get_clusters_by_ids(cluster_ids)
+                logger.info(f"Using {len(cluster_themes)} specific clusters from cluster_ids")
+            else:
+                cluster_themes = get_top_cluster_themes(limit=5)
 
             # Story 3.8: Rotate clusters based on session
             if use_variation:

@@ -62,6 +62,61 @@ DEFAULT_NOVELTY_BONUS = 0.10
 DEFAULT_DOMAIN_DUPLICATE_PENALTY = 0.05
 DEFAULT_STOCHASTIC_TEMPERATURE = 0.3
 
+# ============================================================================
+# Story 3.9: Discovery Mode Presets
+# ============================================================================
+
+DISCOVERY_MODES = {
+    "balanced": {
+        "description": "Standard mix - good for daily use",
+        "weights": {"relevance": 0.50, "recency": 0.25, "depth": 0.15, "authority": 0.10},
+        "temperature": 0.3,
+        "tavily_days": 180,
+        "min_depth_score": 3,
+        "slots": {"relevance_count": 2, "serendipity_count": 1, "stale_refresh_count": 1, "trending_count": 1}
+    },
+    "fresh": {
+        "description": "Prioritize recent content - great for catching up",
+        "weights": {"relevance": 0.25, "recency": 0.50, "depth": 0.15, "authority": 0.10},
+        "temperature": 0.2,
+        "tavily_days": 30,  # Recent content only
+        "min_depth_score": 2,  # Lower quality bar for fresh content
+        "slots": {"relevance_count": 1, "serendipity_count": 1, "stale_refresh_count": 0, "trending_count": 3}
+    },
+    "deep": {
+        "description": "Prioritize in-depth content - weekend reading",
+        "weights": {"relevance": 0.35, "recency": 0.15, "depth": 0.40, "authority": 0.10},
+        "temperature": 0.2,
+        "tavily_days": 365,  # Include older evergreen content
+        "min_depth_score": 4,  # Higher quality bar
+        "slots": {"relevance_count": 3, "serendipity_count": 1, "stale_refresh_count": 1, "trending_count": 0}
+    },
+    "surprise_me": {
+        "description": "Break filter bubble - explore new topics",
+        "weights": {"relevance": 0.30, "recency": 0.25, "depth": 0.25, "authority": 0.20},
+        "temperature": 0.8,  # High randomization
+        "tavily_days": 180,
+        "min_depth_score": 3,
+        "slots": {"relevance_count": 1, "serendipity_count": 3, "stale_refresh_count": 1, "trending_count": 0},
+        "use_related_clusters": True  # Explore adjacent topics
+    }
+}
+
+
+def get_mode_config(mode: str) -> Dict[str, Any]:
+    """
+    Get configuration for a discovery mode.
+
+    Story 3.9 AC#6: Discovery modes
+
+    Args:
+        mode: Discovery mode name (balanced, fresh, deep, surprise_me)
+
+    Returns:
+        Mode configuration dict with weights, temperature, slots, etc.
+    """
+    return DISCOVERY_MODES.get(mode, DISCOVERY_MODES["balanced"])
+
 
 def calculate_recency_score(
     published_date: Optional[datetime],
@@ -573,72 +628,161 @@ def generate_why_recommended(
         return "Recommended based on your reading history"
 
 
-def check_kb_duplicate(title: str, content: str) -> Dict[str, Any]:
+def check_kb_duplicate(
+    title: str,
+    content: str,
+    url: str = None,
+    author: str = None
+) -> Dict[str, Any]:
     """
     Check if recommendation content already exists in KB.
 
-    Uses embedding similarity to detect duplicates.
+    Story 3.10: Enhanced deduplication with multiple strategies:
+    1. URL-based matching (most reliable)
+    2. Title containment check (handles subtitles, editions)
+    3. Author + topic matching
+    4. Embedding similarity fallback
 
     Args:
         title: Recommendation title
         content: Recommendation snippet
+        url: Recommendation URL (optional but recommended)
+        author: Recommendation author (optional)
 
     Returns:
         Dictionary with:
         - is_duplicate: Boolean
-        - similarity_score: Highest similarity found (0-1)
-        - similar_chunk_id: ID of most similar chunk if duplicate
+        - match_type: How duplicate was detected (url, title, author, embedding, None)
+        - similarity_score: Confidence score (0-1)
+        - similar_chunk_id: ID of matching chunk if duplicate
+        - similar_title: Title of matching chunk if duplicate
     """
     try:
-        # Combine title and content for embedding
-        text_to_embed = f"{title}. {content[:300]}"
+        # 1. URL-based check (most reliable)
+        if url:
+            existing = firestore_client.find_by_source_url(url)
+            if existing:
+                logger.debug(f"Duplicate detected by URL: {url}")
+                return {
+                    'is_duplicate': True,
+                    'match_type': 'url',
+                    'similarity_score': 1.0,
+                    'similar_chunk_id': existing.get('id'),
+                    'similar_title': existing.get('title')
+                }
 
-        # Generate embedding
+        # 2. Title containment check (handles "Vibe Coding" vs "Beyond Vibe Coding")
+        title_lower = title.lower()
+
+        # Extract core title (before colon/dash for subtitles)
+        core_title = title_lower.split(':')[0].split(' - ')[0].strip()
+
+        # Remove common prefixes that don't change the content
+        prefixes_to_strip = ['beyond ', 'the ', 'a ', 'an ', 'introduction to ', 'guide to ']
+        stripped_title = core_title
+        for prefix in prefixes_to_strip:
+            if stripped_title.startswith(prefix):
+                stripped_title = stripped_title[len(prefix):]
+                break
+
+        # Search for similar titles in KB
+        if len(stripped_title) >= 3:
+            similar_by_title = firestore_client.find_chunks_by_title_prefix(stripped_title, limit=5)
+
+            for chunk in similar_by_title:
+                kb_title = chunk.get('title', '').lower()
+                kb_core = kb_title.split(':')[0].split(' - ')[0].strip()
+
+                # Check bidirectional containment
+                if (stripped_title in kb_core or
+                    kb_core in stripped_title or
+                    stripped_title in kb_title or
+                    kb_title in title_lower):
+                    logger.debug(f"Duplicate detected by title containment: '{title}' ~ '{kb_title}'")
+                    return {
+                        'is_duplicate': True,
+                        'match_type': 'title_containment',
+                        'similarity_score': 0.9,
+                        'similar_chunk_id': chunk.get('id'),
+                        'similar_title': chunk.get('title')
+                    }
+
+        # 3. Author + topic matching (if author provided)
+        if author and len(author) > 2:
+            author_lower = author.lower()
+            # Check if this author exists in KB with similar topic
+            author_chunks = firestore_client.find_chunks_by_title_prefix(stripped_title[:10], limit=20)
+
+            for chunk in author_chunks:
+                chunk_author = chunk.get('author', '').lower()
+                # Check if any author name matches (handles "Gene Kim" in "Gene Kim, Steve Yegge")
+                if author_lower in chunk_author or chunk_author in author_lower:
+                    # Same author + similar title = very likely duplicate
+                    chunk_title = chunk.get('title', '').lower()
+                    # Check for topic overlap (shared significant words)
+                    title_words = set(w for w in stripped_title.split() if len(w) > 3)
+                    chunk_words = set(w for w in chunk_title.split() if len(w) > 3)
+                    overlap = title_words & chunk_words
+
+                    if len(overlap) >= 1:  # At least one significant word in common
+                        logger.debug(f"Duplicate detected by author match: {author} wrote '{chunk_title}'")
+                        return {
+                            'is_duplicate': True,
+                            'match_type': 'author_topic',
+                            'similarity_score': 0.85,
+                            'similar_chunk_id': chunk.get('id'),
+                            'similar_title': chunk.get('title')
+                        }
+
+        # 4. Embedding similarity fallback
+        text_to_embed = f"{title}. {content[:300]}"
         embedding = embeddings.generate_query_embedding(text_to_embed)
 
-        # Search for similar content in KB
         similar_chunks = firestore_client.find_nearest(
             embedding_vector=embedding,
             limit=1
         )
 
-        if not similar_chunks:
-            return {
-                'is_duplicate': False,
-                'similarity_score': 0.0,
-                'similar_chunk_id': None
-            }
+        if similar_chunks:
+            top_chunk = similar_chunks[0]
+            top_title = top_chunk.get('title', '').lower()
 
-        # Calculate cosine similarity (Firestore returns by similarity, not distance)
-        # Since find_nearest returns most similar first, we need to check
-        # If the chunk is very similar, it's a duplicate
+            # Use combined heuristic: title word overlap + position in results
+            # If it's the #1 result AND has significant word overlap, it's likely a duplicate
+            title_words = set(w for w in title_lower.split() if len(w) > 2)
+            top_words = set(w for w in top_title.split() if len(w) > 2)
+            common_words = title_words & top_words
 
-        # Firestore vector search doesn't return distance by default
-        # We'll use a heuristic: check if titles are similar
-        top_chunk = similar_chunks[0]
-        top_title = top_chunk.get('title', '').lower()
-        check_title = title.lower()
+            # Calculate Jaccard similarity for word sets
+            union_words = title_words | top_words
+            word_similarity = len(common_words) / max(len(union_words), 1)
 
-        # Simple title similarity check
-        title_words = set(check_title.split())
-        top_words = set(top_title.split())
-        common_words = title_words & top_words
-        title_similarity = len(common_words) / max(len(title_words), 1)
+            # More lenient threshold: 40% word overlap indicates likely duplicate
+            # (The embedding search already filtered for semantic similarity)
+            if word_similarity > 0.4:
+                logger.debug(f"Duplicate detected by embedding+title: similarity={word_similarity:.2f}")
+                return {
+                    'is_duplicate': True,
+                    'match_type': 'embedding',
+                    'similarity_score': word_similarity,
+                    'similar_chunk_id': top_chunk.get('id'),
+                    'similar_title': top_chunk.get('title')
+                }
 
-        # Consider duplicate if high title similarity
-        is_dup = title_similarity > 0.6
-
+        # No duplicate found
         return {
-            'is_duplicate': is_dup,
-            'similarity_score': title_similarity,
-            'similar_chunk_id': top_chunk.get('id') if is_dup else None,
-            'similar_title': top_title if is_dup else None
+            'is_duplicate': False,
+            'match_type': None,
+            'similarity_score': 0.0,
+            'similar_chunk_id': None,
+            'similar_title': None
         }
 
     except Exception as e:
         logger.warning(f"Failed to check KB duplicate: {e}")
         return {
             'is_duplicate': False,
+            'match_type': None,
             'similarity_score': 0.0,
             'error': str(e)
         }
@@ -746,12 +890,14 @@ def filter_recommendations(
                 logger.debug(f"Filtered (diversity): {title[:50]}...")
                 continue
 
-            # 2. Check for KB duplicates
+            # 2. Check for KB duplicates (Story 3.10: enhanced with URL + title + author)
             if check_duplicates:
-                dup_check = check_kb_duplicate(title, content)
+                dup_check = check_kb_duplicate(title, content, url=url)
                 if dup_check.get('is_duplicate'):
                     filtered_out['duplicate_count'] += 1
-                    logger.debug(f"Filtered (duplicate): {title[:50]}...")
+                    match_type = dup_check.get('match_type', 'unknown')
+                    similar_title = dup_check.get('similar_title', '')[:30]
+                    logger.debug(f"Filtered (duplicate via {match_type}): '{title[:40]}' ~ '{similar_title}'")
                     continue
 
             # 3. Score content depth

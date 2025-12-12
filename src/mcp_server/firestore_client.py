@@ -12,6 +12,7 @@ import os
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 from google.cloud import firestore
 
 # Try to import Vector types (might not be available in all versions)
@@ -165,6 +166,133 @@ def query_by_metadata(
 
     except Exception as e:
         logger.error(f"Failed to query by metadata: {e}")
+        return []
+
+
+def normalize_url(url: str) -> str:
+    """
+    Normalize URL for comparison.
+
+    Removes www prefix, trailing slashes, and query parameters.
+
+    Args:
+        url: URL to normalize
+
+    Returns:
+        Normalized URL string
+    """
+    if not url:
+        return ""
+
+    try:
+        parsed = urlparse(url.lower())
+        # Remove www prefix
+        host = parsed.netloc.replace('www.', '')
+        # Remove trailing slash from path
+        path = parsed.path.rstrip('/')
+        # Rebuild without query params and fragment
+        return f"{parsed.scheme}://{host}{path}"
+    except Exception:
+        return url.lower()
+
+
+def find_by_source_url(url: str) -> Optional[Dict[str, Any]]:
+    """
+    Find a chunk by its source URL.
+
+    Checks both exact match and normalized URL match.
+
+    Args:
+        url: Source URL to search for
+
+    Returns:
+        Chunk data if found, None otherwise
+    """
+    if not url:
+        return None
+
+    try:
+        db = get_firestore_client()
+        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+
+        # Try exact match first
+        query = db.collection(collection).where('source_url', '==', url).limit(1)
+        docs = list(query.stream())
+
+        if docs:
+            chunk_data = docs[0].to_dict()
+            chunk_data['id'] = docs[0].id
+            logger.debug(f"Found chunk by exact URL match: {docs[0].id}")
+            return chunk_data
+
+        # Try normalized URL match
+        normalized = normalize_url(url)
+        if normalized != url:
+            query = db.collection(collection).where('source_url', '==', normalized).limit(1)
+            docs = list(query.stream())
+
+            if docs:
+                chunk_data = docs[0].to_dict()
+                chunk_data['id'] = docs[0].id
+                logger.debug(f"Found chunk by normalized URL match: {docs[0].id}")
+                return chunk_data
+
+        return None
+
+    except Exception as e:
+        logger.warning(f"Failed to find chunk by source URL: {e}")
+        return None
+
+
+def find_chunks_by_title_prefix(title_prefix: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Find chunks whose title starts with the given prefix.
+
+    Uses Firestore range query for efficient prefix matching.
+
+    Args:
+        title_prefix: Title prefix to search (case-insensitive)
+        limit: Maximum results to return
+
+    Returns:
+        List of matching chunks
+    """
+    if not title_prefix or len(title_prefix) < 3:
+        return []
+
+    try:
+        db = get_firestore_client()
+        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+
+        # Firestore doesn't support case-insensitive queries directly
+        # We'll fetch more results and filter client-side
+        # This is acceptable for deduplication (not high-volume)
+
+        # Get all chunks and filter by title (not ideal but necessary)
+        # TODO: Add title_lower field to chunks for efficient querying
+        query = db.collection(collection).limit(500)
+        docs = query.stream()
+
+        prefix_lower = title_prefix.lower()
+        chunks = []
+
+        for doc in docs:
+            chunk_data = doc.to_dict()
+            chunk_title = chunk_data.get('title', '').lower()
+
+            # Check if title contains the prefix or vice versa
+            if prefix_lower in chunk_title or chunk_title in prefix_lower:
+                chunk_data['id'] = doc.id
+                chunks.append(chunk_data)
+
+                if len(chunks) >= limit:
+                    break
+
+        logger.debug(f"Found {len(chunks)} chunks with title matching '{title_prefix[:20]}...'")
+        return chunks
+
+    except Exception as e:
+        logger.warning(f"Failed to find chunks by title prefix: {e}")
         return []
 
 
@@ -752,6 +880,113 @@ DEFAULT_QUALITY_DOMAINS = [
     "golem.de",
     "arxiv.org"
 ]
+
+# ============================================================================
+# Story 3.9: Hot Sites Categories
+# ============================================================================
+
+# Curated source lists for focused discovery (research-based, Dec 2025)
+DEFAULT_HOT_SITES = {
+    "tech": {
+        "description": "Software architecture, platform engineering, DevOps, and general tech",
+        "domains": [
+            "martinfowler.com",
+            "thoughtworks.com",
+            "infoq.com",
+            "thenewstack.io",
+            "dev.to",
+            "news.ycombinator.com",
+            "stackoverflow.blog",
+            "github.blog",
+            "netflixtechblog.com",
+            "engineering.atspotify.com",
+            "uber.com/blog",
+            "eng.lyft.com",
+            "slack.engineering",
+            "stripe.com/blog/engineering",
+            "cloudflare.com/blog",
+            "blog.discord.com",
+            "devops.com",
+            "platformengineering.org",
+            "humanitec.com/blog",
+            "arstechnica.com",
+            "wired.com",
+            "theverge.com",
+            "simonwillison.net",
+            "newsletter.pragmaticengineer.com",
+            "bytebytego.com"
+        ]
+    },
+    "tech_de": {
+        "description": "German tech news and professional IT sources",
+        "domains": [
+            "heise.de",
+            "golem.de",
+            "t3n.de",
+            "the-decoder.de",
+            "computerbase.de",
+            "heise.de/ix"
+        ]
+    },
+    "ai": {
+        "description": "AI/ML research, LLMs, agents, and AI-powered development",
+        "domains": [
+            "anthropic.com",
+            "openai.com",
+            "huggingface.co",
+            "deepmind.google",
+            "ai.meta.com",
+            "ai.google",
+            "microsoft.com/en-us/research",
+            "nvidia.com/blog",
+            "lilianweng.github.io",
+            "karpathy.ai",
+            "simonwillison.net",
+            "latent.space",
+            "technologyreview.com",
+            "unite.ai",
+            "towardsdatascience.com",
+            "thesequence.substack.com",
+            "importai.substack.com"
+        ]
+    },
+    "devops": {
+        "description": "DevOps, SRE, platform engineering, and developer experience",
+        "domains": [
+            "devops.com",
+            "thenewstack.io",
+            "platformengineering.org",
+            "humanitec.com/blog",
+            "infoq.com",
+            "martinfowler.com",
+            "slack.engineering",
+            "netflixtechblog.com",
+            "aws.amazon.com/blogs/devops",
+            "devblogs.microsoft.com/devops",
+            "cloud.google.com/blog",
+            "kubernetes.io/blog",
+            "cncf.io/blog"
+        ]
+    },
+    "business": {
+        "description": "Business strategy, tech leadership, and product management",
+        "domains": [
+            "hbr.org",
+            "mckinsey.com",
+            "bcg.com",
+            "stratechery.com",
+            "a16z.com",
+            "sequoiacap.com",
+            "firstround.com/review",
+            "nfx.com",
+            "lennysnewsletter.com",
+            "svpg.com",
+            "productboard.com/blog",
+            "intercom.com/blog",
+            "exponentialview.co"
+        ]
+    }
+}
 
 DEFAULT_EXCLUDED_DOMAINS = [
     "medium.com"
@@ -1381,6 +1616,225 @@ def cleanup_expired_shown_recommendations(user_id: str = "default") -> Dict[str,
             'deleted_count': 0,
             'error': str(e)
         }
+
+
+# ============================================================================
+# Hot Sites Configuration (Story 3.9)
+# ============================================================================
+
+def get_hot_sites_config() -> Dict[str, Any]:
+    """
+    Get hot sites configuration from Firestore.
+
+    Story 3.9 AC#4: Hot site categories stored in Firestore
+
+    Fetches config/hot_sites document with category→domain mappings.
+    Creates default config if document doesn't exist.
+
+    Returns:
+        Dictionary with:
+        - categories: Dict mapping category name to domain list
+        - descriptions: Dict mapping category name to description
+        - last_updated: Timestamp of last update
+        - updated_by: Who made the last update
+    """
+    try:
+        db = get_firestore_client()
+
+        logger.info("Fetching hot sites config from config/hot_sites")
+
+        doc_ref = db.collection('config').document('hot_sites')
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            logger.info("Hot sites config not found, creating default configuration")
+            # Create default config from DEFAULT_HOT_SITES
+            categories = {}
+            descriptions = {}
+            for cat_name, cat_data in DEFAULT_HOT_SITES.items():
+                categories[cat_name] = cat_data['domains']
+                descriptions[cat_name] = cat_data['description']
+
+            default_config = {
+                'categories': categories,
+                'descriptions': descriptions,
+                'last_updated': datetime.utcnow(),
+                'updated_by': 'initial_setup'
+            }
+            doc_ref.set(default_config)
+            return default_config
+
+        config = doc.to_dict()
+
+        # Calculate total domains
+        total_domains = sum(len(domains) for domains in config.get('categories', {}).values())
+        logger.info(f"Retrieved hot sites config: {len(config.get('categories', {}))} categories, {total_domains} total domains")
+
+        return config
+
+    except Exception as e:
+        logger.error(f"Failed to get hot sites config: {e}")
+        # Return defaults on error
+        categories = {}
+        descriptions = {}
+        for cat_name, cat_data in DEFAULT_HOT_SITES.items():
+            categories[cat_name] = cat_data['domains']
+            descriptions[cat_name] = cat_data['description']
+        return {
+            'categories': categories,
+            'descriptions': descriptions,
+            'error': str(e)
+        }
+
+
+def update_hot_sites_config(
+    category: str,
+    add_domains: Optional[List[str]] = None,
+    remove_domains: Optional[List[str]] = None,
+    description: Optional[str] = None,
+    updated_by: str = "mcp_tool"
+) -> Dict[str, Any]:
+    """
+    Update hot sites configuration for a specific category.
+
+    Story 3.9 AC#4: MCP tool to modify categories
+
+    Args:
+        category: Category name (tech, tech_de, ai, devops, business)
+        add_domains: Domains to add to the category
+        remove_domains: Domains to remove from the category
+        description: Optional new description for the category
+        updated_by: Identifier for who made the update
+
+    Returns:
+        Dictionary with:
+        - success: Boolean
+        - category: Category that was updated
+        - domains: Updated domain list for this category
+        - changes: Summary of changes made
+    """
+    try:
+        db = get_firestore_client()
+
+        logger.info(f"Updating hot sites config for category: {category}")
+
+        # Get current config
+        doc_ref = db.collection('config').document('hot_sites')
+        doc = doc_ref.get()
+
+        if doc.exists:
+            current = doc.to_dict()
+        else:
+            # Initialize from defaults
+            categories = {}
+            descriptions = {}
+            for cat_name, cat_data in DEFAULT_HOT_SITES.items():
+                categories[cat_name] = cat_data['domains']
+                descriptions[cat_name] = cat_data['description']
+            current = {
+                'categories': categories,
+                'descriptions': descriptions
+            }
+
+        # Get current category domains (or empty list for new category)
+        categories = current.get('categories', {})
+        descriptions = current.get('descriptions', {})
+
+        domain_set = set(categories.get(category, []))
+
+        # Track changes
+        changes = {
+            'domains_added': [],
+            'domains_removed': [],
+            'description_updated': False
+        }
+
+        # Add domains
+        if add_domains:
+            for domain in add_domains:
+                domain = domain.lower().strip()
+                if domain and domain not in domain_set:
+                    domain_set.add(domain)
+                    changes['domains_added'].append(domain)
+
+        # Remove domains
+        if remove_domains:
+            for domain in remove_domains:
+                domain = domain.lower().strip()
+                if domain in domain_set:
+                    domain_set.discard(domain)
+                    changes['domains_removed'].append(domain)
+
+        # Update description
+        if description is not None:
+            descriptions[category] = description
+            changes['description_updated'] = True
+
+        # Update category
+        categories[category] = sorted(list(domain_set))
+
+        # Prepare updated config
+        updated_config = {
+            'categories': categories,
+            'descriptions': descriptions,
+            'last_updated': datetime.utcnow(),
+            'updated_by': updated_by
+        }
+
+        # Save to Firestore
+        doc_ref.set(updated_config)
+
+        logger.info(
+            f"Updated hot sites category '{category}': "
+            f"+{len(changes['domains_added'])} -{len(changes['domains_removed'])} domains"
+        )
+
+        return {
+            'success': True,
+            'category': category,
+            'domains': categories[category],
+            'domain_count': len(categories[category]),
+            'description': descriptions.get(category, ''),
+            'changes': changes
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to update hot sites config: {e}")
+        return {
+            'success': False,
+            'category': category,
+            'error': str(e)
+        }
+
+
+def get_hot_sites_domains(category: str) -> List[str]:
+    """
+    Get domain list for a hot sites category.
+
+    Story 3.9 AC#2: Map hot_sites parameter to domain list
+
+    Args:
+        category: Category name or "all" for union of all categories
+
+    Returns:
+        List of domains for the category (empty list if not found)
+    """
+    try:
+        config = get_hot_sites_config()
+        categories = config.get('categories', {})
+
+        if category == "all":
+            # Union of all category domains
+            all_domains = set()
+            for domains in categories.values():
+                all_domains.update(domains)
+            return sorted(list(all_domains))
+
+        return categories.get(category, [])
+
+    except Exception as e:
+        logger.error(f"Failed to get hot sites domains for {category}: {e}")
+        return []
 
 
 def get_kb_credibility_signals() -> Dict[str, Any]:

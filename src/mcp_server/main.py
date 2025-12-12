@@ -382,7 +382,7 @@ async def main():
                     "required": ["cluster_id"]
                 }
             ),
-            # Story 3.5: Reading Recommendations
+            # Story 3.5 + 3.9: Reading Recommendations with Parameterization
             Tool(
                 name="get_reading_recommendations",
                 description="Get AI-powered reading recommendations based on your KB content. Analyzes recent reads and clusters, searches quality sources, and filters for depth.",
@@ -404,6 +404,32 @@ async def main():
                             "type": "integer",
                             "description": "Maximum recommendations to return (default 10)",
                             "default": 10
+                        },
+                        "cluster_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional list of cluster IDs to scope recommendations (e.g., ['cluster-28', 'cluster-20'])"
+                        },
+                        "hot_sites": {
+                            "type": "string",
+                            "enum": ["tech", "tech_de", "ai", "devops", "business", "all"],
+                            "description": "Optional source category: 'tech', 'tech_de', 'ai', 'devops', 'business', or 'all'"
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": ["balanced", "fresh", "deep", "surprise_me"],
+                            "description": "Discovery mode: 'balanced' (default), 'fresh' (recent content), 'deep' (in-depth), 'surprise_me' (high randomization)",
+                            "default": "balanced"
+                        },
+                        "include_seen": {
+                            "type": "boolean",
+                            "description": "Include previously shown recommendations (default false)",
+                            "default": False
+                        },
+                        "predictable": {
+                            "type": "boolean",
+                            "description": "Disable query variation for reproducible results (default false)",
+                            "default": False
                         }
                     }
                 }
@@ -442,6 +468,43 @@ async def main():
                 inputSchema={
                     "type": "object",
                     "properties": {}
+                }
+            ),
+            # Story 3.9: Hot Sites Configuration
+            Tool(
+                name="get_hot_sites_config",
+                description="Get hot sites categories and their domains. Shows curated source lists for tech, tech_de, ai, devops, business.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
+            ),
+            Tool(
+                name="update_hot_sites_config",
+                description="Update hot sites configuration for a specific category. Add or remove domains from curated source lists.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "description": "Category name: tech, tech_de, ai, devops, business (or create new)"
+                        },
+                        "add_domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Domains to add to the category"
+                        },
+                        "remove_domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Domains to remove from the category"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional new description for the category"
+                        }
+                    },
+                    "required": ["category"]
                 }
             ),
             Tool(
@@ -580,12 +643,17 @@ async def main():
                     limit=arguments.get("limit", 5),
                     distance_measure=arguments.get("distance_measure", "COSINE")
                 )
-            # Story 3.5: Reading Recommendations
+            # Story 3.5 + 3.9: Reading Recommendations
             elif name == "get_reading_recommendations":
                 result = tools.get_reading_recommendations(
                     scope=arguments.get("scope", "both"),
                     days=arguments.get("days", 14),
-                    limit=arguments.get("limit", 10)
+                    limit=arguments.get("limit", 10),
+                    cluster_ids=arguments.get("cluster_ids"),
+                    hot_sites=arguments.get("hot_sites"),
+                    mode=arguments.get("mode", "balanced"),
+                    include_seen=arguments.get("include_seen", False),
+                    predictable=arguments.get("predictable", False)
                 )
             elif name == "update_recommendation_domains":
                 result = tools.update_recommendation_domains(
@@ -594,6 +662,16 @@ async def main():
                 )
             elif name == "get_recommendation_config":
                 result = tools.get_recommendation_config()
+            # Story 3.9: Hot Sites Configuration
+            elif name == "get_hot_sites_config":
+                result = tools.get_hot_sites_config()
+            elif name == "update_hot_sites_config":
+                result = tools.update_hot_sites_config(
+                    category=arguments["category"],
+                    add_domains=arguments.get("add_domains"),
+                    remove_domains=arguments.get("remove_domains"),
+                    description=arguments.get("description")
+                )
             # Story 3.8: Ranking Configuration
             elif name == "get_ranking_config":
                 result = tools.get_ranking_config()

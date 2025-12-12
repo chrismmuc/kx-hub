@@ -1,5 +1,7 @@
 # Architecture – Google Cloud + Vertex AI (MVP)
 
+**Last Updated:** 2025-12-12
+
 ## Overview
 
 The system uses Google Cloud Serverless components and Vertex AI to create a simple, scalable, and cost-effective solution for processing and querying knowledge data.
@@ -89,31 +91,78 @@ flowchart LR
   CD[Claude Desktop]
   CD -->|MCP<br/>stdio| MCP[kx-hub MCP Server<br/>Python/stdio]
 
-  MCP -->|list_resources| FS[(Firestore<br/>kb_items collection)]
-  MCP -->|Tools| MCP_TOOLS["• search_semantic<br/>• search_by_metadata<br/>• get_related_chunks<br/>• time-based queries"]
+  MCP -->|list_resources| FS[(Firestore<br/>kb_items + clusters + config)]
+  MCP -->|22 Tools| MCP_TOOLS["• Search (semantic, metadata, time)<br/>• Clusters (list, get, search, related)<br/>• Knowledge Cards<br/>• Recommendations (3.5/3.8/3.9)"]
 
   MCP_TOOLS -->|Query embeddings| V_EMB[Vertex AI<br/>gemini-embedding-001]
   MCP_TOOLS -->|FIND_NEAREST| FS
-  MCP_TOOLS -->|fetch results| FS
+  MCP_TOOLS -->|Recommendations| TAVILY[Tavily Search API]
 
   V_EMB --> MCP_TOOLS
   FS --> MCP_TOOLS
+  TAVILY --> MCP_TOOLS
 
   MCP_TOOLS -->|Tool results| MCP
   MCP -->|JSON-RPC| CD
 ```
 
-### Query Tools
+### Query Tools (22 Total)
 
 The MCP server exposes the following tools to Claude:
 
-| Tool | Purpose | Example Input |
-|------|---------|---|
-| `search_semantic` | Semantic vector search across all chunks | "What did I read about machine learning?" |
-| `search_by_metadata` | Filter by author, tag, source, date range | `{author: "Paul Graham", tags: ["startups"]}` |
-| `get_related_chunks` | Discover semantically similar chunks | `{chunk_id: "...", limit: 5}` |
-| `search_by_date_range` | Time-based filtering | `{start_date: "2025-10-01", end_date: "2025-10-31"}` |
-| `get_reading_activity` | Reading statistics for date range | `{period: "last_week"}` |
+**Core Search Tools:**
+| Tool | Purpose |
+|------|---------|
+| `search_semantic` | Semantic vector search across all chunks |
+| `search_by_metadata` | Filter by author, tag, source |
+| `get_related_chunks` | Discover semantically similar chunks |
+| `get_stats` | Knowledge base statistics |
+
+**Time-Based Tools:**
+| Tool | Purpose |
+|------|---------|
+| `search_by_date_range` | Query by absolute date range |
+| `search_by_relative_time` | Query by period (yesterday, last_week, etc.) |
+| `get_reading_activity` | Reading activity summary |
+| `get_recently_added` | Most recently added chunks |
+
+**Knowledge Card Tools:**
+| Tool | Purpose |
+|------|---------|
+| `get_knowledge_card` | AI summary for a specific chunk |
+| `search_knowledge_cards` | Semantic search across summaries only |
+
+**Cluster Tools:**
+| Tool | Purpose |
+|------|---------|
+| `list_clusters` | List all semantic clusters |
+| `get_cluster` | Get cluster details with member chunks |
+| `search_within_cluster` | Semantic search restricted to a cluster |
+| `get_related_clusters` | Find conceptually related clusters |
+
+**Reading Recommendations (Stories 3.5, 3.8, 3.9):**
+| Tool | Purpose |
+|------|---------|
+| `get_reading_recommendations` | AI-powered reading recommendations with discovery modes |
+| `get_recommendation_config` | View recommendation settings |
+| `update_recommendation_domains` | Manage domain whitelist |
+| `get_ranking_config` | View multi-factor ranking weights |
+| `update_ranking_config` | Adjust ranking weights and settings |
+| `get_hot_sites_config` | View curated source categories |
+| `update_hot_sites_config` | Manage hot sites categories |
+
+**Discovery Modes (Story 3.9):**
+- `balanced` - Standard mix for daily use
+- `fresh` - Prioritize recent content (last 30 days)
+- `deep` - In-depth content for weekend reading
+- `surprise_me` - Break filter bubble, explore new topics
+
+**Hot Sites Categories:**
+- `tech` - Engineering blogs (25 domains)
+- `tech_de` - German tech news (6 domains)
+- `ai` - AI/ML sources (17 domains)
+- `devops` - Platform engineering (13 domains)
+- `business` - Strategy & leadership (13 domains)
 
 ### Resources
 
@@ -138,6 +187,70 @@ Each chunk resource includes:
 The MCP server uses the same Firestore `kb_items` collection populated by the daily batch pipeline. No separate indexing or synchronization is required—all chunks are immediately available for MCP queries upon storage.
 
 **See Also:** [MCP Integration Architecture](./architecture/mcp-integration.md) for detailed implementation details.
+
+---
+
+## Reading Recommendations Subsystem (Stories 3.5, 3.8, 3.9, 3.10)
+
+### Overview
+
+AI-powered reading recommendations based on KB content. Analyzes user interests via clusters and recent reads, searches external sources via Tavily, and applies multi-factor ranking with deduplication.
+
+### Architecture
+
+```mermaid
+flowchart TB
+  subgraph Input
+    KC[KB Clusters]
+    RR[Recent Reads]
+  end
+
+  subgraph Query Generation
+    KC --> QG[Generate Search Queries]
+    RR --> QG
+    QG -->|8 queries| TAVILY[Tavily Search API]
+  end
+
+  subgraph Filtering
+    TAVILY -->|Raw results| DF[Depth Filter<br/>min score 3]
+    DF --> DD[KB Deduplication<br/>URL/Title/Author/Embedding]
+    DD --> DIV[Diversity Cap<br/>max 2 per domain]
+  end
+
+  subgraph Ranking
+    DIV --> MFR[Multi-Factor Ranking<br/>Relevance/Recency/Depth/Authority]
+    MFR --> SS[Stochastic Sampling<br/>temperature 0.3]
+    SS --> SLOT[Slot Assignment<br/>relevance/serendipity/trending]
+  end
+
+  SLOT -->|Final 10| RESP[Response with<br/>why_recommended]
+```
+
+### Key Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Query Generation | `recommendation_queries.py` | Smart queries from clusters/reads |
+| Quality Filtering | `recommendation_filter.py` | Depth scoring, deduplication |
+| KB Deduplication | `recommendation_filter.py` | 4-layer: URL, title, author, embedding |
+| Multi-Factor Ranking | `recommendation_filter.py` | Weighted scoring with diversity |
+| Tavily Integration | `tavily_client.py` | External search with domain filters |
+| Config Storage | `firestore_client.py` | Hot sites, ranking config |
+
+### Configuration (Firestore)
+
+```
+config/
+├── recommendation_domains   # Quality domain whitelist
+├── ranking_config           # Weights and settings
+├── hot_sites               # Curated source categories
+└── shown_recommendations/   # URL tracking for novelty
+```
+
+### Cost Impact
+
+- **Tavily API**: ~$0.50-1.00/month (depends on usage)
+- **Vertex AI Embeddings**: +$0.05/month (deduplication checks)
 
 ---
 

@@ -1218,72 +1218,74 @@ def get_reading_recommendations(
     scope: str = "both",
     days: int = 14,
     limit: int = 10,
-    user_id: str = "default"
+    user_id: str = "default",
+    cluster_ids: Optional[List[str]] = None,
+    hot_sites: Optional[str] = None,
+    mode: str = "balanced",
+    include_seen: bool = False,
+    predictable: bool = False
 ) -> Dict[str, Any]:
     """
     Get AI-powered reading recommendations based on KB content.
 
     Story 3.5: AI-Powered Reading Recommendations
     Story 3.8: Enhanced Recommendation Ranking
+    Story 3.9: Parameterized Recommendations
 
     Analyzes recent reads and top clusters, searches Tavily with domain
     whitelisting, filters for quality, and deduplicates against KB.
 
-    Story 3.8 Enhancements:
-    - Multi-factor ranking with configurable weights
-    - Recency scoring with exponential decay
-    - Slot-based rotation (RELEVANCE, SERENDIPITY, STALE_REFRESH, TRENDING)
-    - Shown recommendations tracking for deduplication
-    - Stochastic sampling for controlled diversity
-    - Query variation with time-based rotation
+    Story 3.9 Enhancements:
+    - Cluster filtering: scope to specific cluster IDs
+    - Hot sites: curated domain categories (tech, ai, devops, etc.)
+    - Discovery modes: balanced, fresh, deep, surprise_me
+    - Include seen: bypass shown URL filtering
+    - Predictable: disable query variation for reproducibility
 
     Args:
         scope: "recent" (recent reads), "clusters" (top clusters), or "both" (default)
         days: Lookback period for recent reads (default 14)
         limit: Maximum recommendations to return (default 10)
         user_id: User identifier for shown tracking (default "default")
+        cluster_ids: Optional list of cluster IDs to scope recommendations
+        hot_sites: Optional source category: "tech", "tech_de", "ai", "devops", "business", "all"
+        mode: Discovery mode: "balanced", "fresh", "deep", "surprise_me" (default "balanced")
+        include_seen: Include previously shown recommendations (default False)
+        predictable: Disable query variation for reproducible results (default False)
 
     Returns:
         Dictionary with:
         - generated_at: Timestamp
         - processing_time_seconds: Total time taken
         - scope: Scope used
+        - mode: Discovery mode used
+        - filters_applied: Active filters (cluster_ids, hot_sites, etc.)
         - days_analyzed: Days lookback
         - queries_used: List of search queries
-        - recommendations: List of recommendation objects with:
-            - title, url, domain, content
-            - combined_score, final_score (Story 3.8)
-            - score_breakdown: {relevance, recency, depth, authority} (Story 3.8)
-            - slot, slot_reason (Story 3.8)
-            - depth_score, credibility_score, why_recommended
-        - ranking_config: Weights and settings used (Story 3.8)
+        - recommendations: List of recommendation objects
+        - ranking_config: Weights and settings used
         - filtered_out: Counts of filtered items
 
     Example:
-        >>> get_reading_recommendations(scope="clusters", days=7, limit=5)
+        >>> get_reading_recommendations(hot_sites="ai", mode="fresh")
         {
-            "generated_at": "2025-12-10T10:00:00Z",
+            "generated_at": "2025-12-12T10:00:00Z",
             "processing_time_seconds": 35,
-            "recommendations": [
-                {
-                    "title": "Platform Engineering in 2025",
-                    "url": "https://martinfowler.com/...",
-                    "domain": "martinfowler.com",
-                    "slot": "RELEVANCE",
-                    "slot_reason": "Top combined score (0.82)",
-                    "combined_score": 0.82,
-                    "score_breakdown": {"relevance": 0.9, "recency": 0.75, "depth": 0.8, "authority": 0.6},
-                    "depth_score": 4,
-                    "why_recommended": "Connects to your reading cluster: Platform Engineering"
-                }
-            ],
-            "ranking_config": {"weights": {"relevance": 0.5, "recency": 0.25, ...}}
+            "mode": "fresh",
+            "filters_applied": {
+                "hot_sites": "ai",
+                "hot_sites_domain_count": 17
+            },
+            "recommendations": [...]
         }
     """
     start_time = time.time()
 
     try:
-        logger.info(f"Generating reading recommendations: scope={scope}, days={days}, limit={limit}")
+        logger.info(
+            f"Generating reading recommendations: scope={scope}, days={days}, limit={limit}, "
+            f"mode={mode}, cluster_ids={cluster_ids}, hot_sites={hot_sites}"
+        )
 
         # Validate scope
         if scope not in ("recent", "clusters", "both"):
@@ -1292,38 +1294,91 @@ def get_reading_recommendations(
                 'recommendations': []
             }
 
+        # Validate mode
+        valid_modes = ["balanced", "fresh", "deep", "surprise_me"]
+        if mode not in valid_modes:
+            return {
+                'error': f"Invalid mode: {mode}. Must be one of {valid_modes}",
+                'recommendations': []
+            }
+
         # Import recommendation modules
         import recommendation_queries
         import recommendation_filter
         import tavily_client
+
+        # Story 3.9: Get mode configuration
+        mode_config = recommendation_filter.get_mode_config(mode)
+        logger.info(f"Using mode '{mode}': {mode_config.get('description', '')}")
+
+        # Story 3.9: Build filters_applied for response
+        filters_applied = {
+            'include_seen': include_seen,
+            'predictable': predictable
+        }
+
+        # Story 3.9: Resolve cluster filtering
+        cluster_names = []
+        if cluster_ids:
+            filters_applied['cluster_ids'] = cluster_ids
+            # Fetch cluster names for response
+            for cid in cluster_ids:
+                cluster_data = firestore_client.get_cluster_by_id(cid)
+                if cluster_data:
+                    cluster_names.append(cluster_data.get('name', cid))
+                else:
+                    logger.warning(f"Cluster not found: {cid}")
+            filters_applied['cluster_names'] = cluster_names
+
+        # Story 3.9: Resolve hot sites domain filtering
+        hot_sites_domains = []
+        if hot_sites:
+            hot_sites_domains = firestore_client.get_hot_sites_domains(hot_sites)
+            filters_applied['hot_sites'] = hot_sites
+            filters_applied['hot_sites_domain_count'] = len(hot_sites_domains)
+            logger.info(f"Hot sites filter '{hot_sites}': {len(hot_sites_domains)} domains")
 
         # Step 1: Get recommendation config (domain whitelist)
         config = firestore_client.get_recommendation_config()
         quality_domains = config.get('quality_domains', [])
         excluded_domains = config.get('excluded_domains', [])
 
-        logger.info(f"Using {len(quality_domains)} whitelisted domains")
+        # Story 3.9: Use mode-specific weights (override stored config)
+        weights = mode_config.get('weights', recommendation_filter.DEFAULT_RANKING_WEIGHTS)
 
-        # Story 3.8: Get ranking configuration
+        # Get base ranking settings
         ranking_config = firestore_client.get_ranking_config()
-        weights = ranking_config.get('weights', recommendation_filter.DEFAULT_RANKING_WEIGHTS)
         settings = ranking_config.get('settings', {})
 
         recency_settings = settings.get('recency', {})
         diversity_settings = settings.get('diversity', {})
-        slot_config = settings.get('slots', {})
 
         half_life_days = recency_settings.get('half_life_days', recommendation_filter.DEFAULT_RECENCY_HALF_LIFE_DAYS)
         max_age_days = recency_settings.get('max_age_days', recommendation_filter.DEFAULT_MAX_AGE_DAYS)
-        tavily_days = recency_settings.get('tavily_days_filter', 180)
+
+        # Story 3.9: Use mode-specific tavily_days
+        tavily_days = mode_config.get('tavily_days', recency_settings.get('tavily_days_filter', 180))
+
+        # Story 3.9: Use mode-specific temperature
+        temperature = mode_config.get('temperature', diversity_settings.get('stochastic_temperature', 0.3))
+
+        # Story 3.9: Use mode-specific slot configuration
+        slot_config = mode_config.get('slots', settings.get('slots', {}))
+
+        # Story 3.9: Use mode-specific min_depth_score
+        min_depth_score = mode_config.get('min_depth_score', 3)
+
         novelty_bonus = diversity_settings.get('novelty_bonus', recommendation_filter.DEFAULT_NOVELTY_BONUS)
         domain_penalty = diversity_settings.get('domain_duplicate_penalty', recommendation_filter.DEFAULT_DOMAIN_DUPLICATE_PENALTY)
-        temperature = diversity_settings.get('stochastic_temperature', recommendation_filter.DEFAULT_STOCHASTIC_TEMPERATURE)
 
-        # Story 3.8 AC#6: Get previously shown URLs
+        # Story 3.9 AC: Get previously shown URLs (unless include_seen=True)
         shown_ttl = diversity_settings.get('shown_ttl_days', 7)
-        shown_urls = firestore_client.get_shown_urls(user_id=user_id, ttl_days=shown_ttl)
-        logger.info(f"Excluding {len(shown_urls)} previously shown URLs")
+        if include_seen:
+            shown_urls = []
+            logger.info("include_seen=True: Not excluding previously shown URLs")
+        else:
+            shown_urls = firestore_client.get_shown_urls(user_id=user_id, ttl_days=shown_ttl)
+            logger.info(f"Excluding {len(shown_urls)} previously shown URLs")
 
         # Step 2: Get KB credibility signals (all known authors and source domains)
         kb_credibility = firestore_client.get_kb_credibility_signals()
@@ -1331,19 +1386,35 @@ def get_reading_recommendations(
         known_domains = kb_credibility.get('domains', [])
         logger.info(f"KB credibility: {len(known_authors)} authors, {len(known_domains)} domains")
 
-        # Step 3: Generate smart search queries (Story 3.8: with variation)
-        queries = recommendation_queries.generate_search_queries(
-            scope=scope,
-            days=days,
-            max_queries=8,
-            use_variation=True  # Story 3.8 AC#5
-        )
+        # Story 3.9: Generate queries based on cluster_ids or default scope
+        # Use predictable flag to control query variation
+        use_variation = not predictable
+
+        if cluster_ids:
+            # Story 3.9 AC#1: Generate queries from specific clusters
+            queries = recommendation_queries.generate_search_queries(
+                scope="clusters",  # Force cluster mode
+                days=days,
+                max_queries=8,
+                use_variation=use_variation,
+                cluster_ids=cluster_ids  # Pass specific cluster IDs
+            )
+        else:
+            # Default: Generate queries from scope
+            queries = recommendation_queries.generate_search_queries(
+                scope=scope,
+                days=days,
+                max_queries=8,
+                use_variation=use_variation
+            )
 
         if not queries:
             return {
                 'generated_at': datetime.utcnow().isoformat() + 'Z',
                 'processing_time_seconds': round(time.time() - start_time, 1),
                 'scope': scope,
+                'mode': mode,
+                'filters_applied': filters_applied,
                 'days_analyzed': days,
                 'error': 'No queries generated - insufficient KB content',
                 'queries_used': [],
@@ -1362,21 +1433,27 @@ def get_reading_recommendations(
             query_str = recommendation_queries.format_query_for_tavily(query_dict)
 
             try:
+                # Story 3.9: Determine include_domains for Tavily
+                include_domains = None
+                if hot_sites_domains:
+                    include_domains = hot_sites_domains
+
                 search_result = tavily_client.search(
                     query=query_str,
                     exclude_domains=excluded_domains if excluded_domains else None,
-                    days=tavily_days,  # Story 3.8: configurable recency filter
+                    include_domains=include_domains,  # Story 3.9: hot sites filtering
+                    days=tavily_days,
                     max_results=5,
-                    search_depth="advanced"  # Better quality ranking
+                    search_depth="advanced"
                 )
 
                 for result in search_result.get('results', []):
-                    # Story 3.8 AC#6: Skip previously shown URLs
-                    if result.get('url') in shown_urls:
+                    # Skip previously shown URLs (unless include_seen)
+                    if not include_seen and result.get('url') in shown_urls:
                         logger.debug(f"Skipping previously shown: {result.get('url')}")
                         continue
 
-                    # Story 3.8 AC#1: Calculate recency score
+                    # Calculate recency score
                     pub_date = recommendation_filter.parse_published_date(result.get('published_date'))
                     recency_score = recommendation_filter.calculate_recency_score(
                         pub_date, half_life_days, max_age_days
@@ -1407,29 +1484,31 @@ def get_reading_recommendations(
                 'generated_at': datetime.utcnow().isoformat() + 'Z',
                 'processing_time_seconds': round(time.time() - start_time, 1),
                 'scope': scope,
+                'mode': mode,
+                'filters_applied': filters_applied,
                 'days_analyzed': days,
                 'queries_used': query_strings,
                 'recommendations': [],
                 'filtered_out': {'no_results': True, 'shown_excluded': len(shown_urls)},
-                'ranking_config': {'weights': weights, 'settings': settings}
+                'ranking_config': {'weights': weights, 'mode': mode}
             }
 
         # Step 5: Filter for quality and deduplicate
         filter_result = recommendation_filter.filter_recommendations(
             recommendations=all_results,
             query_contexts=all_contexts,
-            min_depth_score=3,
+            min_depth_score=min_depth_score,  # Story 3.9: mode-specific
             max_per_domain=diversity_settings.get('max_per_domain', 2),
             check_duplicates=True,
             known_authors=known_authors,
-            known_sources=known_domains,  # Source domains from source_url
-            trusted_sources=quality_domains  # Publicly credible sources used for boosting
+            known_sources=known_domains,
+            trusted_sources=quality_domains
         )
 
         filtered_recs = filter_result.get('recommendations', [])
         filtered_out = filter_result.get('filtered_out', {})
 
-        # Story 3.8 AC#2: Calculate combined scores with multi-factor ranking
+        # Calculate combined scores with multi-factor ranking
         domain_counts = {}
         for rec in filtered_recs:
             domain = rec.get('domain', '')
@@ -1442,7 +1521,7 @@ def get_reading_recommendations(
             domain_counts[domain] = domain_counts.get(domain, 0) + 1
             rec_penalty = domain_penalty * (domain_counts[domain] - 1) if domain_counts[domain] > 1 else 0.0
 
-            # Calculate combined score
+            # Calculate combined score with mode-specific weights
             score_result = recommendation_filter.calculate_combined_score(
                 rec, weights, novelty_bonus=rec_novelty, domain_penalty=rec_penalty
             )
@@ -1452,8 +1531,7 @@ def get_reading_recommendations(
             rec['score_breakdown'] = score_result['score_breakdown']
             rec['ranking_adjustments'] = score_result['adjustments']
 
-        # Story 3.8 AC#3: Stochastic sampling for diversity
-        # Over-sample to give diversity algorithm more to work with
+        # Stochastic sampling for diversity (mode-specific temperature)
         sample_size = min(limit * 2, len(filtered_recs))
         sampled_recs = recommendation_filter.diversified_sample(
             filtered_recs,
@@ -1462,14 +1540,14 @@ def get_reading_recommendations(
             score_key='final_score'
         )
 
-        # Story 3.8 AC#4: Assign slots for variety
+        # Assign slots for variety (mode-specific slot config)
         slotted_recs = recommendation_filter.assign_slots(sampled_recs, slot_config)
 
         # Take final limit
         final_recs = slotted_recs[:limit]
 
-        # Story 3.8 AC#6: Record shown recommendations
-        if final_recs:
+        # Record shown recommendations (unless include_seen mode)
+        if final_recs and not include_seen:
             record_result = firestore_client.record_shown_recommendations(
                 user_id=user_id,
                 recommendations=final_recs,
@@ -1480,20 +1558,26 @@ def get_reading_recommendations(
         processing_time = round(time.time() - start_time, 1)
         logger.info(
             f"Recommendations complete: {len(final_recs)} recommendations "
-            f"in {processing_time}s"
+            f"in {processing_time}s (mode={mode})"
         )
 
         return {
             'generated_at': datetime.utcnow().isoformat() + 'Z',
             'processing_time_seconds': processing_time,
             'scope': scope,
+            'mode': mode,
+            'filters_applied': filters_applied,
             'days_analyzed': days,
             'queries_used': query_strings,
             'recommendations': final_recs,
             'filtered_out': filtered_out,
             'ranking_config': {
                 'weights': weights,
-                'settings': settings
+                'mode': mode,
+                'temperature': temperature,
+                'tavily_days': tavily_days,
+                'min_depth_score': min_depth_score,
+                'slots': slot_config
             }
         }
 
@@ -1503,6 +1587,7 @@ def get_reading_recommendations(
             'generated_at': datetime.utcnow().isoformat() + 'Z',
             'processing_time_seconds': round(time.time() - start_time, 1),
             'scope': scope,
+            'mode': mode,
             'error': str(e),
             'recommendations': []
         }
@@ -1637,6 +1722,120 @@ def get_ranking_config() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Get ranking config failed: {e}")
         return {
+            'error': str(e)
+        }
+
+
+# ============================================================================
+# Story 3.9: Hot Sites Configuration Tools
+# ============================================================================
+
+def get_hot_sites_config() -> Dict[str, Any]:
+    """
+    Get hot sites configuration including all categories and their domains.
+
+    Story 3.9 AC#4: MCP tool to view categories
+
+    Returns:
+        Dictionary with:
+        - categories: Dict mapping category name to domain list
+        - category_summary: List of category summaries with counts
+        - total_domains: Total unique domains across all categories
+    """
+    try:
+        logger.info("Getting hot sites config")
+
+        config = firestore_client.get_hot_sites_config()
+
+        categories = config.get('categories', {})
+        descriptions = config.get('descriptions', {})
+
+        # Build category summary
+        category_summary = []
+        all_domains = set()
+        for cat_name, domains in categories.items():
+            all_domains.update(domains)
+            category_summary.append({
+                'category': cat_name,
+                'description': descriptions.get(cat_name, ''),
+                'domain_count': len(domains)
+            })
+
+        # Sort by domain count descending
+        category_summary.sort(key=lambda x: x['domain_count'], reverse=True)
+
+        return {
+            'categories': categories,
+            'descriptions': descriptions,
+            'category_summary': category_summary,
+            'total_domains': len(all_domains),
+            'last_updated': str(config.get('last_updated', '')),
+            'updated_by': config.get('updated_by', '')
+        }
+
+    except Exception as e:
+        logger.error(f"Get hot sites config failed: {e}")
+        return {
+            'error': str(e)
+        }
+
+
+def update_hot_sites_config(
+    category: str,
+    add_domains: Optional[List[str]] = None,
+    remove_domains: Optional[List[str]] = None,
+    description: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Update hot sites configuration for a specific category.
+
+    Story 3.9 AC#4: MCP tool to modify categories
+
+    Args:
+        category: Category name (tech, tech_de, ai, devops, business, or new)
+        add_domains: Domains to add to the category
+        remove_domains: Domains to remove from the category
+        description: Optional new description for the category
+
+    Returns:
+        Dictionary with:
+        - success: Boolean
+        - category: Category that was updated
+        - domains: Updated domain list
+        - domain_count: Number of domains in category
+        - changes: Summary of changes made
+
+    Example:
+        >>> update_hot_sites_config(category="ai", add_domains=["newaisite.com"])
+        {
+            "success": true,
+            "category": "ai",
+            "domains": ["anthropic.com", "newaisite.com", ...],
+            "domain_count": 18,
+            "changes": {"domains_added": ["newaisite.com"]}
+        }
+    """
+    try:
+        logger.info(
+            f"Updating hot sites config for {category}: "
+            f"+{len(add_domains or [])} -{len(remove_domains or [])}"
+        )
+
+        result = firestore_client.update_hot_sites_config(
+            category=category,
+            add_domains=add_domains,
+            remove_domains=remove_domains,
+            description=description,
+            updated_by="mcp_tool"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Update hot sites config failed: {e}")
+        return {
+            'success': False,
+            'category': category,
             'error': str(e)
         }
 
