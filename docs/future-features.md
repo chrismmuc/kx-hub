@@ -270,7 +270,7 @@ This creates a **self-reinforcing knowledge loop** where the system actively fee
 
 ## 8.3 Epic 4: Intelligent Reading Synthesis & Automated Curation
 
-**Status:** Planned (see [epics.md](../epics.md) for full details)
+**Status:** Planned (see [epics.md](./epics.md) for full details)
 **Priority:** High
 **Complexity:** Very High
 

@@ -123,7 +123,7 @@ See [epics.md](./epics.md) for detailed breakdown of all epics and stories.
 | 4.7 | Reader-Tagged Synthesis Documents |
 
 ## 9. Future Features & Backlog
-See [8-future-features.md](./prd/8-future-features.md) for additional feature ideas:
+See [future-features.md](./future-features.md) for additional feature ideas:
 - **DayOne Journal Import**: Local file upload integration for personal journal entries
 - **Export & Distribution**: GitHub export, Obsidian vault sync
 - **Analytics & Insights**: Reading habit analytics, knowledge growth tracking
