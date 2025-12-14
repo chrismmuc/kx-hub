@@ -268,11 +268,103 @@ This creates a **self-reinforcing knowledge loop** where the system actively fee
 
 ---
 
+## 8.3 Epic 4: Intelligent Reading Synthesis & Automated Curation
+
+**Status:** Planned (see [epics.md](../epics.md) for full details)
+**Priority:** High
+**Complexity:** Very High
+
+**Description:**
+Build an AI-powered reading assistant that synthesizes insights across multiple articles, automatically extracts key passages, identifies knowledge amplification vs. novel insights, and integrates seamlessly with Readwise Reader to reduce reading burden while maximizing knowledge capture.
+
+**Key Capabilities:**
+
+1. **Cross-Article Synthesis (Story 4.1)**
+   - Multi-document summarization across article cohorts (5-10 articles)
+   - Theme extraction, perspective mapping, contradiction detection
+   - "Read one synthesis instead of 10 articles"
+
+2. **Knowledge Amplification Detection (Story 4.2)**
+   - Identify when new articles reinforce existing KB concepts
+   - Categories: Strong Reinforcement (85%+), Moderate (70-85%), Tangential (50-70%)
+   - "Know when you're reading more of the same"
+
+3. **Novel Insight Identification (Story 4.3)**
+   - Detect genuinely new ideas NOT in KB
+   - Categories: Paradigm Shift (<30%), Gap Filler (30-50%), Edge Extension (50-70%)
+   - Bridge discovery: Ideas connecting previously unrelated clusters
+
+4. **Automatic Key Passage Highlighting (Story 4.4)**
+   - AI-powered extraction of 5-10 key passages per article
+   - Categories: Core Insight, Actionable Takeaway, Quotable Statement, Evidence/Data
+   - Pre-read and post-read modes
+
+5. **Readwise Reader Integration (Stories 4.5, 4.7)**
+   - Inject synthesis + amplification/novelty signals as document notes
+   - Create tagged synthesis documents in Reader
+   - Virtuous cycle: highlights flow back to kx-hub
+
+6. **Synthesis Storage (Story 4.6)**
+   - Store syntheses as first-class knowledge artifacts
+   - Cluster enrichment with aggregate insights
+   - Semantic search across syntheses
+
+**Technical Approach:**
+- Gemini 2.0 Pro for long-context multi-document synthesis
+- Firestore vector search for amplification/novelty detection
+- Reader API for notes injection and document creation
+- Cloud Functions for batch processing
+
+**Cost Analysis:**
+| Component | Monthly Cost |
+|-----------|-------------|
+| Gemini Pro (synthesis) | ~$0.50 |
+| Gemini Flash (highlights) | ~$0.20 |
+| Firestore storage | ~$0.05 |
+| **Total** | **~$0.75/month** |
+
+**Dependencies:**
+- Epic 3 (Story 3.5 - Reading Recommendations)
+- Readwise Reader API access
+
+**Estimated Effort:** 15-20 days total
+
+---
+
+## 8.4 Future Epics (Beyond Epic 4)
+
+### Epic 5: Export & Distribution
+**Status:** Backlog
+**Priority:** Medium
+
+- GitHub export (Markdown + graph.json)
+- Obsidian vault sync with bidirectional updates
+- Static knowledge graph visualization
+
+### Epic 6: Advanced Integrations
+**Status:** Backlog
+**Priority:** Low
+
+- DayOne Journal import (see 8.1.1)
+- Multi-source integration (Pocket, Instapaper)
+- Mobile companion app for quick capture
+
+### Epic 7: Analytics & Insights
+**Status:** Backlog
+**Priority:** Low
+
+- Reading habit analytics and trends
+- Knowledge growth tracking over time
+- Cluster evolution visualization
+- Personal knowledge graph statistics
+
+---
+
 ## Backlog Items
 
 (Additional future features can be added here as they are identified)
 
 ---
 
-**Last Updated:** 2024-10-19
-**Next Review:** After MVP completion
+**Last Updated:** 2025-12-11
+**Next Review:** After Epic 4 planning
