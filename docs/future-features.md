@@ -399,9 +399,47 @@ Build an intelligent blogging assistant that transforms Knowledge Base content i
 
 ---
 
-## 8.5 Future Epics (Beyond Epic 5)
+## 8.5 Epic 6: User Experience & Discoverability
 
-### Epic 6: Export & Distribution
+**Status:** Decision Pending (see [epics.md](./epics.md) for full details)
+**Priority:** High
+**Complexity:** Medium-High
+
+**Description:**
+Address system complexity by improving tool discoverability and reducing cognitive load. As the system has grown to 30+ MCP tools, users face a "Too Many Tools" problem where they cannot easily discover or remember available capabilities.
+
+**Problem Statement:**
+- Claude's tool selection accuracy degrades significantly with >30 tools
+- Token overhead can reach 100K+ tokens just for tool definitions
+- Users must memorize tool names to use features effectively
+- No visual navigation or guided workflows
+
+**Decision Options Under Evaluation:**
+
+| Option | Approach | Effort | Cost |
+|--------|----------|--------|------|
+| **A: Minimal Web Interface** | Firebase-hosted SPA with dashboard, action buttons, results viewer | 8-12 days | ~$0-2/month |
+| **B: Obsidian Plugin** | TypeScript plugin with sidebar panel, command palette, note actions | 12-18 days | $0 |
+| **C: Focused MCP + Workflow Tools** | Consolidate 30+ tools into 5-7 mega-tools with discovery | 6-10 days | $0 |
+
+**Recommendation:** Option C - Start with Focused MCP approach, add visual UI later if needed.
+
+**Key Research Findings:**
+- Anthropic's Tool Search Tool (beta) can reduce token overhead by 85%
+- Workflow-oriented tools (`what_can_i_do()`, `explore_knowledge()`, `weekly_ritual()`) improve discoverability
+- Can evolve to add Web UI (Option A) later as enhancement
+
+**Dependencies:**
+- Epic 5 complete (for full tool inventory)
+- User decision on preferred option
+
+**Estimated Effort:** 6-18 days (depending on option selected)
+
+---
+
+## 8.6 Future Epics (Beyond Epic 6)
+
+### Epic 7: Export & Distribution
 **Status:** Backlog
 **Priority:** Medium
 
@@ -409,7 +447,7 @@ Build an intelligent blogging assistant that transforms Knowledge Base content i
 - Static knowledge graph visualization
 - Public sharing options
 
-### Epic 7: Advanced Integrations
+### Epic 8: Advanced Integrations
 **Status:** Backlog
 **Priority:** Low
 
@@ -417,7 +455,7 @@ Build an intelligent blogging assistant that transforms Knowledge Base content i
 - Multi-source integration (Pocket, Instapaper)
 - Mobile companion app for quick capture
 
-### Epic 8: Analytics & Insights
+### Epic 9: Analytics & Insights
 **Status:** Backlog
 **Priority:** Low
 
@@ -435,5 +473,5 @@ Build an intelligent blogging assistant that transforms Knowledge Base content i
 
 ---
 
-**Last Updated:** 2025-12-11
-**Next Review:** After Epic 4 planning
+**Last Updated:** 2025-12-17
+**Next Review:** After Epic 6 decision

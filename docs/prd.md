@@ -99,6 +99,7 @@ See [epics.md](./epics.md) for detailed breakdown of all epics and stories.
 | **Epic 3** | Knowledge Graph Enhancement & Optimization | Active |
 | **Epic 4** | Knowledge Digest & Email Summaries | Planned |
 | **Epic 5** | AI-Powered Blogging Engine | Planned |
+| **Epic 6** | User Experience & Discoverability | Decision Pending |
 
 ### Epic 4: Knowledge Digest & Email Summaries
 
@@ -145,6 +146,22 @@ See [epics.md](./epics.md) for detailed breakdown of all epics and stories.
 | 5.5 | Article Series & Consolidation |
 | 5.6 | Obsidian Export & Publishing Workflow |
 | 5.7 | Claude Code Integration for Article Editing |
+
+### Epic 6: User Experience & Discoverability
+
+**Goal:** Address system complexity by improving tool discoverability and reducing cognitive load. The system has grown to 30+ MCP tools, creating a "Too Many Tools" problem where users cannot easily discover or remember available capabilities.
+
+**Decision Required:** Three options under evaluation:
+
+| Option | Approach | Effort | Pros | Cons |
+|--------|----------|--------|------|------|
+| **A** | Minimal Web Interface | 8-12 days | Visual navigation, mobile-friendly | Additional infra, auth complexity |
+| **B** | Obsidian Plugin | 12-18 days | Native integration, no new infra | Limited to Obsidian users |
+| **C** | Focused MCP + Workflow Tools | 6-10 days | No new UI, leverages Claude | Still requires tool knowledge |
+
+**Recommendation:** Option C (Focused MCP with Workflow Tools) - Consolidate 30+ tools into 5-7 workflow-oriented mega-tools with built-in discovery (`what_can_i_do()`, `explore_knowledge()`, `weekly_ritual()`, `start_blog()`).
+
+See [epics.md](./epics.md) for full details and comparison matrix.
 
 ## 9. Future Features & Backlog
 See [future-features.md](./future-features.md) for additional feature ideas:
