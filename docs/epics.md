@@ -2010,21 +2010,281 @@ demonstrations...
 
 ---
 
-## Future Epics (Beyond Current Scope)
+## Epic 6: User Experience & Discoverability
+
+**Goal:** Reduce system complexity and make kx-hub's capabilities discoverable without memorizing MCP tool names. Address the "Too Many Tools" problem that degrades AI tool selection and overwhelms users.
+
+**Problem Statement:**
+- kx-hub accumulates 30+ MCP tools across Epics 1-5
+- Research shows Claude's tool selection degrades significantly with >30 tools
+- Users must "know" tool names to use features via chat
+- Token overhead can reach 100K+ before conversation starts
+- No visual way to explore knowledge or trigger workflows
+
+**Business Value:** Without addressing discoverability, the powerful features from Epics 4-5 remain underutilized. Users default to basic queries because they don't know what's possible.
+
+**Dependencies:** Epic 4 + Epic 5 (provides the functionality to expose)
+
+**Status:** Planned - **DECISION REQUIRED** (3 options below)
+
+---
+
+### Architectural Decision: UI/UX Approach
+
+This epic requires a strategic decision between three approaches. Each has distinct trade-offs.
+
+---
+
+## Option A: Minimal Web Interface
+
+**Concept:** Build a lightweight, single-purpose web app focused on exploration and one-click actions. NOT a full-featured app—just a dashboard for discovering and triggering kx-hub capabilities.
+
+### Key Features
+- **Knowledge Dashboard:** Visual overview of clusters, recent items, digest status
+- **One-Click Actions:** "Generate Digest", "Get Blog Ideas", "Summarize Inbox"
+- **Workflow Wizards:** Guided flows for complex operations (blogging pipeline)
+- **Results Viewer:** Display generated content with copy/export actions
+- **MCP Passthrough:** Actions trigger existing MCP tools (no new backend logic)
+
+### Technical Approach
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Minimal Web Interface                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │  Dashboard   │  │   Actions    │  │   Results    │          │
+│  │  (read-only) │  │  (triggers)  │  │   (display)  │          │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
+└─────────┼─────────────────┼─────────────────┼───────────────────┘
+          │                 │                 │
+          ▼                 ▼                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Cloud Functions (HTTP endpoints)                    │
+│   GET /dashboard   POST /actions/{tool}   GET /results/{id}     │
+└─────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Existing MCP Server Logic                     │
+│         (Firestore, Gemini, Readwise API - unchanged)           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Stories (if chosen)
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 6.A.1 | Dashboard: KB Overview (clusters, item counts, recent activity) | Medium |
+| 6.A.2 | Action Buttons: Trigger digest/blog/synthesis workflows | Low |
+| 6.A.3 | Results Viewer: Display generated content with export | Medium |
+| 6.A.4 | Auth: Firebase Auth (Google Sign-in, single-user) | Low |
+| 6.A.5 | Hosting: Firebase Hosting (static SPA) | Low |
+
+### Pros
+- **Universal Access:** Works on any device with browser
+- **Visual Exploration:** See knowledge landscape at a glance
+- **No Learning Curve:** Click buttons instead of remembering commands
+- **Shareable:** Can share digest URLs (future)
+- **Modern UX:** Full control over design
+
+### Cons
+- **Additional Infrastructure:** New codebase to maintain
+- **Auth Complexity:** Need user authentication
+- **Duplication Risk:** May duplicate Claude Desktop UX
+- **Cost:** Firebase Hosting free tier, but Auth/Functions add ~$0-2/month
+- **Scope Creep:** Temptation to build "full app"
+
+### Estimated Effort: 8-12 days
+### Monthly Cost: ~$0-2 (Firebase free tier covers most usage)
+
+---
+
+## Option B: Obsidian Plugin
+
+**Concept:** Build an Obsidian plugin that surfaces kx-hub capabilities within the existing Obsidian workflow. Leverages bidirectional sync for blogging and integrates with local vault.
+
+### Key Features
+- **Sidebar Panel:** Show KB clusters, digest status, blog ideas
+- **Command Palette Integration:** `/kx-digest`, `/kx-blog-ideas`, etc.
+- **Inline Actions:** Right-click on note → "Find related in KB"
+- **Blog Draft Injection:** Generate drafts directly into Obsidian notes
+- **Backlinks to KB:** Link Obsidian notes to kx-hub sources
+
+### Technical Approach
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Obsidian Vault                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                kx-hub Plugin                              │   │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐         │   │
+│  │  │  Sidebar   │  │  Commands  │  │  Note      │         │   │
+│  │  │  Panel     │  │  Palette   │  │  Actions   │         │   │
+│  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘         │   │
+│  └────────┼───────────────┼───────────────┼─────────────────┘   │
+└───────────┼───────────────┼───────────────┼─────────────────────┘
+            │               │               │
+            ▼               ▼               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              kx-hub Cloud Functions (HTTP API)                   │
+│    Same endpoints as Option A, but called from Obsidian plugin  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Stories (if chosen)
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 6.B.1 | Plugin Scaffold: TypeScript plugin with settings | Medium |
+| 6.B.2 | Sidebar Panel: KB overview, cluster list, stats | High |
+| 6.B.3 | Command Palette: 5-7 core commands for workflows | Medium |
+| 6.B.4 | Note Actions: Context menu items for KB integration | Medium |
+| 6.B.5 | Draft Injection: Create/update notes from blog engine | Medium |
+| 6.B.6 | HTTP Backend: Cloud Functions for plugin API | Medium |
+
+### Pros
+- **Workflow Integration:** Blogging happens where articles live
+- **No Context Switch:** Stay in Obsidian for everything
+- **Bidirectional Links:** Natural fit for KB ↔ Obsidian linking
+- **Existing Users:** 150,000+ AI plugin users in Obsidian ecosystem
+- **Local-First Option:** Can cache KB data locally
+
+### Cons
+- **Obsidian-Only:** Excludes users without Obsidian
+- **Plugin Development:** Obsidian API has learning curve
+- **UI Constraints:** Limited to Obsidian's UI paradigms
+- **Maintenance:** Must track Obsidian API changes
+- **Mobile Limitations:** Obsidian mobile has plugin restrictions
+
+### Estimated Effort: 12-18 days
+### Monthly Cost: $0 (no additional infrastructure)
+
+---
+
+## Option C: Focused MCP with Workflow Tools
+
+**Concept:** Instead of building new UI, restructure MCP tools into workflow-oriented "mega-tools" that guide users through complex operations. Leverage Anthropic's new Tool Search Tool for discovery.
+
+### Key Features
+- **Workflow Tools:** Replace 30+ tools with 5-7 workflow-oriented tools
+  - `explore_knowledge()` - Guided KB exploration
+  - `weekly_ritual()` - Combined digest + recommendations + inbox
+  - `start_blog()` - Interactive blogging wizard via chat
+  - `what_can_i_do()` - Meta-tool explaining all capabilities
+- **Tool Search Integration:** Enable Anthropic's beta Tool Search Tool
+- **Contextual Help:** Each tool provides next-step suggestions
+- **Progressive Disclosure:** Start simple, offer "advanced" sub-commands
+
+### Technical Approach
+```
+BEFORE (30+ tools, overwhelming):
+┌──────────────────────────────────────────────────────────────┐
+│  get_clusters, search_kb, get_recommendations, generate_digest,
+│  summarize_inbox, get_blog_ideas, generate_outline, generate_draft,
+│  save_to_reader, get_cluster_digest, configure_preferences, ...
+└──────────────────────────────────────────────────────────────┘
+
+AFTER (5-7 workflow tools, focused):
+┌──────────────────────────────────────────────────────────────┐
+│                                                               │
+│  1. what_can_i_do()         - "What can kx-hub do for me?"   │
+│  2. explore_knowledge(topic) - Guided KB exploration          │
+│  3. weekly_ritual()          - Full weekly knowledge ritual   │
+│  4. start_blog(idea?)        - Interactive blogging wizard    │
+│  5. quick_action(action)     - Single-purpose shortcuts       │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Stories (if chosen)
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 6.C.1 | Refactor: Consolidate tools into 5-7 workflow tools | High |
+| 6.C.2 | `what_can_i_do()`: Meta-tool for capability discovery | Low |
+| 6.C.3 | `weekly_ritual()`: Combined digest workflow | Medium |
+| 6.C.4 | `start_blog()`: Interactive blogging wizard | Medium |
+| 6.C.5 | Tool Search Integration: Enable Anthropic beta feature | Low |
+| 6.C.6 | Contextual Prompts: Next-step suggestions in responses | Low |
+
+### Pros
+- **No New UI:** Stays in Claude Desktop/Code ecosystem
+- **85% Token Reduction:** Tool Search reduces overhead dramatically
+- **Natural Language:** Users describe intent, not tool names
+- **Maintains Simplicity:** No additional apps to maintain
+- **Future-Proof:** Aligns with Anthropic's MCP direction
+
+### Cons
+- **Still Chat-Based:** No visual exploration of knowledge
+- **Learning Curve:** Users must still learn to "ask the right questions"
+- **Depends on Beta:** Tool Search Tool is beta feature
+- **Less Discoverable:** Features hidden until asked about
+- **No Direct Manipulation:** Can't click/drag/browse visually
+
+### Estimated Effort: 6-10 days
+### Monthly Cost: $0 (no additional infrastructure)
+
+---
+
+## Comparison Matrix
+
+| Criteria | Option A (Web) | Option B (Obsidian) | Option C (MCP) |
+|----------|----------------|---------------------|----------------|
+| **Discoverability** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Complexity Added** | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **Blogging Integration** | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Maintenance Burden** | ⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **Universal Access** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
+| **Development Effort** | 8-12 days | 12-18 days | 6-10 days |
+| **Monthly Cost** | ~$0-2 | $0 | $0 |
+
+---
+
+## Recommendation
+
+**Start with Option C (Focused MCP)**, then evaluate need for Option A or B based on usage patterns.
+
+**Rationale:**
+1. **Lowest Risk:** No new infrastructure, fastest to implement
+2. **Tests Hypothesis:** Discover if discoverability is the real problem
+3. **Aligns with Ecosystem:** Anthropic's Tool Search is the industry direction
+4. **Keeps Options Open:** Can add Web/Obsidian later if needed
+
+**If Option C proves insufficient after 2-3 months:**
+- High blogging usage → Add Option B (Obsidian Plugin)
+- Need for sharing/visual exploration → Add Option A (Web Interface)
+
+---
+
+## Epic 6 Summary (Pending Decision)
+
+| Option | Stories | Status | Complexity |
+|--------|---------|--------|------------|
+| A: Minimal Web Interface | 5 | Candidate | Medium |
+| B: Obsidian Plugin | 6 | Candidate | High |
+| C: Focused MCP Workflows | 6 | **Recommended** | Low-Medium |
+
+**Decision Needed:** Choose approach before implementation begins.
+
+**Cost Analysis (all options):**
+| Option | Monthly Cost |
+|--------|-------------|
+| A: Web Interface | ~$0-2 (Firebase) |
+| B: Obsidian Plugin | $0 |
+| C: Focused MCP | $0 |
+
+---
+
+## Future Epics (Beyond Epic 6)
 
 See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backlog) for planned enhancements:
 
-- **Epic 6:** Export & Distribution
+- **Epic 7:** Export & Distribution
   - GitHub export (Markdown + graph.json)
   - Static knowledge graph visualization
   - Public sharing options
 
-- **Epic 7:** Advanced Integrations
+- **Epic 8:** Advanced Integrations
   - DayOne Journal import
   - Multi-source integration (Pocket, Instapaper)
   - Mobile companion app
 
-- **Epic 8:** Analytics & Insights
+- **Epic 9:** Analytics & Insights
   - Reading habit analytics
   - Knowledge growth tracking
   - Cluster evolution visualization
@@ -2041,9 +2301,10 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 | Epic 3: Knowledge Graph Enhancement & Optimization | 10 | Active | 2/10 Complete (20%) |
 | Epic 4: Knowledge Digest & Email Summaries | 6 | Planned | 0/6 (0%) |
 | Epic 5: AI-Powered Blogging Engine | 7 | Planned | 0/7 (0%) |
-| Epic 6: Export & Distribution (Future) | TBD | Backlog | 0% |
-| Epic 7: Advanced Integrations (Future) | TBD | Backlog | 0% |
-| Epic 8: Analytics & Insights (Future) | TBD | Backlog | 0% |
+| Epic 6: User Experience & Discoverability | TBD | **Decision Required** | 0% |
+| Epic 7: Export & Distribution (Future) | TBD | Backlog | 0% |
+| Epic 8: Advanced Integrations (Future) | TBD | Backlog | 0% |
+| Epic 9: Analytics & Insights (Future) | TBD | Backlog | 0% |
 
 ---
 
@@ -2053,3 +2314,4 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 - **Cost Target:** <$5/month (Current: $1.40/month - **72% under budget**)
 - **Success Criteria:** All PRD section 7 metrics met or exceeded
 - **Next Milestone:** Complete Epic 3, then Epic 4 (Knowledge Digests) for email delivery
+- **Epic 6 Decision:** Required before Epics 4-5 complete to inform tool design
