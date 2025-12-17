@@ -1286,6 +1286,20 @@ summarize_reader_inbox(
   - Detect bridge opportunities between clusters
   - Suggest synthesis articles combining multiple themes
   - Identify contrarian takes based on cluster contradictions
+- **Full Source Traceability (CRITICAL):**
+  - Every idea MUST include complete source references
+  - **Source Types:** Books, articles, highlights, podcast notes
+  - **Reference Details per source:**
+    - `source_id` - KB chunk/item ID for direct lookup
+    - `source_type` - "book" | "article" | "highlight" | "podcast"
+    - `title` - Original source title
+    - `author` - Author name(s)
+    - `readwise_url` - Direct link to Readwise entry
+    - `source_url` - Original article/book URL (if available)
+    - `relevance_score` - How relevant this source is to the idea
+    - `key_quote` - Most relevant quote from this source
+  - Minimum 3 sources per idea for credibility
+  - Sources ranked by relevance and authority
 - **MCP Tool:** `get_blog_ideas(clusters, style, count)`
 - **Idea Storage:** Store generated ideas in Firestore for reference
 
@@ -1320,7 +1334,7 @@ get_blog_ideas(
     include_cross_cluster: bool = True
 ) -> BlogIdeasResponse
 
-# Response structure
+# Response structure with FULL source traceability
 {
   "ideas": [
     {
@@ -1331,8 +1345,48 @@ get_blog_ideas(
       "angle": "contrarian",
       "target_audience": "Engineering leaders",
       "estimated_depth": "high",
-      "supporting_chunks": ["chunk-123", "chunk-456"],
-      "blog_potential_score": 0.89
+      "blog_potential_score": 0.89,
+
+      # CRITICAL: Full source references for every idea
+      "sources": [
+        {
+          "source_id": "chunk-123",
+          "source_type": "book",
+          "title": "Team Topologies",
+          "author": "Matthew Skelton, Manuel Pais",
+          "readwise_url": "https://readwise.io/bookreview/12345",
+          "source_url": "https://teamtopologies.com/book",
+          "relevance_score": 0.95,
+          "key_quote": "A platform is a foundation of self-service APIs, tools, services...",
+          "chapter": "Chapter 5: Platform Teams"
+        },
+        {
+          "source_id": "chunk-456",
+          "source_type": "article",
+          "title": "What I Talk About When I Talk About Platforms",
+          "author": "Martin Fowler",
+          "readwise_url": "https://readwise.io/open/article/67890",
+          "source_url": "https://martinfowler.com/articles/talk-about-platforms.html",
+          "relevance_score": 0.92,
+          "key_quote": "Platform engineering is about reducing cognitive load...",
+          "published_date": "2024-03-15"
+        },
+        {
+          "source_id": "chunk-789",
+          "source_type": "highlight",
+          "title": "Building Evolutionary Architectures",
+          "author": "Neal Ford, Rebecca Parsons",
+          "readwise_url": "https://readwise.io/open/highlight/11111",
+          "relevance_score": 0.88,
+          "key_quote": "Fitness functions enable teams to evolve their architecture..."
+        }
+      ],
+      "source_count": {
+        "books": 2,
+        "articles": 3,
+        "highlights": 5,
+        "total": 10
+      }
     }
   ]
 }
@@ -1361,23 +1415,46 @@ get_blog_ideas(
   - Map KB chunks to outline sections
   - Highlight quotable passages
   - Identify gaps needing additional research
+- **Comprehensive Citation System (CRITICAL):**
+  - Every outline point MUST have source attribution
+  - **Per-Section Source Mapping:**
+    - Primary sources (directly supporting the point)
+    - Secondary sources (providing context/background)
+    - Quotable passages with exact source reference
+  - **Citation Metadata per reference:**
+    - Full bibliographic info (author, title, date, URL)
+    - Exact quote or paraphrase
+    - Page/chapter reference (for books)
+    - Readwise URL for one-click access
+  - **Source Validation:**
+    - Flag unsupported claims (no KB source found)
+    - Highlight sections needing external research
+    - Track source coverage per section (% of claims backed by KB)
+  - **Source Bibliography:**
+    - Auto-generate bibliography section
+    - Group by source type (Books, Articles, Highlights)
+    - Include full citation details
 - **MCP Tool:** `generate_article_outline(idea_id, template, depth)`
 - **Iterative Refinement:** Edit and regenerate outline sections
 
 **Dependencies:**
 - Story 5.1 (Blog Idea Extraction) - idea selection
 - Story 2.1 (Knowledge Cards) - content for outline
+- Story 2.7 (URL Link Storage) - source URLs for citations
 
 **Technical Approach:**
 - Template-based outline generation with Gemini
 - Chunk-to-section mapping via semantic similarity
 - Markdown output for VS Code editing
 - Firestore storage of outlines
+- Source validation via KB lookup
 
 **Success Metrics:**
 - Outlines cover >90% of relevant KB content
 - Logical flow validated by user in >85% of cases
 - Source references are accurate and useful
+- **>95% of claims have KB source attribution**
+- **100% of quotes traceable to original source**
 - Generation time <45 seconds
 
 **Business Value:**
@@ -1386,38 +1463,89 @@ get_blog_ideas(
 - Structured approach to content creation
 - Foundation for collaborative editing
 
-**Output Format:**
+**Output Format (with full citation details):**
 ```markdown
 # Article Outline: Why Platform Engineering Is Not About Tools
 
 **Target:** 2,500-3,000 words | **Style:** Thought Leadership | **Audience:** Engineering Leaders
+**Source Coverage:** 12 books, 8 articles, 23 highlights | **KB Coverage:** 94%
+
+---
 
 ## 1. Introduction: The Tools Trap (300 words)
 - Hook: "Every platform engineering conference is dominated by tool demos..."
 - Problem statement: Tools-first thinking leads to platform failure
 - Thesis: Successful platforms are built on culture and product thinking
-- **Sources:** [chunk-123], [chunk-456]
+
+### Sources for Section 1:
+| Source | Type | Author | Key Quote | Link |
+|--------|------|--------|-----------|------|
+| Team Topologies (Ch. 5) | Book | Skelton & Pais | "Platform teams exist to enable..." | [Readwise](https://readwise.io/...) |
+| Platform Engineering (2024) | Article | Fowler | "The tools trap is real..." | [Source](https://martinfowler.com/...) |
+
+---
 
 ## 2. The Product Mindset Shift (500 words)
 - Platform teams as product teams
 - Developers as customers, not users
 - Key insight: Measure outcomes, not outputs
-- **Quote to use:** "A platform is a foundation of self-service APIs..." [chunk-789]
-- **Sources:** [chunk-234], [chunk-567]
+
+### Quote to use:
+> "A platform is a foundation of self-service APIs, tools, services, knowledge and
+> support which are arranged as a compelling internal product."
+> — **Team Topologies**, Matthew Skelton & Manuel Pais, p. 87
+> [Open in Readwise](https://readwise.io/open/highlight/12345)
+
+### Sources for Section 2:
+| Source | Type | Author | Relevance | Link |
+|--------|------|--------|-----------|------|
+| Team Topologies | Book | Skelton & Pais | Primary | [Readwise](https://readwise.io/...) |
+| The DevEx Framework | Article | Forsgren et al. | Secondary | [Source](https://queue.acm.org/...) |
+| Accelerate | Book | Forsgren, Humble, Kim | Supporting | [Readwise](https://readwise.io/...) |
+
+---
 
 ## 3. Culture Eats Tools for Breakfast (600 words)
 ### 3.1 Psychological Safety for Platform Adoption
 - Golden paths require trust
 - Failure tolerance enables experimentation
+
 ### 3.2 Team Topologies Alignment
 - Stream-aligned teams consume, platform teams enable
-- **Sources:** [chunk-345], [chunk-678]
+
+### Sources for Section 3:
+| Source | Type | Author | Key Quote | Link |
+|--------|------|--------|-----------|------|
+| Fearless Organization | Book | Amy Edmondson | "Psychological safety is..." | [Readwise](https://readwise.io/...) |
+| Team Topologies | Book | Skelton & Pais | "Stream-aligned teams..." | [Readwise](https://readwise.io/...) |
 
 ... [continues with full outline]
 
-## Identified Gaps
-- [ ] Need concrete metrics examples for Section 4
-- [ ] Consider adding case study from own experience
+---
+
+## Identified Gaps (No KB Source Found)
+- [ ] Need concrete metrics examples for Section 4 ⚠️ NO KB SOURCE
+- [ ] Consider adding case study from own experience ⚠️ PERSONAL CONTENT NEEDED
+
+---
+
+## Full Bibliography
+
+### Books (5 sources)
+1. **Team Topologies** - Skelton, M. & Pais, M. (2019) - [Readwise](https://readwise.io/...)
+2. **Accelerate** - Forsgren, N., Humble, J., Kim, G. (2018) - [Readwise](https://readwise.io/...)
+3. **The Fearless Organization** - Edmondson, A. (2019) - [Readwise](https://readwise.io/...)
+4. **Building Evolutionary Architectures** - Ford, N. et al. (2017) - [Readwise](https://readwise.io/...)
+5. **A Philosophy of Software Design** - Ousterhout, J. (2018) - [Readwise](https://readwise.io/...)
+
+### Articles (4 sources)
+1. **What I Talk About When I Talk About Platforms** - Fowler, M. (2024) - [Source](https://martinfowler.com/...)
+2. **The DevEx Framework** - Forsgren, N. et al. (2023) - [Source](https://queue.acm.org/...)
+3. **Platform Engineering on Kubernetes** - Salatino, M. (2024) - [Source](https://www.infoq.com/...)
+4. **Golden Paths** - Thoughtworks (2023) - [Source](https://www.thoughtworks.com/...)
+
+### Highlights (12 passages used)
+- See inline citations above
 ```
 
 ---
@@ -1433,10 +1561,32 @@ get_blog_ideas(
   - Generate one section at a time for focused editing
   - Or generate full draft for complete overview
   - Maintain consistent voice and tone throughout
-- **Source Integration:**
-  - Inline citations to KB chunks
-  - Properly formatted quotations
-  - Footnote-style references
+- **Academic-Grade Citation System (CRITICAL):**
+  - **Citation Formats Supported:**
+    - Footnote-style: `[^1]` with full reference at bottom
+    - Inline: `(Author, Year)` academic style
+    - Hyperlink: `[quote](readwise-url)` for digital-first
+    - None: Clean prose without visible citations (references appendix)
+  - **Per-Citation Requirements:**
+    - Author name(s)
+    - Source title (book/article)
+    - Publication year
+    - Page number or chapter (for books)
+    - Direct Readwise/source URL
+    - Quote vs. paraphrase indicator
+  - **Quote Handling:**
+    - Exact quotes preserved verbatim from KB
+    - Block quotes for passages >40 words
+    - Attribution includes author + source + page
+    - Readwise link for verification
+  - **Paraphrase Tracking:**
+    - Mark paraphrased content with source reference
+    - Distinguish "inspired by" vs "based on"
+    - Track confidence: direct KB match vs. inferred
+  - **Citation Validation:**
+    - Verify all citations match actual KB content
+    - Flag hallucinated citations (no KB source)
+    - Generate citation accuracy report
 - **Voice & Style:**
   - Configurable tone: professional, conversational, academic
   - First-person vs. third-person option
@@ -1445,22 +1595,27 @@ get_blog_ideas(
   - Avoid generic AI-sounding phrases
   - Ensure factual accuracy to source material
   - Flag sections needing human attention
-- **MCP Tool:** `generate_draft(outline_id, sections, voice, style)`
+  - **Zero tolerance for unsourced claims** (flag in output)
+- **MCP Tool:** `generate_draft(outline_id, sections, voice, style, citation_format)`
 - **Markdown Output:** Compatible with VS Code and Obsidian
 
 **Dependencies:**
 - Story 5.2 (Article Outline) - outline as blueprint
 - Story 4.1 (KB Digest Engine) - synthesis capabilities
+- Story 2.7 (URL Link Storage) - source URLs
 
 **Technical Approach:**
 - Gemini 2.0 Pro for long-form generation
 - Section-aware context window management
 - Voice matching via few-shot examples
-- Citation format configurable (footnotes, inline, none)
+- Citation format configurable (footnotes, inline, hyperlink, none)
+- Citation validation pass before output
 
 **Success Metrics:**
 - >70% of draft content usable with minor edits
-- Citations accurate to source material
+- **100% of citations verifiable against KB sources**
+- **0% hallucinated references**
+- **All quotes match original source verbatim**
 - Consistent voice throughout article
 - Generation time <90 seconds per 500-word section
 
@@ -1470,36 +1625,72 @@ get_blog_ideas(
 - Maintain authenticity with source-based content
 - Professional quality starting point
 
-**Draft Output Example:**
+**Draft Output Example (with full citation traceability):**
 ```markdown
 # Why Platform Engineering Is Not About Tools
 
 *Draft generated from outline-001 | Voice: Professional, First-person*
+*Citation Format: Footnotes | Sources: 5 books, 4 articles, 12 highlights*
+*Citation Accuracy: 100% verified against KB*
+
+---
 
 ## Introduction: The Tools Trap
 
 Walk into any platform engineering conference, and you'll be overwhelmed by tool
 demonstrations. Kubernetes operators, GitOps pipelines, developer portals—the
 technology showcase is impressive. But here's what those demos won't tell you:
-most platform initiatives fail not because of tools, but despite them.
+most platform initiatives fail not because of tools, but despite them.[^1]
 
-After analyzing dozens of platform engineering case studies in my knowledge base[^1],
+After analyzing dozens of platform engineering case studies in my knowledge base,
 a clear pattern emerges. The organizations that succeed don't start with tools.
 They start with a fundamental mindset shift: treating their internal platform as
-a product, and their developers as customers.
+a product, and their developers as customers.[^2]
 
 > "A platform is a foundation of self-service APIs, tools, services, knowledge and
 > support which are arranged as a compelling internal product."
-> — Team Topologies[^2]
+> — Matthew Skelton & Manuel Pais[^3]
 
 This article argues that successful platform engineering requires three things that
 no tool can provide: product thinking, cultural alignment, and relentless focus on
-developer experience...
+developer experience. As Nicole Forsgren's research demonstrates, "what matters is
+not which tools you use, but how you use them to enable flow."[^4]
 
 ---
-**References:**
-[^1]: Platform Engineering cluster synthesis, 12 articles analyzed
-[^2]: Skelton & Pais, Team Topologies (2019), via Readwise highlight
+
+## References
+
+[^1]: Fowler, M. (2024). "What I Talk About When I Talk About Platforms."
+      *martinfowler.com*. Retrieved from [Source](https://martinfowler.com/articles/talk-about-platforms.html).
+      [Open in Readwise](https://readwise.io/open/article/67890)
+
+[^2]: This insight synthesized from 12 articles in the Platform Engineering cluster.
+      Primary sources: Fowler (2024), Skelton & Pais (2019), Salatino (2024).
+      [View cluster](https://readwise.io/search?q=cluster:platform-engineering)
+
+[^3]: Skelton, M. & Pais, M. (2019). *Team Topologies: Organizing Business and
+      Technology Teams for Fast Flow*. IT Revolution Press, p. 87.
+      ISBN: 978-1942788812. [Open in Readwise](https://readwise.io/bookreview/12345)
+
+[^4]: Forsgren, N., Humble, J., & Kim, G. (2018). *Accelerate: The Science of
+      Lean Software and DevOps*. IT Revolution Press, p. 142.
+      [Open in Readwise](https://readwise.io/bookreview/23456)
+
+---
+
+## Citation Report
+
+| Claim | Source Type | Verification | KB Match |
+|-------|-------------|--------------|----------|
+| "most initiatives fail..." | Article | ✅ Verified | 98% match |
+| "product thinking mindset" | Book | ✅ Verified | 95% match |
+| Block quote (Skelton) | Book | ✅ Exact | 100% verbatim |
+| "what matters is not which tools" | Book | ✅ Verified | 97% match |
+
+**Unsourced Claims:** 0
+**Hallucinated References:** 0
+**Total Citations:** 4
+**KB Coverage:** 100%
 ```
 
 ---
