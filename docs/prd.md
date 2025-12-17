@@ -97,30 +97,54 @@ See [epics.md](./epics.md) for detailed breakdown of all epics and stories.
 | **Epic 1** | Core Batch Processing Pipeline & KB Infrastructure | Complete |
 | **Epic 2** | Enhanced Knowledge Graph & Clustering | Complete |
 | **Epic 3** | Knowledge Graph Enhancement & Optimization | Active |
-| **Epic 4** | Intelligent Reading Synthesis & Automated Curation | Planned |
+| **Epic 4** | Knowledge Digest & Email Summaries | Planned |
+| **Epic 5** | AI-Powered Blogging Engine | Planned |
 
-### Epic 4: Intelligent Reading Synthesis & Automated Curation
+### Epic 4: Knowledge Digest & Email Summaries
 
-**Goal:** Build an AI-powered reading assistant that synthesizes insights across multiple articles, automatically extracts key passages, identifies knowledge amplification vs. novel insights, and integrates seamlessly with Readwise Reader.
+**Goal:** Build an AI-powered knowledge digest system that regularly summarizes content from the Knowledge Base and Reader Inbox, delivering comprehensive email summaries with key insights, actionable takeaways, and one-click Reader integration.
 
 **Key Capabilities:**
-- **Cross-Article Synthesis**: Multi-document summarization across article cohorts
-- **Knowledge Amplification Detection**: Identify when new articles reinforce existing KB concepts
-- **Novel Insight Identification**: Detect genuinely new ideas not present in KB
-- **Automatic Key Passage Highlighting**: AI-powered extraction of key insights before/after reading
-- **Readwise Reader Integration**: Inject synthesis + signals as document notes in Reader
-- **Synthesis Storage**: Store syntheses as first-class knowledge artifacts
+- **KB Digest Engine**: Rich summaries (~half DIN A4 page) with key aspects bullets and detailed narrative
+- **Reader Inbox Summarization**: Summarize unread articles to help decide what deserves deep reading
+- **Weekly Email Digest**: Scheduled delivery combining KB synthesis and inbox summaries
+- **On-Demand MCP Tools**: Generate digests interactively via Claude Desktop
+- **Personalization**: Configurable preferences for content, schedule, and focus areas
+- **Analytics & Feedback**: Track engagement and continuously improve summary quality
 
 **Stories:**
 | Story | Description |
 |-------|-------------|
-| 4.1 | Cross-Article Synthesis Engine |
-| 4.2 | Knowledge Amplification Detection |
-| 4.3 | Novel Insight Identification |
-| 4.4 | Automatic Key Passage Highlighting |
-| 4.5 | Readwise Reader Notes Integration |
-| 4.6 | Synthesis Storage & Cluster Enrichment |
-| 4.7 | Reader-Tagged Synthesis Documents |
+| 4.1 | Knowledge Base Digest Engine |
+| 4.2 | Reader Inbox Summarization |
+| 4.3 | Weekly Knowledge Email Digest |
+| 4.4 | On-Demand Digest Generation via MCP |
+| 4.5 | Digest Personalization & Preferences |
+| 4.6 | Digest Analytics & Feedback Loop |
+
+### Epic 5: AI-Powered Blogging Engine
+
+**Goal:** Build an intelligent blogging assistant that transforms Knowledge Base content into polished blog articles. The engine helps identify core ideas, generates article structures, creates drafts with proper referencing, and supports iterative article development—enabling a workflow from knowledge synthesis to published content in Obsidian.
+
+**Key Capabilities:**
+- **Blog Idea Extraction**: Identify article-worthy topics from KB clusters
+- **Outline Generation**: Create structured article frameworks with source references
+- **AI-Assisted Drafting**: Generate polished prose with citations and consistent voice
+- **Article Development Log**: Track progress across multiple sessions (idea → published)
+- **Series & Consolidation**: Plan article sequences and combine into long-form content
+- **Obsidian Export**: Publish to Obsidian vault with wikilinks and frontmatter
+- **Claude Code Integration**: Seamless VS Code editing workflow with AI assistance
+
+**Stories:**
+| Story | Description |
+|-------|-------------|
+| 5.1 | Blog Idea Extraction from Knowledge Base |
+| 5.2 | Article Structure & Outline Generation |
+| 5.3 | AI-Assisted Draft Generation |
+| 5.4 | Article Development Log (Blog Journal) |
+| 5.5 | Article Series & Consolidation |
+| 5.6 | Obsidian Export & Publishing Workflow |
+| 5.7 | Claude Code Integration for Article Editing |
 
 ## 9. Future Features & Backlog
 See [future-features.md](./future-features.md) for additional feature ideas:
