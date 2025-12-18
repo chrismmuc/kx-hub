@@ -103,9 +103,10 @@ development_status:
   # Epic 3: Knowledge Graph Enhancement & Optimization
 
   3-1-remote-mcp-server:
-    status: backlog
+    status: review
     story_file: docs/stories/3.1-remote-mcp-server.md
-    notes: "Deploy MCP server to Cloud Run for multi-device access."
+    completion_date: 2025-12-13
+    notes: "Implementation complete. SSE server with Bearer auth, Terraform deployment, dual-mode (stdio/sse), monitoring & alerts, tests, docs. Ready for deployment."
 
   3-2-periodic-reclustering:
     status: backlog
@@ -172,47 +173,5 @@ epic-2:
 
 epic-3:
   status: in-progress
-  completion: 5/10 (50%)
-  notes: "Story 3.3 deferred, Stories 3.4-3.5, 3.8, 3.10 done. Stories 3.1, 3.2 backlog. Stories 3.6-3.7, 3.9 drafted."
-
-  # Epic 4: Intelligent Reading Synthesis & Automated Curation (Planned)
-
-  4-1-cross-article-synthesis:
-    status: backlog
-    story_file: docs/stories/4.1-cross-article-synthesis.md
-    notes: "Multi-document summarization across article cohorts"
-
-  4-2-knowledge-amplification:
-    status: backlog
-    story_file: docs/stories/4.2-knowledge-amplification.md
-    notes: "Detect when new articles reinforce existing KB concepts"
-
-  4-3-novel-insight-detection:
-    status: backlog
-    story_file: docs/stories/4.3-novel-insight-detection.md
-    notes: "Identify genuinely new ideas not present in KB"
-
-  4-4-auto-highlighting:
-    status: backlog
-    story_file: docs/stories/4.4-auto-highlighting.md
-    notes: "AI-powered key passage extraction"
-
-  4-5-reader-notes-integration:
-    status: backlog
-    story_file: docs/stories/4.5-reader-notes-integration.md
-    notes: "Inject synthesis as document notes in Reader"
-
-  4-6-synthesis-storage:
-    status: backlog
-    story_file: docs/stories/4.6-synthesis-storage.md
-    notes: "Store syntheses as first-class KB artifacts"
-
-  4-7-reader-tagged-synthesis:
-    status: backlog
-    story_file: docs/stories/4.7-reader-tagged-synthesis.md
-    notes: "Create synthesis documents in Reader with auto-tags"
-
-epic-4:
-  status: planned
-  completion: 0/7 (0%)
-  notes: "Epic 4 defined in PRD V4. Depends on Epic 3 completion. Focus: cross-article synthesis, amplification detection, Reader integration."
+  completion: 6/10 (60%)
+  notes: "Story 3.3 deferred, Stories 3.4-3.5, 3.8, 3.10 done. Story 3.1 review. Story 3.2 backlog. Stories 3.6-3.7, 3.9 drafted."

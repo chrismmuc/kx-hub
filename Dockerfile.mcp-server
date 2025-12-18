@@ -1,0 +1,46 @@
+# Dockerfile for kx-hub MCP Server (Cloud Run deployment)
+#
+# This Dockerfile builds a containerized version of the MCP server
+# for deployment to Google Cloud Run with SSE transport.
+#
+# Security features:
+# - Non-root user
+# - Minimal base image
+# - No secrets baked into image
+# - Health check endpoint
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user for security
+RUN useradd -m -u 1000 mcpserver && \
+    chown -R mcpserver:mcpserver /app
+
+# Copy requirements first for better caching
+COPY src/mcp_server/requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy MCP server code
+COPY src/mcp_server/ ./src/mcp_server/
+
+# Switch to non-root user
+USER mcpserver
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV TRANSPORT_MODE=sse
+ENV PORT=8080
+
+# Expose port (Cloud Run will inject PORT env var)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+
+# Run the server
+CMD ["python", "-m", "src.mcp_server.main"]

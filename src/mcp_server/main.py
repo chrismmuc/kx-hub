@@ -2,8 +2,12 @@
 """
 MCP Server for kx-hub Knowledge Base Access.
 
-This server exposes the kx-hub Firestore knowledge base to Claude Desktop
-via the Model Context Protocol (MCP) using stdio transport.
+This server exposes the kx-hub Firestore knowledge base via the Model Context
+Protocol (MCP) using either stdio transport (local) or SSE transport (remote).
+
+Transport modes:
+- stdio: For local Claude Desktop use (default)
+- sse: For remote access via HTTPS with Bearer token authentication
 """
 
 import sys
@@ -34,27 +38,15 @@ logging.basicConfig(
 logger = logging.getLogger('kx-hub-mcp')
 
 
-async def main():
-    """Initialize and run the MCP server."""
-    logger.info("Starting kx-hub MCP server...")
+def create_mcp_server() -> Server:
+    """
+    Create and configure the MCP server instance with all handlers.
 
-    # Validate required environment variables
-    required_env_vars = [
-        'GOOGLE_APPLICATION_CREDENTIALS',
-        'GCP_PROJECT',
-        'GCP_REGION',
-        'FIRESTORE_COLLECTION'
-    ]
+    Returns:
+        Configured Server instance ready to run
 
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        sys.exit(1)
-
-    logger.info(f"GCP Project: {os.getenv('GCP_PROJECT')}")
-    logger.info(f"GCP Region: {os.getenv('GCP_REGION')}")
-    logger.info(f"Firestore Collection: {os.getenv('FIRESTORE_COLLECTION')}")
-
+    This function is shared between stdio and SSE transport modes.
+    """
     # Create MCP server instance
     server = Server("kx-hub")
 
@@ -710,12 +702,85 @@ async def main():
         return prompts.get_prompt_messages(name, arguments)
 
     logger.info("MCP server initialized successfully")
-    logger.info("Starting stdio transport...")
+    return server
 
-    # Run the server with stdio transport
+
+async def run_stdio_mode():
+    """Run MCP server with stdio transport (local mode)."""
+    logger.info("Starting in STDIO mode (local)")
+
+    # Validate environment variables
+    required_vars = ['GOOGLE_APPLICATION_CREDENTIALS', 'GCP_PROJECT', 'GCP_REGION', 'FIRESTORE_COLLECTION']
+    missing = [v for v in required_vars if not os.getenv(v)]
+    if missing:
+        logger.error(f"Missing required environment variables: {', '.join(missing)}")
+        sys.exit(1)
+
+    logger.info(f"GCP Project: {os.getenv('GCP_PROJECT')}")
+    logger.info(f"GCP Region: {os.getenv('GCP_REGION')}")
+    logger.info(f"Firestore Collection: {os.getenv('FIRESTORE_COLLECTION')}")
+
+    # Create server
+    server = create_mcp_server()
+
+    # Run with stdio transport
+    logger.info("Starting stdio transport...")
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
+def run_sse_mode():
+    """Run MCP server with SSE transport (remote mode)."""
+    import uvicorn
+    from server_sse import create_sse_app
+
+    logger.info("Starting in SSE mode (remote)")
+
+    # For Cloud Run, GOOGLE_APPLICATION_CREDENTIALS is not needed (uses metadata server)
+    # But we still need GCP_PROJECT, GCP_REGION, FIRESTORE_COLLECTION
+    required_vars = ['GCP_PROJECT', 'GCP_REGION', 'FIRESTORE_COLLECTION', 'MCP_AUTH_TOKEN']
+    missing = [v for v in required_vars if not os.getenv(v)]
+    if missing:
+        logger.error(f"Missing required environment variables: {', '.join(missing)}")
+        sys.exit(1)
+
+    logger.info(f"GCP Project: {os.getenv('GCP_PROJECT')}")
+    logger.info(f"GCP Region: {os.getenv('GCP_REGION')}")
+    logger.info(f"Firestore Collection: {os.getenv('FIRESTORE_COLLECTION')}")
+    logger.info("MCP_AUTH_TOKEN: [REDACTED]")
+
+    # Create server
+    server = create_mcp_server()
+
+    # Create SSE app with authentication
+    app = create_sse_app(server)
+
+    # Run with uvicorn
+    port = int(os.getenv("PORT", "8080"))
+    logger.info(f"Starting SSE server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+
+
+async def main():
+    """Main entry point - routes to stdio or SSE mode based on TRANSPORT_MODE env var."""
+    transport_mode = os.getenv("TRANSPORT_MODE", "stdio").lower()
+
+    if transport_mode == "sse":
+        # SSE mode is synchronous (uvicorn handles async)
+        run_sse_mode()
+    elif transport_mode == "stdio":
+        # stdio mode is async
+        await run_stdio_mode()
+    else:
+        logger.error(f"Invalid TRANSPORT_MODE: {transport_mode}. Must be 'stdio' or 'sse'.")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    transport_mode = os.getenv("TRANSPORT_MODE", "stdio").lower()
+    if transport_mode == "sse":
+        # SSE mode runs sync
+        run_sse_mode()
+    else:
+        # stdio mode runs async
+        asyncio.run(main())
