@@ -1,7 +1,7 @@
-# PRD (V3) – Personal AI Knowledge Base (Google Cloud + Vertex AI)
+# PRD (V4) – Personal AI Knowledge Base (Google Cloud + Vertex AI)
 
 ## 1. Goal & Value Proposition
-- **Goal**: Daily processing of Readwise/Reader highlights/articles, automatic **semantic processing**, **clustering/linking**, **TL;DR cards**, **idea synthesis**, **on-demand query retrieval**, export to **GitHub → Obsidian**, plus a **weekly email digest**.
+- **Goal**: Daily processing of Readwise/Reader highlights/articles, automatic **semantic processing**, **clustering/linking**, **TL;DR cards**, **idea synthesis**, **on-demand query retrieval**, export to **GitHub → Obsidian**, plus a **weekly email digest** with AI-powered recommendations and **intelligent reading synthesis**.
 - **Non-Goals (V1)**: Team multi-user, Web UI (CLI/API only).
 
 ## 2. Core Use Cases
@@ -13,7 +13,9 @@
 6. Email digest (new items, resurfacings, synthesis of the week).
 7. **Query-Driven Retrieval**: Natural Language Query → semantic search → ranked results with relevant articles/highlights/book sections.
 8. **Conversational Knowledge Access**: Claude Desktop integration via Model Context Protocol (MCP) server for natural language queries without context switching.
-9. Manual trigger for test runs.
+9. **AI-Powered Reading Recommendations**: Tavily-powered discovery of relevant articles with quality filtering, recency scoring, and diversity optimization.
+10. **Intelligent Reading Synthesis**: Cross-article synthesis, knowledge amplification detection, novel insight identification, and automated highlighting.
+11. Manual trigger for test runs.
 
 ## 3. Architectural Guidelines
 - Simple & extensible, **Serverless (Google Cloud)**, **Pay-per-Use**.
@@ -86,7 +88,83 @@ email:
 - **GitHub Export**: ≥98% successful commits without conflicts.
 - **Email Deliverability**: ≥95% inbox delivery (not spam).
 
-## 8. Future Features & Backlog
-See [8-future-features.md](./prd/8-future-features.md) for detailed feature ideas beyond MVP:
+## 8. Epics Overview
+
+See [epics.md](./epics.md) for detailed breakdown of all epics and stories.
+
+| Epic | Description | Status |
+|------|-------------|--------|
+| **Epic 1** | Core Batch Processing Pipeline & KB Infrastructure | Complete |
+| **Epic 2** | Enhanced Knowledge Graph & Clustering | Complete |
+| **Epic 3** | Knowledge Graph Enhancement & Optimization | Active |
+| **Epic 4** | Knowledge Digest & Email Summaries | Planned |
+| **Epic 5** | AI-Powered Blogging Engine | Planned |
+| **Epic 6** | User Experience & Discoverability | Decision Pending |
+
+### Epic 4: Knowledge Digest & Email Summaries
+
+**Goal:** Build an AI-powered knowledge digest system that regularly summarizes content from the Knowledge Base and Reader Inbox, delivering comprehensive email summaries with key insights, actionable takeaways, and one-click Reader integration.
+
+**Key Capabilities:**
+- **KB Digest Engine**: Rich summaries (~half DIN A4 page) with key aspects bullets and detailed narrative
+- **Reader Inbox Summarization**: Summarize unread articles to help decide what deserves deep reading
+- **Weekly Email Digest**: Scheduled delivery combining KB synthesis and inbox summaries
+- **On-Demand MCP Tools**: Generate digests interactively via Claude Desktop
+- **Personalization**: Configurable preferences for content, schedule, and focus areas
+- **Analytics & Feedback**: Track engagement and continuously improve summary quality
+
+**Stories:**
+| Story | Description |
+|-------|-------------|
+| 4.1 | Knowledge Base Digest Engine |
+| 4.2 | Reader Inbox Summarization |
+| 4.3 | Weekly Knowledge Email Digest |
+| 4.4 | On-Demand Digest Generation via MCP |
+| 4.5 | Digest Personalization & Preferences |
+| 4.6 | Digest Analytics & Feedback Loop |
+
+### Epic 5: AI-Powered Blogging Engine
+
+**Goal:** Build an intelligent blogging assistant that transforms Knowledge Base content into polished blog articles. The engine helps identify core ideas, generates article structures, creates drafts with proper referencing, and supports iterative article development—enabling a workflow from knowledge synthesis to published content in Obsidian.
+
+**Key Capabilities:**
+- **Blog Idea Extraction**: Identify article-worthy topics from KB clusters
+- **Outline Generation**: Create structured article frameworks with source references
+- **AI-Assisted Drafting**: Generate polished prose with citations and consistent voice
+- **Article Development Log**: Track progress across multiple sessions (idea → published)
+- **Series & Consolidation**: Plan article sequences and combine into long-form content
+- **Obsidian Export**: Publish to Obsidian vault with wikilinks and frontmatter
+- **Claude Code Integration**: Seamless VS Code editing workflow with AI assistance
+
+**Stories:**
+| Story | Description |
+|-------|-------------|
+| 5.1 | Blog Idea Extraction from Knowledge Base |
+| 5.2 | Article Structure & Outline Generation |
+| 5.3 | AI-Assisted Draft Generation |
+| 5.4 | Article Development Log (Blog Journal) |
+| 5.5 | Article Series & Consolidation |
+| 5.6 | Obsidian Export & Publishing Workflow |
+| 5.7 | Claude Code Integration for Article Editing |
+
+### Epic 6: User Experience & Discoverability
+
+**Goal:** Address system complexity by improving tool discoverability and reducing cognitive load. The system has grown to 30+ MCP tools, creating a "Too Many Tools" problem where users cannot easily discover or remember available capabilities.
+
+**Decision Required:** Three options under evaluation:
+
+| Option | Approach | Effort | Pros | Cons |
+|--------|----------|--------|------|------|
+| **A** | Minimal Web Interface | 8-12 days | Visual navigation, mobile-friendly | Additional infra, auth complexity |
+| **B** | Obsidian Plugin | 12-18 days | Native integration, no new infra | Limited to Obsidian users |
+| **C** | Focused MCP + Workflow Tools | 6-10 days | No new UI, leverages Claude | Still requires tool knowledge |
+
+**Recommendation:** Option C (Focused MCP with Workflow Tools) - Consolidate 30+ tools into 5-7 workflow-oriented mega-tools with built-in discovery (`what_can_i_do()`, `explore_knowledge()`, `weekly_ritual()`, `start_blog()`).
+
+See [epics.md](./epics.md) for full details and comparison matrix.
+
+## 9. Future Features & Backlog
+See [future-features.md](./future-features.md) for additional feature ideas:
 - **DayOne Journal Import**: Local file upload integration for personal journal entries
-- **Current Article Recommendations**: AI-powered discovery of follow-up articles and cross-topic connections
+- **Export & Distribution**: GitHub export, Obsidian vault sync
+- **Analytics & Insights**: Reading habit analytics, knowledge growth tracking

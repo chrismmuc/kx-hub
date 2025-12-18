@@ -268,11 +268,210 @@ This creates a **self-reinforcing knowledge loop** where the system actively fee
 
 ---
 
+## 8.3 Epic 4: Knowledge Digest & Email Summaries
+
+**Status:** Planned (see [epics.md](./epics.md) for full details)
+**Priority:** High
+**Complexity:** High
+
+**Description:**
+Build an AI-powered knowledge digest system that regularly summarizes content from the Knowledge Base and Reader Inbox, delivering comprehensive email summaries (~half DIN A4 page per topic) with key insights, actionable takeaways, and one-click Reader integration.
+
+**Key Capabilities:**
+
+1. **KB Digest Engine (Story 4.1)**
+   - Rich summaries with Key Aspects bullets (5-7 points) and detailed narrative (300-500 words)
+   - Cluster-based grouping for thematic coherence
+   - Notable quotes and cross-references
+
+2. **Reader Inbox Summarization (Story 4.2)**
+   - Summarize unread articles from Reader inbox
+   - Recommend: "Deep read" | "Summary sufficient" | "Archive"
+   - Help clear inbox backlog without guilt
+
+3. **Weekly Email Digest (Story 4.3)**
+   - Scheduled delivery (daily/weekly/biweekly)
+   - Sections: KB Growth, Inbox Intelligence, Knowledge Connections
+   - One-click Readwise Reader deep links (desktop + mobile)
+
+4. **On-Demand MCP Tools (Story 4.4)**
+   - Generate digests interactively via Claude Desktop
+   - Format options: detailed, brief, bullets
+   - Instant access without waiting for scheduled emails
+
+5. **Personalization & Preferences (Story 4.5)**
+   - Configurable schedule, depth, and focus areas
+   - Priority/muted clusters
+   - Secure unsubscribe mechanism
+
+6. **Analytics & Feedback (Story 4.6)**
+   - Track engagement (open rates, click-through)
+   - Quality feedback collection
+   - Continuous improvement loop
+
+**Technical Approach:**
+- Gemini 2.0 Pro for multi-document synthesis
+- SendGrid for email delivery (free tier: 100/day)
+- Readwise Reader deep links for one-click save
+- Cloud Scheduler for timing
+
+**Cost Analysis:**
+| Component | Monthly Cost |
+|-----------|-------------|
+| Gemini Pro (synthesis) | ~$0.30 |
+| Gemini Flash (inbox) | ~$0.20 |
+| SendGrid | $0 (free tier) |
+| Firestore | ~$0.05 |
+| **Total** | **~$0.56/month** |
+
+**Dependencies:**
+- Epic 3 (Story 3.5/3.6 - Reading Recommendations & Email infrastructure)
+- Readwise Reader API access
+
+**Estimated Effort:** 12-15 days total
+
+---
+
+## 8.4 Epic 5: AI-Powered Blogging Engine
+
+**Status:** Planned (see [epics.md](./epics.md) for full details)
+**Priority:** Medium
+**Complexity:** Very High
+
+**Description:**
+Build an intelligent blogging assistant that transforms Knowledge Base content into polished blog articles. Supports the full workflow from idea extraction to Obsidian publication, with multi-session article development and Claude Code integration for editing.
+
+**Key Capabilities:**
+
+1. **Blog Idea Extraction (Story 5.1)**
+   - Identify article-worthy topics from KB clusters
+   - Generate title suggestions and pitches
+   - Cross-cluster synthesis opportunities
+
+2. **Outline Generation (Story 5.2)**
+   - Structured article frameworks with source references
+   - Templates: Thought Leadership, Tutorial, Synthesis, Opinion
+   - Gap identification for additional research
+
+3. **AI-Assisted Drafting (Story 5.3)**
+   - Generate polished prose with KB citations
+   - Configurable voice and style
+   - Section-by-section or full draft generation
+
+4. **Article Development Log (Story 5.4)**
+   - Track progress: idea → outlined → drafting → published
+   - Multi-session development with version history
+   - Resume articles across sessions
+
+5. **Series & Consolidation (Story 5.5)**
+   - Plan article sequences
+   - Combine multiple articles into long-form content
+   - Remove redundancy, add transitions
+
+6. **Obsidian Export (Story 5.6)**
+   - YAML frontmatter + wikilinks
+   - Bidirectional links to source KB items
+   - VS Code integration
+
+7. **Claude Code Integration (Story 5.7)**
+   - Edit drafts in VS Code with AI assistance
+   - KB context for fact-checking
+   - Sync changes back to kx-hub
+
+**Technical Approach:**
+- Gemini 2.0 Pro for long-form generation
+- Firestore for article state management
+- Markdown output for Obsidian compatibility
+- MCP tools for interactive workflow
+
+**Cost Analysis:**
+| Component | Monthly Cost |
+|-----------|-------------|
+| Gemini Pro | ~$0.50 |
+| Firestore | ~$0.05 |
+| **Total** | **~$0.56/month** |
+
+**Dependencies:**
+- Epic 4 (Story 4.1 - KB Digest Engine)
+- Obsidian vault configuration
+
+**Estimated Effort:** 18-22 days total
+
+---
+
+## 8.5 Epic 6: User Experience & Discoverability
+
+**Status:** Decision Pending (see [epics.md](./epics.md) for full details)
+**Priority:** High
+**Complexity:** Medium-High
+
+**Description:**
+Address system complexity by improving tool discoverability and reducing cognitive load. As the system has grown to 30+ MCP tools, users face a "Too Many Tools" problem where they cannot easily discover or remember available capabilities.
+
+**Problem Statement:**
+- Claude's tool selection accuracy degrades significantly with >30 tools
+- Token overhead can reach 100K+ tokens just for tool definitions
+- Users must memorize tool names to use features effectively
+- No visual navigation or guided workflows
+
+**Decision Options Under Evaluation:**
+
+| Option | Approach | Effort | Cost |
+|--------|----------|--------|------|
+| **A: Minimal Web Interface** | Firebase-hosted SPA with dashboard, action buttons, results viewer | 8-12 days | ~$0-2/month |
+| **B: Obsidian Plugin** | TypeScript plugin with sidebar panel, command palette, note actions | 12-18 days | $0 |
+| **C: Focused MCP + Workflow Tools** | Consolidate 30+ tools into 5-7 mega-tools with discovery | 6-10 days | $0 |
+
+**Recommendation:** Option C - Start with Focused MCP approach, add visual UI later if needed.
+
+**Key Research Findings:**
+- Anthropic's Tool Search Tool (beta) can reduce token overhead by 85%
+- Workflow-oriented tools (`what_can_i_do()`, `explore_knowledge()`, `weekly_ritual()`) improve discoverability
+- Can evolve to add Web UI (Option A) later as enhancement
+
+**Dependencies:**
+- Epic 5 complete (for full tool inventory)
+- User decision on preferred option
+
+**Estimated Effort:** 6-18 days (depending on option selected)
+
+---
+
+## 8.6 Future Epics (Beyond Epic 6)
+
+### Epic 7: Export & Distribution
+**Status:** Backlog
+**Priority:** Medium
+
+- GitHub export (Markdown + graph.json)
+- Static knowledge graph visualization
+- Public sharing options
+
+### Epic 8: Advanced Integrations
+**Status:** Backlog
+**Priority:** Low
+
+- DayOne Journal import (see 8.1.1)
+- Multi-source integration (Pocket, Instapaper)
+- Mobile companion app for quick capture
+
+### Epic 9: Analytics & Insights
+**Status:** Backlog
+**Priority:** Low
+
+- Reading habit analytics and trends
+- Knowledge growth tracking over time
+- Cluster evolution visualization
+- Personal knowledge graph statistics
+- Content production metrics (from Epic 5)
+
+---
+
 ## Backlog Items
 
 (Additional future features can be added here as they are identified)
 
 ---
 
-**Last Updated:** 2024-10-19
-**Next Review:** After MVP completion
+**Last Updated:** 2025-12-17
+**Next Review:** After Epic 6 decision

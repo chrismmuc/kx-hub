@@ -794,372 +794,431 @@ Claude: [Calls save_recommendations_to_reader]
 
 ---
 
-## Epic 4: Intelligent Reading Synthesis & Automated Curation
+## Epic 4: Knowledge Digest & Email Summaries
 
-**Goal:** Build an AI-powered reading assistant that synthesizes insights across multiple articles, automatically extracts key passages, identifies knowledge amplification vs. novel insights, and integrates seamlessly with Readwise Reader to reduce reading burden while maximizing knowledge capture.
+**Goal:** Build an AI-powered knowledge digest system that regularly summarizes content from the Knowledge Base and Reader Inbox, delivering comprehensive email summaries with key insights, actionable takeaways, and one-click Reader integration—transforming passive content accumulation into active knowledge consumption.
 
-**Business Value:** Transforms passive article consumption into active knowledge synthesis. Users receive curated, pre-digested content that highlights how new articles reinforce existing knowledge or introduce genuinely novel concepts—enabling informed decisions about what to read in depth vs. skim.
+**Business Value:** Enables users to stay informed about their accumulated knowledge without manually reviewing every article. Combines the power of AI synthesis with email delivery for passive knowledge consumption. Users receive rich, scannable summaries (~half DIN A4 page) that capture the essence of multiple articles, making it possible to understand content deeply without reading everything.
 
-**Dependencies:** Epic 3 (Story 3.5 - Reading Recommendations provides article pipeline)
+**Dependencies:** Epic 3 (Story 3.5 - Reading Recommendations, Story 3.6 - Email Digest infrastructure)
 
-**Estimated Complexity:** Very High - Multi-document synthesis, comparative embeddings, Reader API integration, novel insight detection algorithms
+**Estimated Complexity:** High - Multi-document synthesis, email template design, Reader API integration, scheduled delivery
 
 **Status:** Planned
 
 ---
 
-### Story 4.1: Cross-Article Synthesis Engine
+### Story 4.1: Knowledge Base Digest Engine
 
 **Status:** Backlog
 
-**Summary:** Build a synthesis engine that generates unified summaries across multiple related articles, identifying common themes, complementary perspectives, and contradictions. Unlike single-article summaries, this creates a "meta-summary" that synthesizes knowledge from an article cohort (e.g., 5-10 articles on a topic).
+**Summary:** Build a synthesis engine that generates comprehensive summaries of Knowledge Base content, grouping articles by cluster and generating rich digests with key aspects, detailed summaries, and actionable insights. Unlike brief TL;DRs, these summaries provide substantial content (~half DIN A4 page per topic) for deep understanding.
 
 **Key Features:**
-- **Cohort Assembly:** Group articles by cluster, topic, or time window
-- **Multi-Document Synthesis:** Generate synthesis using Gemini 2.0 Pro with long context
-- **Theme Extraction:** Identify 3-5 core themes across the cohort
-- **Perspective Mapping:** Surface complementary and contradictory viewpoints
-- **Key Quote Aggregation:** Extract most impactful quotes from each article
-- **Synthesis Quality Scoring:** Measure coherence, coverage, and insight density
+- **Cluster-Based Grouping:** Organize KB content by semantic clusters for thematic coherence
+- **Rich Summary Generation:** Generate comprehensive summaries using Gemini 2.0 Pro
+  - **Key Aspects Section:** 5-7 bullet points highlighting core ideas at a glance
+  - **Detailed Summary:** 300-500 word narrative summary capturing nuances
+  - **Notable Quotes:** 2-3 impactful quotes from source articles
+  - **Cross-References:** Links to related clusters and concepts
+- **Time-Window Processing:** Summarize content from configurable time periods (week, month, custom)
+- **Incremental Updates:** Only process new/changed content since last digest
+- **Quality Scoring:** Rate synthesis quality for continuous improvement
 
 **Dependencies:**
-- Story 3.5 (Reading Recommendations) - article pipeline
+- Story 2.1 (Knowledge Cards) - base content for synthesis
 - Story 2.2 (Clustering) - thematic grouping
+- Story 3.5 (Reading Recommendations) - quality domain filtering
 
 **Technical Approach:**
-- Gemini 2.0 Pro for long-context multi-document processing
-- Hierarchical summarization: article → cohort → synthesis
-- Semantic deduplication of overlapping points
-- Contradiction detection via embedding comparison
+- Gemini 2.0 Pro for long-context multi-document synthesis
+- Hierarchical summarization: chunks → cluster summary → digest section
+- Template-based output formatting for consistent structure
+- Firestore storage of generated digests for caching
 
 **Success Metrics:**
-- Synthesis quality score >0.8 (coherence + coverage)
-- Processing time <30 seconds for 10 articles
-- >90% of themes validated by user as accurate
-- Cost impact: ~$0.05/synthesis (Gemini Pro tokens)
+- Summary quality score >4.0/5.0 (user rating)
+- Key aspects capture >90% of important themes (manual validation)
+- Processing time <60 seconds for weekly digest generation
+- Cost impact: ~$0.10/digest (Gemini Pro tokens)
 
 **Business Value:**
-- Read one synthesis instead of 10 articles
-- Understand topic landscape quickly
-- Identify which articles deserve deep reading
-- Surface non-obvious connections
+- Understand a week's reading in 10 minutes
+- Never lose track of accumulated knowledge
+- Identify knowledge gaps and patterns
+- Foundation for email delivery
 
----
-
-### Story 4.2: Knowledge Amplification Detection
-
-**Status:** Backlog
-
-**Summary:** Implement a comparison system that identifies when new articles reinforce or amplify concepts already present in the user's knowledge base. Surfaces "confirmation signals" showing which existing mental models are being strengthened by new reading.
-
-**Key Features:**
-- **KB Similarity Scoring:** Compare new article embeddings against existing KB chunks
-- **Amplification Categories:**
-  - **Strong Reinforcement:** 85%+ similarity to existing chunks
-  - **Moderate Reinforcement:** 70-85% similarity (same concept, new angle)
-  - **Tangential Connection:** 50-70% similarity (related but distinct)
-- **Cluster Mapping:** Show which clusters are being amplified
-- **Confidence Growth:** Track cumulative confidence in concepts over time
-- **Visualization:** "Your understanding of X is supported by N sources"
-
-**Dependencies:**
-- Story 1.5 (Firestore Vector Search) - similarity queries
-- Story 2.2 (Clustering) - cluster context
-
-**Technical Approach:**
-- Multi-chunk comparison using Firestore `find_nearest()`
-- Weighted similarity aggregation per cluster
-- Historical tracking in Firestore `concept_confidence` collection
-- Threshold-based categorization (configurable)
-
-**Success Metrics:**
-- Amplification detection accuracy >85%
-- Processing time <5 seconds per article
-- Correct cluster mapping >90%
-- User validates "reinforcement" labels in >80% of cases
-
-**Business Value:**
-- Know when you're reading "more of the same"
-- Build confidence in well-supported ideas
-- Identify information bubbles
-- Skip redundant reading
-
----
-
-### Story 4.3: Novel Insight Identification
-
-**Status:** Backlog
-
-**Summary:** Detect genuinely novel ideas, perspectives, or information that are NOT present in the user's existing knowledge base. Surfaces "expansion signals" highlighting where new reading extends rather than confirms existing mental models.
-
-**Key Features:**
-- **Novelty Scoring:** Inverse of amplification—low similarity = high novelty
-- **Novelty Categories:**
-  - **Paradigm Shift:** <30% similarity, challenges existing models
-  - **Gap Filler:** 30-50% similarity, fills knowledge gaps
-  - **Edge Extension:** 50-70% similarity, extends existing concepts
-- **Orphan Detection:** Ideas that don't connect to any existing cluster
-- **Bridge Discovery:** Ideas that connect previously unrelated clusters
-- **"New to You" Highlights:** Surface specific passages with novelty scores
-
-**Dependencies:**
-- Story 4.2 (Knowledge Amplification) - similarity infrastructure
-- Story 3.4 (Cluster Relationships) - cluster connection discovery
-
-**Technical Approach:**
-- Invert amplification scores for novelty
-- Orphan detection: no cluster above 50% similarity
-- Bridge detection: high similarity to 2+ distant clusters
-- Passage-level novelty scoring via chunk embeddings
-
-**Success Metrics:**
-- Novelty detection accuracy >80%
-- False positive rate <15% (flagging familiar as novel)
-- Bridge discoveries validated as insightful >75%
-- Processing time <10 seconds per article
-
-**Business Value:**
-- Prioritize reading that expands knowledge
-- Discover truly new ideas efficiently
-- Avoid illusion of learning (reading familiar content)
-- Identify paradigm-shifting content
-
----
-
-### Story 4.4: Automatic Key Passage Highlighting
-
-**Status:** Backlog
-
-**Summary:** Automatically extract and highlight the most important passages from articles before or after reading, using AI to identify key insights, actionable takeaways, and quotable statements. Creates "pre-highlights" that guide attention during reading or serve as reading substitutes.
-
-**Key Features:**
-- **AI-Powered Extraction:** Gemini identifies 5-10 key passages per article
-- **Highlight Categories:**
-  - **Core Insight:** Central argument or thesis
-  - **Actionable Takeaway:** Practical applications
-  - **Quotable Statement:** Memorable, shareable quotes
-  - **Evidence/Data:** Supporting statistics or research
-  - **Contrarian View:** Challenges to conventional wisdom
-- **Novelty-Weighted Highlighting:** Prioritize passages with high novelty scores
-- **Configurable Density:** User controls highlight density (sparse vs. dense)
-- **Pre-Read Mode:** Generate highlights before reading for guided attention
-- **Post-Read Mode:** Generate highlights after reading for synthesis
-
-**Dependencies:**
-- Story 4.3 (Novel Insight Identification) - novelty scoring
-- Readwise Reader API - highlight storage
-
-**Technical Approach:**
-- Gemini 2.0 Flash for fast extraction
-- Multi-pass extraction: first pass finds candidates, second pass ranks
-- Category classification via prompt engineering
-- Integration with Reader highlight API
-
-**Success Metrics:**
-- Highlight quality score >4.0/5.0 (user ratings)
-- Coverage: >80% of user-selected highlights overlapping with AI highlights
-- Processing time <15 seconds per article
-- Highlight categories balanced (no over-representation)
-
-**Business Value:**
-- Read articles in 2 minutes instead of 15
-- Never miss the key insight
-- Create highlights without reading
-- Guide attention to what matters
-
----
-
-### Story 4.5: Readwise Reader Notes Integration
-
-**Status:** Backlog
-
-**Summary:** Automatically inject AI-generated synthesis, amplification signals, and novelty insights as document notes in Readwise Reader. Users see contextual kx-hub intelligence directly in their Reader interface without leaving the app.
-
-**Key Features:**
-- **Document Notes Injection:** Add structured note to saved articles
-  - Synthesis summary (if part of cohort)
-  - Amplification signals (which KB concepts reinforced)
-  - Novelty signals (what's genuinely new)
-  - Related cluster context
-- **Readwise API Integration:**
-  - `PATCH` document notes via Reader API
-  - Or use Readwise highlight API with special formatting
-- **Note Format Options:**
-  - Structured markdown (default)
-  - Collapsible sections
-  - Bullet-point summary
-- **Timing Options:**
-  - On-save: Inject immediately when article saved
-  - Batch: Process in daily/weekly batch
-  - On-demand: User triggers via MCP tool
-- **Ghostreader Consideration:** Option to replace/augment default AI summary
-
-**Dependencies:**
-- Story 4.2 (Amplification Detection) - amplification signals
-- Story 4.3 (Novel Insight) - novelty signals
-- Story 4.1 (Cross-Article Synthesis) - synthesis content
-- Readwise Reader API access
-
-**Technical Approach:**
-- Reader API: `PATCH /api/v3/documents/{id}/` with `notes` field
-- Alternative: Create highlight with note attached
-- Structured markdown formatting for readability
-- Batch processing via Cloud Function (story 3.6 pattern)
-
-**Success Metrics:**
-- Notes injection success rate >98%
-- Note renders correctly in Reader (all clients)
-- User engagement: >50% of users read injected notes
-- API rate limit compliance (240 req/min)
-
-**Business Value:**
-- Context without context-switching
-- See kx-hub intelligence in your reader
-- Make read/skip decisions in Reader
-- Single interface for reading + intelligence
-
-**Note Format Example:**
+**Output Format Example:**
 ```markdown
-## 🧠 kx-hub Intelligence
+## 📚 Platform Engineering & Developer Experience
 
-### Synthesis
-This article is part of a 7-article cohort on Platform Engineering.
-Core themes: developer experience, cognitive load, self-service infrastructure.
+### Key Aspects
+- Internal Developer Platforms reduce cognitive load by 40% on average
+- Self-service infrastructure enables faster time-to-production
+- Platform teams should be treated as product teams, not utilities
+- Golden paths provide sensible defaults without restricting flexibility
+- Measuring developer experience requires qualitative + quantitative signals
+- Team Topologies patterns align with platform engineering principles
+- Platform engineering is NOT just about tooling—culture and processes matter
 
-### 📈 Amplifies Your Knowledge
-- **Platform Engineering** cluster (87% similarity)
-- Reinforces your notes on Team Topologies (3 chunks)
-- Extends your understanding of cognitive load
+### Summary
+Platform engineering has emerged as a discipline focused on building and maintaining
+internal developer platforms (IDPs) that abstract infrastructure complexity. The core
+insight across your recent readings is that successful platforms treat developers as
+customers, applying product thinking to internal tooling...
 
-### 🆕 Novel Insights
-- **Gap Filler:** Platform-as-a-Product concept (43% novel)
-- **Bridge:** Connects Developer Experience ↔ Product Management
+[~400 more words with nuanced synthesis]
 
-### Related in Your KB
-- "Team Topologies highlights" (92% similar)
-- "Internal Developer Platform notes" (88% similar)
+### Notable Quotes
+> "A platform is a foundation of self-service APIs, tools, services, knowledge and
+> support which are arranged as a compelling internal product." — Team Topologies
+
+> "The goal isn't to build the perfect platform—it's to reduce cognitive load while
+> preserving developer autonomy." — Gregor Hohpe
+
+### Related Topics
+- Cognitive Load Theory (3 related articles)
+- DevOps Transformation (5 related articles)
+- Team Topologies (7 highlights)
 ```
 
 ---
 
-### Story 4.6: Synthesis Storage & Cluster Enrichment
+### Story 4.2: Reader Inbox Summarization
 
 **Status:** Backlog
 
-**Summary:** Store multi-article syntheses as first-class knowledge artifacts in Firestore, enriching clusters with aggregate insights. Syntheses become queryable, browsable knowledge that transcends individual articles.
+**Summary:** Generate comprehensive summaries of unread articles in the Readwise Reader inbox, helping users understand content they haven't had time to read. Provides pre-read intelligence so users can decide what deserves full attention vs. what can be understood from summaries alone.
 
 **Key Features:**
-- **Synthesis Collection:** New Firestore collection `syntheses`
-  - Linked to source article IDs
-  - Linked to clusters
-  - Timestamped for freshness
-  - Quality scored
-- **Cluster Enrichment:** Attach synthesis to cluster metadata
-  - Cluster summary (synthesized from top 10 chunks)
-  - Key themes across cluster
-  - Notable authors in cluster
-- **Synthesis Search:** MCP tool to search/retrieve syntheses
-  - `search_syntheses(query)` - semantic search
-  - `get_cluster_synthesis(cluster_id)` - cluster summary
-- **Synthesis Lifecycle:**
-  - Auto-refresh when cluster changes significantly
-  - Version history for comparison
-  - Staleness detection and regeneration
+- **Unread Article Detection:** Query Reader API for inbox items with status "new" or "later"
+- **Full-Content Fetching:** Retrieve complete article text via Reader API
+- **Rich Summary Generation:** Same format as KB digests
+  - Key Aspects bullets (5-7 points)
+  - Detailed narrative summary (300-500 words)
+  - Reading time estimate vs. summary time
+  - Recommended action: "Deep read" | "Summary sufficient" | "Archive"
+- **Priority Ranking:** Order summaries by relevance to existing KB
+- **Batch Processing:** Summarize multiple articles in single digest
+- **Read Status Tracking:** Track which summaries have been delivered
 
 **Dependencies:**
-- Story 4.1 (Cross-Article Synthesis Engine) - synthesis generation
-- Story 2.2 (Clustering) - cluster infrastructure
+- Story 4.1 (KB Digest Engine) - summary generation infrastructure
+- Readwise Reader API - article content access
 
 **Technical Approach:**
-- Firestore collection `syntheses` with document structure
-- Embedding storage for semantic search
-- Cloud Function for periodic refresh
-- MCP tools for access
+- Reader API: `GET /api/v3/list/?category=article&location=new`
+- Fetch full content via Reader's document endpoint
+- Reuse synthesis prompts from Story 4.1
+- Store generated summaries in Firestore for caching
+- Track delivered summaries to prevent duplicates
 
 **Success Metrics:**
-- All clusters with >5 members have synthesis
-- Synthesis search returns relevant results >85%
-- Refresh triggers correctly on cluster changes
-- Cost impact: ~$0.10/month (periodic regeneration)
+- >85% of summaries rated "accurate" by users
+- "Summary sufficient" recommendations correct >80% of the time
+- Processing time <30 seconds per article
+- Zero duplicate summaries delivered
 
 **Business Value:**
-- Knowledge that grows over time
-- Cluster-level understanding without reading chunks
-- Synthesis as conversation context
-- Longitudinal insight tracking
+- Clear inbox backlog without guilt
+- Make informed read/skip decisions
+- Capture value from articles you'll never fully read
+- Reduce reading anxiety ("too much to read")
 
-**Firestore Document Structure:**
+**Reader API Integration:**
+```python
+# Fetch unread articles from Reader inbox
+GET https://readwise.io/api/v3/list/
+Headers: Authorization: Token {access_token}
+Params:
+  category: "article"
+  location: "new"  # or "later" for "Read Later" items
+
+# Response includes full document content for summarization
+```
+
+---
+
+### Story 4.3: Weekly Knowledge Email Digest
+
+**Status:** Backlog
+
+**Summary:** Deliver a comprehensive weekly email digest combining KB synthesis and Reader inbox summaries. The email provides a rich, scannable overview of the user's knowledge landscape with one-click actions to save articles to Reader or mark content as processed.
+
+**Key Features:**
+- **Scheduled Delivery:** Cloud Scheduler triggers weekly (configurable: daily/weekly/biweekly)
+- **Email Sections:**
+  1. **This Week's Knowledge Growth:** New KB items summarized by cluster
+  2. **Inbox Intelligence:** Summaries of unread Reader articles
+  3. **Knowledge Connections:** Cross-cluster insights and emerging themes
+  4. **Recommended Deep Reads:** Articles deserving full attention
+  5. **Quick Archive Candidates:** Articles where summary suffices
+- **Rich HTML Template:** Responsive design with:
+  - Expandable/collapsible sections
+  - Key Aspects as styled bullet lists
+  - "Read More" links to detailed summaries
+  - One-click Reader integration buttons
+- **Readwise Reader Deep Links:**
+  - Desktop: `https://readwise.io/reader/save?url={url}&tags={tags}`
+  - Mobile: `readwise://save?url={url}`
+  - Auto-tags: cluster name, "kx-digest", week number
+- **SendGrid Integration:** Transactional email via SendGrid API
+
+**Dependencies:**
+- Story 4.1 (KB Digest Engine) - KB summaries
+- Story 4.2 (Reader Inbox Summarization) - inbox summaries
+- Story 3.6 (Email Digest) - email infrastructure
+
+**Technical Approach:**
+- Extend Story 3.6 email infrastructure
+- Jinja2 templates for HTML email generation
+- SendGrid dynamic templates for styling
+- Cloud Scheduler for timing
+- Firestore config for preferences
+
+**Success Metrics:**
+- Email open rate >60%
+- Click-through rate >20%
+- Unsubscribe rate <5%
+- Renders correctly on Gmail, Outlook, Apple Mail
+- Delivery within 5 minutes of scheduled time
+
+**Business Value:**
+- Passive knowledge consumption
+- Weekly ritual for knowledge review
+- No context-switching required
+- Actionable from any device
+
+**Email Template Structure:**
+```html
+<!-- Header -->
+<div class="digest-header">
+  <h1>📬 Your Weekly Knowledge Digest</h1>
+  <p>Week 50, 2025 · 12 new KB items · 8 unread articles summarized</p>
+</div>
+
+<!-- Section 1: KB Growth -->
+<div class="section kb-growth">
+  <h2>📚 This Week's Knowledge Growth</h2>
+
+  <!-- Cluster Summary Card -->
+  <div class="cluster-card">
+    <h3>Platform Engineering (5 new items)</h3>
+    <div class="key-aspects">
+      <strong>Key Aspects:</strong>
+      <ul>
+        <li>Internal Developer Platforms reduce cognitive load by 40%</li>
+        <li>Platform teams should operate like product teams</li>
+        <li>Golden paths balance standardization with flexibility</li>
+      </ul>
+    </div>
+    <div class="summary-preview">
+      Platform engineering has emerged as a critical discipline...
+      <a href="#">Read full summary →</a>
+    </div>
+  </div>
+</div>
+
+<!-- Section 2: Inbox Intelligence -->
+<div class="section inbox-intelligence">
+  <h2>📥 Inbox Intelligence (8 articles)</h2>
+
+  <div class="article-summary">
+    <h4>The Future of AI Agents</h4>
+    <span class="meta">martinfowler.com · 15 min read → 2 min summary</span>
+    <span class="recommendation badge-deep-read">🔍 Deep Read Recommended</span>
+    <div class="key-aspects">
+      <ul>
+        <li>AI agents differ from chatbots in autonomous action capability</li>
+        <li>Tool use enables agents to interact with external systems</li>
+      </ul>
+    </div>
+    <div class="actions">
+      <a href="{reader_link}" class="btn">💻 Open in Reader</a>
+      <a href="{mobile_link}" class="btn">📱 Mobile</a>
+    </div>
+  </div>
+</div>
+
+<!-- Footer with unsubscribe -->
+```
+
+---
+
+### Story 4.4: On-Demand Digest Generation via MCP
+
+**Status:** Backlog
+
+**Summary:** Enable users to generate knowledge digests on-demand via MCP tools in Claude Desktop. Users can request summaries of specific clusters, time periods, or their Reader inbox without waiting for scheduled emails.
+
+**Key Features:**
+- **MCP Tools:**
+  - `generate_kb_digest(clusters, time_range, format)` - Generate KB summary
+  - `summarize_reader_inbox(limit, priority)` - Summarize unread articles
+  - `get_cluster_digest(cluster_id)` - Deep dive on specific cluster
+  - `send_digest_now()` - Trigger immediate email delivery
+- **Format Options:**
+  - `detailed` - Full half-page summaries
+  - `brief` - Key aspects only
+  - `bullets` - Pure bullet points
+- **Caching:** Store generated digests for 24 hours to avoid regeneration
+- **Conversation Context:** Include digest in Claude conversation for follow-up questions
+
+**Dependencies:**
+- Story 4.1 (KB Digest Engine) - digest generation
+- Story 4.2 (Reader Inbox Summarization) - inbox summaries
+- Story 2.6 (MCP Enhancements) - MCP infrastructure
+
+**Technical Approach:**
+- Extend MCP server with new tools
+- Reuse digest generation from Stories 4.1/4.2
+- Firestore caching with TTL
+- Markdown output for Claude conversation
+
+**Success Metrics:**
+- Tool response time <30 seconds for digest generation
+- Cache hit rate >50% for repeated requests
+- User satisfaction >4.0/5.0 for generated digests
+
+**Business Value:**
+- Immediate access to knowledge summaries
+- No waiting for scheduled emails
+- Interactive exploration of knowledge
+- Claude as knowledge concierge
+
+**MCP Tool Interface:**
+```python
+generate_kb_digest(
+    clusters: List[str] = None,  # Specific clusters or all
+    time_range: str = "week",    # "day", "week", "month", "all"
+    format: str = "detailed"     # "detailed", "brief", "bullets"
+) -> DigestResponse
+
+summarize_reader_inbox(
+    limit: int = 10,             # Max articles to summarize
+    priority: str = "relevance"  # "relevance", "recent", "oldest"
+) -> InboxSummaryResponse
+```
+
+---
+
+### Story 4.5: Digest Personalization & Preferences
+
+**Status:** Backlog
+
+**Summary:** Enable users to personalize their digest experience with preferences for content selection, summary depth, delivery schedule, and focus areas. Store preferences in Firestore and apply them to all digest generation.
+
+**Key Features:**
+- **Delivery Preferences:**
+  - Schedule: daily, weekly, biweekly, monthly
+  - Day of week and time (with timezone)
+  - Email address (multiple recipients supported)
+- **Content Preferences:**
+  - Include/exclude specific clusters
+  - Summary depth: detailed (default), brief, bullets
+  - Maximum articles per section
+  - Include/exclude Reader inbox
+- **Focus Areas:**
+  - Priority clusters (always included first)
+  - Muted clusters (excluded unless explicitly requested)
+  - Time decay: prefer recent content vs. comprehensive
+- **MCP Configuration Tool:** `configure_digest(preferences)`
+- **Unsubscribe:** Secure token-based one-click unsubscribe
+
+**Dependencies:**
+- Story 4.3 (Weekly Email Digest) - email delivery
+- Story 4.4 (On-Demand MCP) - MCP tools
+
+**Technical Approach:**
+- Firestore document `config/digest_preferences`
+- Apply preferences in digest generation pipeline
+- Validate preferences via MCP tool
+- Secure unsubscribe tokens
+
+**Success Metrics:**
+- 100% of preferences applied correctly
+- Preferences UI/MCP tool easy to use (user feedback)
+- Unsubscribe works reliably
+- Schedule accuracy within 5 minutes
+
+**Business Value:**
+- Personalized knowledge experience
+- Control over information flow
+- Reduced noise, increased signal
+
+**Firestore Preferences Schema:**
 ```json
 {
-  "synthesis_id": "synth-20251211-cluster-28",
-  "cluster_id": "cluster-28",
-  "source_chunk_ids": ["chunk-1", "chunk-2", ...],
-  "source_article_count": 12,
-  "generated_at": "2025-12-11T10:30:00Z",
-  "synthesis_type": "cluster",
-  "content": {
-    "summary": "Platform Engineering focuses on...",
-    "themes": ["developer experience", "self-service", "cognitive load"],
-    "key_insights": ["...", "..."],
-    "notable_authors": ["Martin Fowler", "Gregor Hohpe"],
-    "contradictions": ["..."],
-    "open_questions": ["..."]
+  "enabled": true,
+  "schedule": {
+    "frequency": "weekly",
+    "day_of_week": 1,
+    "hour": 8,
+    "timezone": "Europe/Berlin"
   },
-  "embedding": [0.1, 0.2, ...],
-  "quality_score": 0.87,
-  "version": 2,
-  "staleness_check_at": "2025-12-18T10:30:00Z"
+  "recipients": ["user@example.com"],
+  "content": {
+    "summary_depth": "detailed",
+    "max_kb_clusters": 5,
+    "max_inbox_articles": 10,
+    "include_reader_inbox": true,
+    "include_recommendations": true
+  },
+  "focus": {
+    "priority_clusters": ["cluster-28", "cluster-15"],
+    "muted_clusters": ["cluster-42"],
+    "time_decay": "balanced"
+  },
+  "unsubscribe_token": "secure-random-token"
 }
 ```
 
 ---
 
-### Story 4.7: Reader-Tagged Synthesis Documents
+### Story 4.6: Digest Analytics & Feedback Loop
 
 **Status:** Backlog
 
-**Summary:** Create special synthesis documents in Readwise Reader that aggregate kx-hub intelligence, tagged for easy filtering. Users can browse their "kx-hub synthesis" feed in Reader to see AI-generated knowledge summaries alongside regular reading material.
+**Summary:** Track digest engagement and collect user feedback to continuously improve summary quality and relevance. Measure open rates, click-through rates, and explicit quality ratings to optimize the digest experience.
 
 **Key Features:**
-- **Synthesis as Reader Document:** Save synthesis as special document in Reader
-  - URL: Custom `kxhub://synthesis/{id}` or hosted endpoint
-  - Title: "kx-hub Synthesis: [Topic]"
-  - Content: Full synthesis markdown
-  - Tags: `kx-synthesis`, cluster name, date
-- **Weekly Digest Document:** Aggregate synthesis saved weekly
-  - All new articles from week
-  - Cluster updates
-  - Novelty highlights
-  - Save as single Reader document
-- **Reader Integration:**
-  - Use Reader save API with custom content
-  - Tag-based filtering in Reader
-  - Searchable within Reader
-- **Highlightable Syntheses:** User can highlight synthesis passages
-  - Highlights flow back to Readwise
-  - Eventually back to kx-hub (virtuous cycle)
+- **Engagement Tracking:**
+  - Email open tracking (SendGrid webhooks)
+  - Click tracking on Reader links
+  - Section engagement (which clusters/articles clicked)
+- **Quality Feedback:**
+  - In-email rating widget (thumbs up/down per section)
+  - "This summary was helpful" tracking
+  - "Mark as inaccurate" flag for corrections
+- **Analytics Dashboard (MCP):**
+  - `get_digest_analytics(period)` - View engagement metrics
+  - Most/least engaged clusters
+  - Summary quality trends over time
+- **Feedback-Driven Optimization:**
+  - Adjust summary prompts based on feedback
+  - Prioritize high-engagement clusters
+  - Flag consistently low-rated summaries for review
 
 **Dependencies:**
-- Story 4.6 (Synthesis Storage) - synthesis content
-- Story 3.7 (Save to Reader) - Reader API patterns
+- Story 4.3 (Weekly Email Digest) - email delivery
+- SendGrid webhooks for tracking
 
 **Technical Approach:**
-- Generate static HTML/Markdown for synthesis
-- Host via Cloud Run endpoint (or use data: URL)
-- Save to Reader via `POST /api/v3/save/`
-- Tag with `kx-synthesis` for filtering
+- SendGrid event webhooks → Cloud Function → Firestore
+- Click tracking via redirect URLs
+- Firestore `digest_analytics` collection
+- Feedback stored in `digest_feedback` collection
 
 **Success Metrics:**
-- Synthesis documents appear correctly in Reader
-- Tags applied successfully
-- Content renders readably on all clients
-- User engages with synthesis documents (opens, highlights)
+- Open rate >60%
+- Positive feedback rate >80%
+- Feedback collection rate >10% (users who rate)
+- Summary quality improvement over time (A/B testing)
 
 **Business Value:**
-- All knowledge in one place (Reader)
-- Synthesis as reading material
-- Browsable synthesis history
-- Natural Reader workflow maintained
+- Continuous improvement
+- User-driven optimization
+- Quality assurance for AI summaries
 
 ---
 
@@ -1167,50 +1226,1069 @@ Core themes: developer experience, cognitive load, self-service infrastructure.
 
 | Story | Description | Complexity |
 |-------|-------------|------------|
-| 4.1 | Cross-Article Synthesis Engine | High |
-| 4.2 | Knowledge Amplification Detection | Medium |
-| 4.3 | Novel Insight Identification | Medium |
-| 4.4 | Automatic Key Passage Highlighting | High |
-| 4.5 | Readwise Reader Notes Integration | Medium |
-| 4.6 | Synthesis Storage & Cluster Enrichment | Medium |
-| 4.7 | Reader-Tagged Synthesis Documents | Low |
+| 4.1 | Knowledge Base Digest Engine | High |
+| 4.2 | Reader Inbox Summarization | Medium |
+| 4.3 | Weekly Knowledge Email Digest | Medium |
+| 4.4 | On-Demand Digest Generation via MCP | Medium |
+| 4.5 | Digest Personalization & Preferences | Low |
+| 4.6 | Digest Analytics & Feedback Loop | Low |
 
 **Recommended Implementation Order:**
-1. Story 4.2 (Amplification) + 4.3 (Novelty) - foundation
-2. Story 4.1 (Synthesis Engine) - core capability
-3. Story 4.4 (Auto-Highlighting) - high user value
-4. Story 4.6 (Storage) - persistence
-5. Story 4.5 (Reader Notes) + 4.7 (Reader Documents) - integration
+1. Story 4.1 (KB Digest Engine) - core synthesis capability
+2. Story 4.2 (Reader Inbox Summarization) - extend to inbox
+3. Story 4.3 (Weekly Email Digest) - delivery mechanism
+4. Story 4.4 (On-Demand MCP) - interactive access
+5. Story 4.5 (Preferences) + 4.6 (Analytics) - personalization & optimization
 
 **Cost Analysis:**
 | Component | Monthly Cost |
 |-----------|-------------|
-| Gemini Pro (synthesis) | ~$0.50 |
-| Gemini Flash (highlights) | ~$0.20 |
-| Firestore (synthesis storage) | ~$0.05 |
-| Reader API calls | $0 (existing subscription) |
-| **Total** | **~$0.75/month** |
+| Gemini Pro (synthesis) | ~$0.30 |
+| Gemini Flash (inbox summaries) | ~$0.20 |
+| SendGrid (emails) | $0 (free tier) |
+| Firestore (digest storage) | ~$0.05 |
+| Cloud Functions | ~$0.01 |
+| **Total** | **~$0.56/month** |
 
 ---
 
-## Future Epics (Beyond Current Scope)
+## Epic 5: AI-Powered Blogging Engine
+
+**Goal:** Build an intelligent blogging assistant that transforms Knowledge Base content into polished blog articles. The engine helps identify core ideas, generates article structures, creates drafts with proper referencing, and supports iterative article development over multiple sessions—enabling a workflow from knowledge synthesis to published content in Obsidian.
+
+**Business Value:** Transforms the Knowledge Base from a passive consumption tool into an active content creation platform. Users can leverage their accumulated knowledge to produce blog content, thought leadership pieces, and synthesis articles without starting from scratch. The engine provides AI-assisted drafting while keeping the user in control of the final output.
+
+**Dependencies:** Epic 4 (Story 4.1 - KB Digest Engine provides synthesis foundation)
+
+**Estimated Complexity:** Very High - Content generation, multi-session state management, VS Code integration, Obsidian export
+
+**Status:** Planned
+
+---
+
+### Story 5.1: Blog Idea Extraction from Knowledge Base
+
+**Status:** Backlog
+
+**Summary:** Automatically identify potential blog topics from Knowledge Base clusters, surfacing themes with sufficient depth for article development. The engine analyzes cluster coherence, content density, and novelty to suggest compelling blog ideas.
+
+**Key Features:**
+- **Cluster Analysis for Blog Potential:**
+  - Assess each cluster for article-worthiness
+  - Score based on: content depth, coherence, novelty, controversy
+  - Identify clusters with "critical mass" for standalone articles
+- **Idea Generation:**
+  - Generate 3-5 blog title suggestions per cluster
+  - Create one-paragraph pitch for each idea
+  - Identify target audience and angle
+  - Surface unique insights from the cluster
+- **Cross-Cluster Ideas:**
+  - Detect bridge opportunities between clusters
+  - Suggest synthesis articles combining multiple themes
+  - Identify contrarian takes based on cluster contradictions
+- **Full Source Traceability (CRITICAL):**
+  - Every idea MUST include complete source references
+  - **Source Types:** Books, articles, highlights, podcast notes
+  - **Reference Details per source:**
+    - `source_id` - KB chunk/item ID for direct lookup
+    - `source_type` - "book" | "article" | "highlight" | "podcast"
+    - `title` - Original source title
+    - `author` - Author name(s)
+    - `readwise_url` - Direct link to Readwise entry
+    - `source_url` - Original article/book URL (if available)
+    - `relevance_score` - How relevant this source is to the idea
+    - `key_quote` - Most relevant quote from this source
+  - Minimum 3 sources per idea for credibility
+  - Sources ranked by relevance and authority
+- **MCP Tool:** `get_blog_ideas(clusters, style, count)`
+- **Idea Storage:** Store generated ideas in Firestore for reference
+
+**Dependencies:**
+- Story 2.2 (Clustering) - cluster infrastructure
+- Story 4.1 (KB Digest Engine) - synthesis capabilities
+
+**Technical Approach:**
+- Gemini analysis of cluster content and knowledge cards
+- Scoring algorithm for blog-worthiness
+- Title generation via few-shot prompting
+- Cross-cluster relationship analysis
+
+**Success Metrics:**
+- >80% of generated ideas rated "interesting" by user
+- Blog potential scores correlate with cluster quality
+- Title suggestions are unique and non-generic
+- Processing time <30 seconds for full KB scan
+
+**Business Value:**
+- Never face blank page syndrome
+- Leverage existing knowledge for content
+- Discover unexpected article angles
+- Continuous content pipeline from reading
+
+**MCP Tool Interface:**
+```python
+get_blog_ideas(
+    clusters: List[str] = None,      # Specific clusters or all
+    style: str = "thought_leadership", # "tutorial", "opinion", "synthesis", "how_to"
+    count: int = 5,                   # Number of ideas to generate
+    include_cross_cluster: bool = True
+) -> BlogIdeasResponse
+
+# Response structure with FULL source traceability
+{
+  "ideas": [
+    {
+      "id": "idea-001",
+      "title": "Why Platform Engineering Is Not About Tools",
+      "pitch": "Most articles about platform engineering focus on tooling...",
+      "source_clusters": ["cluster-28"],
+      "angle": "contrarian",
+      "target_audience": "Engineering leaders",
+      "estimated_depth": "high",
+      "blog_potential_score": 0.89,
+
+      # CRITICAL: Full source references for every idea
+      "sources": [
+        {
+          "source_id": "chunk-123",
+          "source_type": "book",
+          "title": "Team Topologies",
+          "author": "Matthew Skelton, Manuel Pais",
+          "readwise_url": "https://readwise.io/bookreview/12345",
+          "source_url": "https://teamtopologies.com/book",
+          "relevance_score": 0.95,
+          "key_quote": "A platform is a foundation of self-service APIs, tools, services...",
+          "chapter": "Chapter 5: Platform Teams"
+        },
+        {
+          "source_id": "chunk-456",
+          "source_type": "article",
+          "title": "What I Talk About When I Talk About Platforms",
+          "author": "Martin Fowler",
+          "readwise_url": "https://readwise.io/open/article/67890",
+          "source_url": "https://martinfowler.com/articles/talk-about-platforms.html",
+          "relevance_score": 0.92,
+          "key_quote": "Platform engineering is about reducing cognitive load...",
+          "published_date": "2024-03-15"
+        },
+        {
+          "source_id": "chunk-789",
+          "source_type": "highlight",
+          "title": "Building Evolutionary Architectures",
+          "author": "Neal Ford, Rebecca Parsons",
+          "readwise_url": "https://readwise.io/open/highlight/11111",
+          "relevance_score": 0.88,
+          "key_quote": "Fitness functions enable teams to evolve their architecture..."
+        }
+      ],
+      "source_count": {
+        "books": 2,
+        "articles": 3,
+        "highlights": 5,
+        "total": 10
+      }
+    }
+  ]
+}
+```
+
+---
+
+### Story 5.2: Article Structure & Outline Generation
+
+**Status:** Backlog
+
+**Summary:** Generate detailed article outlines from selected blog ideas, creating a structured framework with sections, key points, and source references. The outline serves as a blueprint for article development, ensuring logical flow and comprehensive coverage.
+
+**Key Features:**
+- **Outline Generation:**
+  - H2/H3 section structure with logical flow
+  - Key points to cover in each section
+  - Suggested word count per section
+  - Source chunk references for each point
+- **Outline Templates:**
+  - **Thought Leadership:** Hook → Problem → Insight → Evidence → Call to Action
+  - **Tutorial:** Overview → Prerequisites → Steps → Common Issues → Next Steps
+  - **Synthesis:** Introduction → Theme 1 → Theme 2 → Theme 3 → Synthesis → Conclusion
+  - **Opinion:** Thesis → Supporting Arguments → Counterarguments → Resolution
+- **Source Integration:**
+  - Map KB chunks to outline sections
+  - Highlight quotable passages
+  - Identify gaps needing additional research
+- **Comprehensive Citation System (CRITICAL):**
+  - Every outline point MUST have source attribution
+  - **Per-Section Source Mapping:**
+    - Primary sources (directly supporting the point)
+    - Secondary sources (providing context/background)
+    - Quotable passages with exact source reference
+  - **Citation Metadata per reference:**
+    - Full bibliographic info (author, title, date, URL)
+    - Exact quote or paraphrase
+    - Page/chapter reference (for books)
+    - Readwise URL for one-click access
+  - **Source Validation:**
+    - Flag unsupported claims (no KB source found)
+    - Highlight sections needing external research
+    - Track source coverage per section (% of claims backed by KB)
+  - **Source Bibliography:**
+    - Auto-generate bibliography section
+    - Group by source type (Books, Articles, Highlights)
+    - Include full citation details
+- **MCP Tool:** `generate_article_outline(idea_id, template, depth)`
+- **Iterative Refinement:** Edit and regenerate outline sections
+
+**Dependencies:**
+- Story 5.1 (Blog Idea Extraction) - idea selection
+- Story 2.1 (Knowledge Cards) - content for outline
+- Story 2.7 (URL Link Storage) - source URLs for citations
+
+**Technical Approach:**
+- Template-based outline generation with Gemini
+- Chunk-to-section mapping via semantic similarity
+- Markdown output for VS Code editing
+- Firestore storage of outlines
+- Source validation via KB lookup
+
+**Success Metrics:**
+- Outlines cover >90% of relevant KB content
+- Logical flow validated by user in >85% of cases
+- Source references are accurate and useful
+- **>95% of claims have KB source attribution**
+- **100% of quotes traceable to original source**
+- Generation time <45 seconds
+
+**Business Value:**
+- Clear roadmap for article writing
+- Ensures no key points are missed
+- Structured approach to content creation
+- Foundation for collaborative editing
+
+**Output Format (with full citation details):**
+```markdown
+# Article Outline: Why Platform Engineering Is Not About Tools
+
+**Target:** 2,500-3,000 words | **Style:** Thought Leadership | **Audience:** Engineering Leaders
+**Source Coverage:** 12 books, 8 articles, 23 highlights | **KB Coverage:** 94%
+
+---
+
+## 1. Introduction: The Tools Trap (300 words)
+- Hook: "Every platform engineering conference is dominated by tool demos..."
+- Problem statement: Tools-first thinking leads to platform failure
+- Thesis: Successful platforms are built on culture and product thinking
+
+### Sources for Section 1:
+| Source | Type | Author | Key Quote | Link |
+|--------|------|--------|-----------|------|
+| Team Topologies (Ch. 5) | Book | Skelton & Pais | "Platform teams exist to enable..." | [Readwise](https://readwise.io/...) |
+| Platform Engineering (2024) | Article | Fowler | "The tools trap is real..." | [Source](https://martinfowler.com/...) |
+
+---
+
+## 2. The Product Mindset Shift (500 words)
+- Platform teams as product teams
+- Developers as customers, not users
+- Key insight: Measure outcomes, not outputs
+
+### Quote to use:
+> "A platform is a foundation of self-service APIs, tools, services, knowledge and
+> support which are arranged as a compelling internal product."
+> — **Team Topologies**, Matthew Skelton & Manuel Pais, p. 87
+> [Open in Readwise](https://readwise.io/open/highlight/12345)
+
+### Sources for Section 2:
+| Source | Type | Author | Relevance | Link |
+|--------|------|--------|-----------|------|
+| Team Topologies | Book | Skelton & Pais | Primary | [Readwise](https://readwise.io/...) |
+| The DevEx Framework | Article | Forsgren et al. | Secondary | [Source](https://queue.acm.org/...) |
+| Accelerate | Book | Forsgren, Humble, Kim | Supporting | [Readwise](https://readwise.io/...) |
+
+---
+
+## 3. Culture Eats Tools for Breakfast (600 words)
+### 3.1 Psychological Safety for Platform Adoption
+- Golden paths require trust
+- Failure tolerance enables experimentation
+
+### 3.2 Team Topologies Alignment
+- Stream-aligned teams consume, platform teams enable
+
+### Sources for Section 3:
+| Source | Type | Author | Key Quote | Link |
+|--------|------|--------|-----------|------|
+| Fearless Organization | Book | Amy Edmondson | "Psychological safety is..." | [Readwise](https://readwise.io/...) |
+| Team Topologies | Book | Skelton & Pais | "Stream-aligned teams..." | [Readwise](https://readwise.io/...) |
+
+... [continues with full outline]
+
+---
+
+## Identified Gaps (No KB Source Found)
+- [ ] Need concrete metrics examples for Section 4 ⚠️ NO KB SOURCE
+- [ ] Consider adding case study from own experience ⚠️ PERSONAL CONTENT NEEDED
+
+---
+
+## Full Bibliography
+
+### Books (5 sources)
+1. **Team Topologies** - Skelton, M. & Pais, M. (2019) - [Readwise](https://readwise.io/...)
+2. **Accelerate** - Forsgren, N., Humble, J., Kim, G. (2018) - [Readwise](https://readwise.io/...)
+3. **The Fearless Organization** - Edmondson, A. (2019) - [Readwise](https://readwise.io/...)
+4. **Building Evolutionary Architectures** - Ford, N. et al. (2017) - [Readwise](https://readwise.io/...)
+5. **A Philosophy of Software Design** - Ousterhout, J. (2018) - [Readwise](https://readwise.io/...)
+
+### Articles (4 sources)
+1. **What I Talk About When I Talk About Platforms** - Fowler, M. (2024) - [Source](https://martinfowler.com/...)
+2. **The DevEx Framework** - Forsgren, N. et al. (2023) - [Source](https://queue.acm.org/...)
+3. **Platform Engineering on Kubernetes** - Salatino, M. (2024) - [Source](https://www.infoq.com/...)
+4. **Golden Paths** - Thoughtworks (2023) - [Source](https://www.thoughtworks.com/...)
+
+### Highlights (12 passages used)
+- See inline citations above
+```
+
+---
+
+### Story 5.3: AI-Assisted Draft Generation
+
+**Status:** Backlog
+
+**Summary:** Generate article drafts from outlines, producing polished prose with proper KB references, quotations, and structured arguments. Drafts serve as starting points for human editing, not final outputs—emphasizing collaboration between AI and author.
+
+**Key Features:**
+- **Section-by-Section Generation:**
+  - Generate one section at a time for focused editing
+  - Or generate full draft for complete overview
+  - Maintain consistent voice and tone throughout
+- **Academic-Grade Citation System (CRITICAL):**
+  - **Citation Formats Supported:**
+    - Footnote-style: `[^1]` with full reference at bottom
+    - Inline: `(Author, Year)` academic style
+    - Hyperlink: `[quote](readwise-url)` for digital-first
+    - None: Clean prose without visible citations (references appendix)
+  - **Per-Citation Requirements:**
+    - Author name(s)
+    - Source title (book/article)
+    - Publication year
+    - Page number or chapter (for books)
+    - Direct Readwise/source URL
+    - Quote vs. paraphrase indicator
+  - **Quote Handling:**
+    - Exact quotes preserved verbatim from KB
+    - Block quotes for passages >40 words
+    - Attribution includes author + source + page
+    - Readwise link for verification
+  - **Paraphrase Tracking:**
+    - Mark paraphrased content with source reference
+    - Distinguish "inspired by" vs "based on"
+    - Track confidence: direct KB match vs. inferred
+  - **Citation Validation:**
+    - Verify all citations match actual KB content
+    - Flag hallucinated citations (no KB source)
+    - Generate citation accuracy report
+- **Voice & Style:**
+  - Configurable tone: professional, conversational, academic
+  - First-person vs. third-person option
+  - Match existing blog voice (via example input)
+- **Quality Controls:**
+  - Avoid generic AI-sounding phrases
+  - Ensure factual accuracy to source material
+  - Flag sections needing human attention
+  - **Zero tolerance for unsourced claims** (flag in output)
+- **MCP Tool:** `generate_draft(outline_id, sections, voice, style, citation_format)`
+- **Markdown Output:** Compatible with VS Code and Obsidian
+
+**Dependencies:**
+- Story 5.2 (Article Outline) - outline as blueprint
+- Story 4.1 (KB Digest Engine) - synthesis capabilities
+- Story 2.7 (URL Link Storage) - source URLs
+
+**Technical Approach:**
+- Gemini 2.0 Pro for long-form generation
+- Section-aware context window management
+- Voice matching via few-shot examples
+- Citation format configurable (footnotes, inline, hyperlink, none)
+- Citation validation pass before output
+
+**Success Metrics:**
+- >70% of draft content usable with minor edits
+- **100% of citations verifiable against KB sources**
+- **0% hallucinated references**
+- **All quotes match original source verbatim**
+- Consistent voice throughout article
+- Generation time <90 seconds per 500-word section
+
+**Business Value:**
+- Accelerate writing from days to hours
+- Focus human effort on refinement, not drafting
+- Maintain authenticity with source-based content
+- Professional quality starting point
+
+**Draft Output Example (with full citation traceability):**
+```markdown
+# Why Platform Engineering Is Not About Tools
+
+*Draft generated from outline-001 | Voice: Professional, First-person*
+*Citation Format: Footnotes | Sources: 5 books, 4 articles, 12 highlights*
+*Citation Accuracy: 100% verified against KB*
+
+---
+
+## Introduction: The Tools Trap
+
+Walk into any platform engineering conference, and you'll be overwhelmed by tool
+demonstrations. Kubernetes operators, GitOps pipelines, developer portals—the
+technology showcase is impressive. But here's what those demos won't tell you:
+most platform initiatives fail not because of tools, but despite them.[^1]
+
+After analyzing dozens of platform engineering case studies in my knowledge base,
+a clear pattern emerges. The organizations that succeed don't start with tools.
+They start with a fundamental mindset shift: treating their internal platform as
+a product, and their developers as customers.[^2]
+
+> "A platform is a foundation of self-service APIs, tools, services, knowledge and
+> support which are arranged as a compelling internal product."
+> — Matthew Skelton & Manuel Pais[^3]
+
+This article argues that successful platform engineering requires three things that
+no tool can provide: product thinking, cultural alignment, and relentless focus on
+developer experience. As Nicole Forsgren's research demonstrates, "what matters is
+not which tools you use, but how you use them to enable flow."[^4]
+
+---
+
+## References
+
+[^1]: Fowler, M. (2024). "What I Talk About When I Talk About Platforms."
+      *martinfowler.com*. Retrieved from [Source](https://martinfowler.com/articles/talk-about-platforms.html).
+      [Open in Readwise](https://readwise.io/open/article/67890)
+
+[^2]: This insight synthesized from 12 articles in the Platform Engineering cluster.
+      Primary sources: Fowler (2024), Skelton & Pais (2019), Salatino (2024).
+      [View cluster](https://readwise.io/search?q=cluster:platform-engineering)
+
+[^3]: Skelton, M. & Pais, M. (2019). *Team Topologies: Organizing Business and
+      Technology Teams for Fast Flow*. IT Revolution Press, p. 87.
+      ISBN: 978-1942788812. [Open in Readwise](https://readwise.io/bookreview/12345)
+
+[^4]: Forsgren, N., Humble, J., & Kim, G. (2018). *Accelerate: The Science of
+      Lean Software and DevOps*. IT Revolution Press, p. 142.
+      [Open in Readwise](https://readwise.io/bookreview/23456)
+
+---
+
+## Citation Report
+
+| Claim | Source Type | Verification | KB Match |
+|-------|-------------|--------------|----------|
+| "most initiatives fail..." | Article | ✅ Verified | 98% match |
+| "product thinking mindset" | Book | ✅ Verified | 95% match |
+| Block quote (Skelton) | Book | ✅ Exact | 100% verbatim |
+| "what matters is not which tools" | Book | ✅ Verified | 97% match |
+
+**Unsourced Claims:** 0
+**Hallucinated References:** 0
+**Total Citations:** 4
+**KB Coverage:** 100%
+```
+
+---
+
+### Story 5.4: Article Development Log (Blog Journal)
+
+**Status:** Backlog
+
+**Summary:** Maintain a persistent log of article development across sessions, tracking ideas, outlines, drafts, and revisions. The log enables multi-session article development, allowing users to pick up where they left off and maintain a history of content evolution.
+
+**Key Features:**
+- **Article Lifecycle Tracking:**
+  - `idea` → `outlined` → `drafting` → `reviewing` → `published`
+  - Timestamps for each state transition
+  - Session logs with changes made
+- **Multi-Session Support:**
+  - Resume article development in any session
+  - View diff between versions
+  - Branching for alternative approaches
+- **Development Notes:**
+  - User annotations and TODOs
+  - AI suggestions for improvement
+  - Feedback incorporation tracking
+- **MCP Tools:**
+  - `list_articles(status)` - View articles in progress
+  - `resume_article(article_id)` - Continue development
+  - `save_article_state(article_id, content)` - Checkpoint progress
+  - `get_article_history(article_id)` - View evolution
+- **Firestore Persistence:** Full article state stored for continuity
+
+**Dependencies:**
+- Story 5.3 (Draft Generation) - draft content to track
+- Story 5.2 (Outline Generation) - outline to track
+
+**Technical Approach:**
+- Firestore collection `blog_articles` with versioned content
+- State machine for article lifecycle
+- MCP tools for article management
+- Markdown storage with frontmatter metadata
+
+**Success Metrics:**
+- 100% of article states preserved across sessions
+- Resume functionality works seamlessly
+- Version history accessible and accurate
+- No data loss on session interruption
+
+**Business Value:**
+- Long-form content development over time
+- Never lose progress on articles
+- Track how ideas evolve
+- Enables "article sprints" across multiple days
+
+**Firestore Document Structure:**
+```json
+{
+  "article_id": "article-20251217-platform-eng",
+  "title": "Why Platform Engineering Is Not About Tools",
+  "status": "drafting",
+  "created_at": "2025-12-17T10:00:00Z",
+  "updated_at": "2025-12-18T14:30:00Z",
+  "idea": {
+    "id": "idea-001",
+    "generated_at": "2025-12-17T10:00:00Z"
+  },
+  "outline": {
+    "version": 2,
+    "content": "...",
+    "generated_at": "2025-12-17T11:00:00Z"
+  },
+  "drafts": [
+    {
+      "version": 1,
+      "content": "...",
+      "generated_at": "2025-12-17T14:00:00Z",
+      "word_count": 2847
+    },
+    {
+      "version": 2,
+      "content": "...",
+      "generated_at": "2025-12-18T14:30:00Z",
+      "word_count": 3102,
+      "changes": "Expanded section 3, added case study"
+    }
+  ],
+  "notes": [
+    {"timestamp": "2025-12-17T15:00:00Z", "note": "Need to add metrics section"},
+    {"timestamp": "2025-12-18T10:00:00Z", "note": "Consider contrarian angle for intro"}
+  ],
+  "source_clusters": ["cluster-28", "cluster-15"],
+  "source_chunks": ["chunk-123", "chunk-456", "..."]
+}
+```
+
+---
+
+### Story 5.5: Article Series & Consolidation
+
+**Status:** Backlog
+
+**Summary:** Support multi-article series development and consolidation of related articles into comprehensive long-form content. Enable users to plan article sequences that build on each other, and later combine them into definitive guides or ebooks.
+
+**Key Features:**
+- **Series Planning:**
+  - Define article series with common theme
+  - Plan article sequence and dependencies
+  - Track series completion status
+  - Generate series overview/introduction
+- **Article Linking:**
+  - Cross-reference between series articles
+  - "Previously in this series" links
+  - "Coming next" teasers
+  - Shared terminology and definitions
+- **Consolidation Engine:**
+  - Combine multiple articles into single long-form piece
+  - Remove redundancy across articles
+  - Add transitions and narrative flow
+  - Generate unified table of contents
+- **MCP Tools:**
+  - `create_series(title, description, articles)` - Plan series
+  - `consolidate_articles(article_ids, output_format)` - Merge articles
+  - `get_series_status(series_id)` - Track progress
+
+**Dependencies:**
+- Story 5.4 (Article Development Log) - article tracking
+- Story 5.3 (Draft Generation) - draft content
+
+**Technical Approach:**
+- Series metadata in Firestore `blog_series` collection
+- Consolidation via Gemini long-context processing
+- Redundancy detection via embedding similarity
+- Markdown output with consistent formatting
+
+**Success Metrics:**
+- Series articles maintain consistent voice
+- Consolidation removes >90% of redundancy
+- Cross-references accurate and helpful
+- Consolidated output is coherent and flows naturally
+
+**Business Value:**
+- Build toward major content pieces
+- Repurpose blog content for ebooks/guides
+- Systematic knowledge publication
+- Content compounds over time
+
+---
+
+### Story 5.6: Obsidian Export & Publishing Workflow
+
+**Status:** Backlog
+
+**Summary:** Export finished articles to Obsidian vault with proper formatting, wikilinks, and metadata. Support the full workflow from draft completion to Obsidian publication, including frontmatter generation and bidirectional links to source KB items.
+
+**Key Features:**
+- **Obsidian-Compatible Export:**
+  - Markdown with YAML frontmatter
+  - Wikilinks to related notes (`[[note-name]]`)
+  - Tags matching Obsidian conventions
+  - Proper heading hierarchy
+- **Frontmatter Generation:**
+  - title, date, tags, status
+  - Source KB references as links
+  - Word count, reading time
+  - Series information if applicable
+- **Bidirectional Linking:**
+  - Link from article to source KB items
+  - Update source KB items with "Used in article" backlinks
+  - Create Obsidian dataview compatible metadata
+- **Export Options:**
+  - Single file export
+  - Export with all referenced notes
+  - Export series as folder structure
+- **VS Code Integration:**
+  - Save directly to Obsidian vault path
+  - Open in VS Code after export
+  - Preview in Obsidian via URI scheme
+- **MCP Tool:** `export_to_obsidian(article_id, vault_path, options)`
+
+**Dependencies:**
+- Story 5.4 (Article Development Log) - article content
+- Obsidian vault path configuration
+
+**Technical Approach:**
+- Markdown transformation for Obsidian compatibility
+- Frontmatter YAML generation
+- Wikilink syntax conversion
+- File system write to configured vault path
+
+**Success Metrics:**
+- Exported files render correctly in Obsidian
+- Wikilinks resolve to existing notes
+- Frontmatter parseable by Obsidian
+- No manual formatting needed post-export
+
+**Business Value:**
+- Seamless publishing workflow
+- Articles integrated into personal knowledge
+- Bidirectional links enhance discoverability
+- Content lives in user's own system
+
+**Export Format:**
+```markdown
+---
+title: "Why Platform Engineering Is Not About Tools"
+date: 2025-12-18
+status: published
+tags:
+  - platform-engineering
+  - developer-experience
+  - thought-leadership
+word_count: 3102
+reading_time: 12 min
+series: "Platform Engineering Deep Dive"
+series_part: 1
+sources:
+  - "[[Platform Engineering Cluster]]"
+  - "[[Team Topologies Highlights]]"
+  - "[[Developer Experience Notes]]"
+created_via: kx-hub-blogging-engine
+---
+
+# Why Platform Engineering Is Not About Tools
+
+Walk into any platform engineering conference, and you'll be overwhelmed by tool
+demonstrations...
+
+## Related Notes
+- [[Platform Engineering Cluster]] - Source cluster for this article
+- [[Developer Experience Metrics]] - Referenced in Section 4
+- [[Team Topologies Book Notes]] - Key framework cited
+
+## See Also
+- [[Part 2 - Building Platform Teams]] (coming soon)
+- [[Part 3 - Measuring Platform Success]] (planned)
+```
+
+---
+
+### Story 5.7: Claude Code Integration for Article Editing
+
+**Status:** Backlog
+
+**Summary:** Enable seamless article editing workflow in VS Code with Claude Code assistance. Users can open generated drafts in VS Code, use Claude Code for iterative refinement, and sync changes back to the kx-hub article log.
+
+**Key Features:**
+- **VS Code Workflow:**
+  - Export draft to VS Code workspace
+  - Edit with Claude Code assistance
+  - Real-time AI suggestions
+  - Markdown preview
+- **Claude Code Integration:**
+  - Access KB context for fact-checking
+  - Request section rewrites
+  - Generate alternative phrasings
+  - Expand or condense sections
+- **Sync Back to kx-hub:**
+  - Save edited content back to article log
+  - Track changes between sessions
+  - Preserve version history
+- **MCP Bridge:**
+  - Claude Code can query kx-hub for source material
+  - Request additional KB context
+  - Verify citations and quotes
+
+**Dependencies:**
+- Story 5.4 (Article Development Log) - article storage
+- Claude Code installation
+- VS Code workspace setup
+
+**Technical Approach:**
+- Export to `.md` file in configured workspace
+- kx-hub MCP server provides KB context to Claude Code
+- File watcher or manual sync for changes
+- Git-based version tracking optional
+
+**Success Metrics:**
+- Drafts open in VS Code without formatting issues
+- Claude Code can access KB for context
+- Changes sync back to kx-hub reliably
+- Editing workflow feels natural
+
+**Business Value:**
+- Best of both worlds: AI generation + IDE editing
+- Familiar VS Code environment
+- Claude Code for refinement assistance
+- Professional writing workflow
+
+---
+
+## Epic 5 Summary
+
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 5.1 | Blog Idea Extraction from Knowledge Base | Medium |
+| 5.2 | Article Structure & Outline Generation | Medium |
+| 5.3 | AI-Assisted Draft Generation | High |
+| 5.4 | Article Development Log (Blog Journal) | Medium |
+| 5.5 | Article Series & Consolidation | Medium |
+| 5.6 | Obsidian Export & Publishing Workflow | Medium |
+| 5.7 | Claude Code Integration for Article Editing | Low |
+
+**Recommended Implementation Order:**
+1. Story 5.1 (Blog Ideas) - foundation for content creation
+2. Story 5.2 (Outlines) - structure before content
+3. Story 5.3 (Draft Generation) - core capability
+4. Story 5.4 (Article Log) - multi-session support
+5. Story 5.6 (Obsidian Export) - publishing workflow
+6. Story 5.5 (Series) + 5.7 (VS Code) - advanced features
+
+**Cost Analysis:**
+| Component | Monthly Cost |
+|-----------|-------------|
+| Gemini Pro (idea generation) | ~$0.10 |
+| Gemini Pro (outline/draft) | ~$0.40 |
+| Firestore (article storage) | ~$0.05 |
+| Cloud Functions | ~$0.01 |
+| **Total** | **~$0.56/month** |
+
+---
+
+## Epic 6: User Experience & Discoverability
+
+**Goal:** Reduce system complexity and make kx-hub's capabilities discoverable without memorizing MCP tool names. Address the "Too Many Tools" problem that degrades AI tool selection and overwhelms users.
+
+**Problem Statement:**
+- kx-hub accumulates 30+ MCP tools across Epics 1-5
+- Research shows Claude's tool selection degrades significantly with >30 tools
+- Users must "know" tool names to use features via chat
+- Token overhead can reach 100K+ before conversation starts
+- No visual way to explore knowledge or trigger workflows
+
+**Business Value:** Without addressing discoverability, the powerful features from Epics 4-5 remain underutilized. Users default to basic queries because they don't know what's possible.
+
+**Dependencies:** Epic 4 + Epic 5 (provides the functionality to expose)
+
+**Status:** Planned - **DECISION REQUIRED** (3 options below)
+
+---
+
+### Architectural Decision: UI/UX Approach
+
+This epic requires a strategic decision between three approaches. Each has distinct trade-offs.
+
+---
+
+## Option A: Minimal Web Interface
+
+**Concept:** Build a lightweight, single-purpose web app focused on exploration and one-click actions. NOT a full-featured app—just a dashboard for discovering and triggering kx-hub capabilities.
+
+### Key Features
+- **Knowledge Dashboard:** Visual overview of clusters, recent items, digest status
+- **One-Click Actions:** "Generate Digest", "Get Blog Ideas", "Summarize Inbox"
+- **Workflow Wizards:** Guided flows for complex operations (blogging pipeline)
+- **Results Viewer:** Display generated content with copy/export actions
+- **MCP Passthrough:** Actions trigger existing MCP tools (no new backend logic)
+
+### Technical Approach
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Minimal Web Interface                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │  Dashboard   │  │   Actions    │  │   Results    │          │
+│  │  (read-only) │  │  (triggers)  │  │   (display)  │          │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
+└─────────┼─────────────────┼─────────────────┼───────────────────┘
+          │                 │                 │
+          ▼                 ▼                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Cloud Functions (HTTP endpoints)                    │
+│   GET /dashboard   POST /actions/{tool}   GET /results/{id}     │
+└─────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Existing MCP Server Logic                     │
+│         (Firestore, Gemini, Readwise API - unchanged)           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Stories (if chosen)
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 6.A.1 | Dashboard: KB Overview (clusters, item counts, recent activity) | Medium |
+| 6.A.2 | Action Buttons: Trigger digest/blog/synthesis workflows | Low |
+| 6.A.3 | Results Viewer: Display generated content with export | Medium |
+| 6.A.4 | Auth: Firebase Auth (Google Sign-in, single-user) | Low |
+| 6.A.5 | Hosting: Firebase Hosting (static SPA) | Low |
+
+### Pros
+- **Universal Access:** Works on any device with browser
+- **Visual Exploration:** See knowledge landscape at a glance
+- **No Learning Curve:** Click buttons instead of remembering commands
+- **Shareable:** Can share digest URLs (future)
+- **Modern UX:** Full control over design
+
+### Cons
+- **Additional Infrastructure:** New codebase to maintain
+- **Auth Complexity:** Need user authentication
+- **Duplication Risk:** May duplicate Claude Desktop UX
+- **Cost:** Firebase Hosting free tier, but Auth/Functions add ~$0-2/month
+- **Scope Creep:** Temptation to build "full app"
+
+### Estimated Effort: 8-12 days
+### Monthly Cost: ~$0-2 (Firebase free tier covers most usage)
+
+---
+
+## Option B: Obsidian Plugin
+
+**Concept:** Build an Obsidian plugin that surfaces kx-hub capabilities within the existing Obsidian workflow. Leverages bidirectional sync for blogging and integrates with local vault.
+
+### Key Features
+- **Sidebar Panel:** Show KB clusters, digest status, blog ideas
+- **Command Palette Integration:** `/kx-digest`, `/kx-blog-ideas`, etc.
+- **Inline Actions:** Right-click on note → "Find related in KB"
+- **Blog Draft Injection:** Generate drafts directly into Obsidian notes
+- **Backlinks to KB:** Link Obsidian notes to kx-hub sources
+
+### Technical Approach
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Obsidian Vault                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                kx-hub Plugin                              │   │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐         │   │
+│  │  │  Sidebar   │  │  Commands  │  │  Note      │         │   │
+│  │  │  Panel     │  │  Palette   │  │  Actions   │         │   │
+│  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘         │   │
+│  └────────┼───────────────┼───────────────┼─────────────────┘   │
+└───────────┼───────────────┼───────────────┼─────────────────────┘
+            │               │               │
+            ▼               ▼               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              kx-hub Cloud Functions (HTTP API)                   │
+│    Same endpoints as Option A, but called from Obsidian plugin  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Stories (if chosen)
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 6.B.1 | Plugin Scaffold: TypeScript plugin with settings | Medium |
+| 6.B.2 | Sidebar Panel: KB overview, cluster list, stats | High |
+| 6.B.3 | Command Palette: 5-7 core commands for workflows | Medium |
+| 6.B.4 | Note Actions: Context menu items for KB integration | Medium |
+| 6.B.5 | Draft Injection: Create/update notes from blog engine | Medium |
+| 6.B.6 | HTTP Backend: Cloud Functions for plugin API | Medium |
+
+### Pros
+- **Workflow Integration:** Blogging happens where articles live
+- **No Context Switch:** Stay in Obsidian for everything
+- **Bidirectional Links:** Natural fit for KB ↔ Obsidian linking
+- **Existing Users:** 150,000+ AI plugin users in Obsidian ecosystem
+- **Local-First Option:** Can cache KB data locally
+
+### Cons
+- **Obsidian-Only:** Excludes users without Obsidian
+- **Plugin Development:** Obsidian API has learning curve
+- **UI Constraints:** Limited to Obsidian's UI paradigms
+- **Maintenance:** Must track Obsidian API changes
+- **Mobile Limitations:** Obsidian mobile has plugin restrictions
+
+### Estimated Effort: 12-18 days
+### Monthly Cost: $0 (no additional infrastructure)
+
+---
+
+## Option C: Focused MCP with Workflow Tools
+
+**Concept:** Instead of building new UI, restructure MCP tools into workflow-oriented "mega-tools" that guide users through complex operations. Leverage Anthropic's new Tool Search Tool for discovery.
+
+### Key Features
+- **Workflow Tools:** Replace 30+ tools with 5-7 workflow-oriented tools
+  - `explore_knowledge()` - Guided KB exploration
+  - `weekly_ritual()` - Combined digest + recommendations + inbox
+  - `start_blog()` - Interactive blogging wizard via chat
+  - `what_can_i_do()` - Meta-tool explaining all capabilities
+- **Tool Search Integration:** Enable Anthropic's beta Tool Search Tool
+- **Contextual Help:** Each tool provides next-step suggestions
+- **Progressive Disclosure:** Start simple, offer "advanced" sub-commands
+
+### Technical Approach
+```
+BEFORE (30+ tools, overwhelming):
+┌──────────────────────────────────────────────────────────────┐
+│  get_clusters, search_kb, get_recommendations, generate_digest,
+│  summarize_inbox, get_blog_ideas, generate_outline, generate_draft,
+│  save_to_reader, get_cluster_digest, configure_preferences, ...
+└──────────────────────────────────────────────────────────────┘
+
+AFTER (5-7 workflow tools, focused):
+┌──────────────────────────────────────────────────────────────┐
+│                                                               │
+│  1. what_can_i_do()         - "What can kx-hub do for me?"   │
+│  2. explore_knowledge(topic) - Guided KB exploration          │
+│  3. weekly_ritual()          - Full weekly knowledge ritual   │
+│  4. start_blog(idea?)        - Interactive blogging wizard    │
+│  5. quick_action(action)     - Single-purpose shortcuts       │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Stories (if chosen)
+| Story | Description | Complexity |
+|-------|-------------|------------|
+| 6.C.1 | Refactor: Consolidate tools into 5-7 workflow tools | High |
+| 6.C.2 | `what_can_i_do()`: Meta-tool for capability discovery | Low |
+| 6.C.3 | `weekly_ritual()`: Combined digest workflow | Medium |
+| 6.C.4 | `start_blog()`: Interactive blogging wizard | Medium |
+| 6.C.5 | Tool Search Integration: Enable Anthropic beta feature | Low |
+| 6.C.6 | Contextual Prompts: Next-step suggestions in responses | Low |
+
+### Pros
+- **No New UI:** Stays in Claude Desktop/Code ecosystem
+- **85% Token Reduction:** Tool Search reduces overhead dramatically
+- **Natural Language:** Users describe intent, not tool names
+- **Maintains Simplicity:** No additional apps to maintain
+- **Future-Proof:** Aligns with Anthropic's MCP direction
+
+### Cons
+- **Still Chat-Based:** No visual exploration of knowledge
+- **Learning Curve:** Users must still learn to "ask the right questions"
+- **Depends on Beta:** Tool Search Tool is beta feature
+- **Less Discoverable:** Features hidden until asked about
+- **No Direct Manipulation:** Can't click/drag/browse visually
+
+### Estimated Effort: 6-10 days
+### Monthly Cost: $0 (no additional infrastructure)
+
+---
+
+## Comparison Matrix
+
+| Criteria | Option A (Web) | Option B (Obsidian) | Option C (MCP) |
+|----------|----------------|---------------------|----------------|
+| **Discoverability** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Complexity Added** | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **Blogging Integration** | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Maintenance Burden** | ⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **Universal Access** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
+| **Development Effort** | 8-12 days | 12-18 days | 6-10 days |
+| **Monthly Cost** | ~$0-2 | $0 | $0 |
+
+---
+
+## Recommendation
+
+**Start with Option C (Focused MCP)**, then evaluate need for Option A or B based on usage patterns.
+
+**Rationale:**
+1. **Lowest Risk:** No new infrastructure, fastest to implement
+2. **Tests Hypothesis:** Discover if discoverability is the real problem
+3. **Aligns with Ecosystem:** Anthropic's Tool Search is the industry direction
+4. **Keeps Options Open:** Can add Web/Obsidian later if needed
+
+**If Option C proves insufficient after 2-3 months:**
+- High blogging usage → Add Option B (Obsidian Plugin)
+- Need for sharing/visual exploration → Add Option A (Web Interface)
+
+---
+
+## Epic 6 Summary (Pending Decision)
+
+| Option | Stories | Status | Complexity |
+|--------|---------|--------|------------|
+| A: Minimal Web Interface | 5 | Candidate | Medium |
+| B: Obsidian Plugin | 6 | Candidate | High |
+| C: Focused MCP Workflows | 6 | **Recommended** | Low-Medium |
+
+**Decision Needed:** Choose approach before implementation begins.
+
+**Cost Analysis (all options):**
+| Option | Monthly Cost |
+|--------|-------------|
+| A: Web Interface | ~$0-2 (Firebase) |
+| B: Obsidian Plugin | $0 |
+| C: Focused MCP | $0 |
+
+---
+
+## Future Epics (Beyond Epic 6)
 
 See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backlog) for planned enhancements:
 
-- **Epic 5:** Export & Distribution
+- **Epic 7:** Export & Distribution
   - GitHub export (Markdown + graph.json)
-  - Obsidian vault sync
   - Static knowledge graph visualization
+  - Public sharing options
 
-- **Epic 6:** Advanced Integrations
+- **Epic 8:** Advanced Integrations
   - DayOne Journal import
   - Multi-source integration (Pocket, Instapaper)
   - Mobile companion app
 
-- **Epic 7:** Analytics & Insights
+- **Epic 9:** Analytics & Insights
   - Reading habit analytics
   - Knowledge growth tracking
   - Cluster evolution visualization
+  - Content production metrics
 
 ---
 
@@ -1220,11 +2298,13 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 |------|---------|--------|------------|
 | Epic 1: Core Pipeline & KB Infrastructure | 8 | Complete | 8/8 Complete (100%) |
 | Epic 2: Enhanced Knowledge Graph & Clustering | 7 | Complete | 7/7 Complete (100%) |
-| Epic 3: Knowledge Graph Enhancement & Optimization | 8 | Active | 2/8 Complete (25%) |
-| Epic 4: Intelligent Reading Synthesis & Automated Curation | 7 | Planned | 0/7 (0%) |
-| Epic 5: Export & Distribution (Future) | TBD | Backlog | 0% |
-| Epic 6: Advanced Integrations (Future) | TBD | Backlog | 0% |
-| Epic 7: Analytics & Insights (Future) | TBD | Backlog | 0% |
+| Epic 3: Knowledge Graph Enhancement & Optimization | 10 | Active | 2/10 Complete (20%) |
+| Epic 4: Knowledge Digest & Email Summaries | 6 | Planned | 0/6 (0%) |
+| Epic 5: AI-Powered Blogging Engine | 7 | Planned | 0/7 (0%) |
+| Epic 6: User Experience & Discoverability | TBD | **Decision Required** | 0% |
+| Epic 7: Export & Distribution (Future) | TBD | Backlog | 0% |
+| Epic 8: Advanced Integrations (Future) | TBD | Backlog | 0% |
+| Epic 9: Analytics & Insights (Future) | TBD | Backlog | 0% |
 
 ---
 
@@ -1233,4 +2313,5 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 - **Architecture:** Serverless Google Cloud (Cloud Functions, Workflows, Firestore, Vertex AI)
 - **Cost Target:** <$5/month (Current: $1.40/month - **72% under budget**)
 - **Success Criteria:** All PRD section 7 metrics met or exceeded
-- **Next Milestone:** Complete Story 1.7 (MCP Server) to enable conversational knowledge access
+- **Next Milestone:** Complete Epic 3, then Epic 4 (Knowledge Digests) for email delivery
+- **Epic 6 Decision:** Required before Epics 4-5 complete to inform tool design
