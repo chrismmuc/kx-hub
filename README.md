@@ -17,12 +17,12 @@ A serverless knowledge base system that automatically transforms your daily read
 Query your knowledge base conversationally through Claude Desktop using natural language - no context switching required!
 
 **Features:**
-- 🔍 Semantic search across 813 chunks
-- 📊 Filter by author, source, or tags
-- 🔗 Discover related content
-- 💬 Conversational interface (no copy-paste)
-- ⚡ <1 second query response time
-- 💰 ~$0.15/month additional cost
+- 🔍 **Unified search**: Semantic + metadata + time filters in one tool
+- 📊 **Smart clusters**: Auto-organized topics with related cluster discovery
+- 🎯 **Reading recommendations**: AI-powered suggestions from quality sources
+- 💡 **Knowledge cards**: AI-generated summaries and key takeaways
+- ⚡ **Optimized**: 9 consolidated tools (down from 25), 64% reduction
+- 💰 **Cost-effective**: ~$0.15/month additional cost
 
 **Quick Start:**
 ```bash
@@ -31,11 +31,12 @@ cat docs/mcp-server-setup.md
 ```
 
 **Example Queries:**
-- "What insights do I have about decision making?"
-- "Show me all highlights from Daniel Kahneman"
-- "Find content similar to this passage about habits"
+- "Search my knowledge base for articles about decision making from last month"
+- "Show me my AI/ML cluster with related topics"
+- "Give me reading recommendations based on what I've been reading"
+- "What did I read yesterday with activity summary?"
 
-→ [Setup Guide](docs/mcp-server-setup.md) | [Usage Examples](docs/mcp-server-usage.md) | [Architecture](docs/architecture/mcp-integration.md)
+→ [Setup Guide](docs/mcp-server-setup.md) | [MCP Tools API](docs/mcp-tools-api.md) | [User Guide](docs/mcp-server-guide.md)
 
 ## 💰 Cost
 

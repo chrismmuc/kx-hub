@@ -75,8 +75,8 @@ def create_mcp_server() -> Server:
         logger.info("Handling list_tools request")
         return [
             Tool(
-                name="search_semantic",
-                description="Search knowledge base using semantic similarity (natural language queries)",
+                name="search_kb",
+                description="Unified knowledge base search with flexible filtering (Story 4.1). Combines semantic search with cluster, metadata, time, and knowledge card filters.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -84,72 +84,109 @@ def create_mcp_server() -> Server:
                             "type": "string",
                             "description": "Natural language search query"
                         },
+                        "filters": {
+                            "type": "object",
+                            "description": "Optional filters to narrow results",
+                            "properties": {
+                                "cluster_id": {
+                                    "type": "string",
+                                    "description": "Scope search to specific cluster ID"
+                                },
+                                "tags": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Filter by tags (array-contains-any)"
+                                },
+                                "author": {
+                                    "type": "string",
+                                    "description": "Filter by exact author name"
+                                },
+                                "source": {
+                                    "type": "string",
+                                    "description": "Filter by source (e.g., 'kindle', 'reader')"
+                                },
+                                "date_range": {
+                                    "type": "object",
+                                    "description": "Filter by date range",
+                                    "properties": {
+                                        "start": {
+                                            "type": "string",
+                                            "description": "Start date in YYYY-MM-DD format"
+                                        },
+                                        "end": {
+                                            "type": "string",
+                                            "description": "End date in YYYY-MM-DD format"
+                                        }
+                                    },
+                                    "required": ["start", "end"]
+                                },
+                                "period": {
+                                    "type": "string",
+                                    "description": "Relative time period",
+                                    "enum": ["yesterday", "last_3_days", "last_week", "last_7_days", "last_month", "last_30_days"]
+                                },
+                                "search_cards_only": {
+                                    "type": "boolean",
+                                    "description": "Search knowledge card summaries only (default false)",
+                                    "default": false
+                                }
+                            }
+                        },
                         "limit": {
                             "type": "integer",
                             "description": "Maximum number of results (default 10)",
                             "default": 10
-                        },
-                        "tags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional tag filter"
-                        },
-                        "author": {
-                            "type": "string",
-                            "description": "Optional author filter"
-                        },
-                        "source": {
-                            "type": "string",
-                            "description": "Optional source filter"
                         }
                     },
                     "required": ["query"]
                 }
             ),
             Tool(
-                name="search_by_metadata",
-                description="Search chunks by metadata filters (tags, author, source)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "tags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Filter by tags"
-                        },
-                        "author": {
-                            "type": "string",
-                            "description": "Filter by author name"
-                        },
-                        "source": {
-                            "type": "string",
-                            "description": "Filter by source (e.g., 'kindle', 'reader')"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum results (default 20)",
-                            "default": 20
-                        }
-                    }
-                }
-            ),
-            Tool(
-                name="get_related_chunks",
-                description="Find chunks similar to a given chunk using vector similarity",
+                name="get_chunk",
+                description="Get full details for a specific chunk including knowledge card and related chunks (Story 4.2). Consolidates get_related_chunks and get_knowledge_card into one call.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "chunk_id": {
                             "type": "string",
-                            "description": "Source chunk ID"
+                            "description": "Chunk ID to retrieve"
                         },
-                        "limit": {
+                        "include_related": {
+                            "type": "boolean",
+                            "description": "Include related chunks via vector similarity (default true)",
+                            "default": True
+                        },
+                        "related_limit": {
                             "type": "integer",
-                            "description": "Maximum related chunks (default 5)",
-                            "default": 5
+                            "description": "Maximum related chunks to return (default 5, max 20)",
+                            "default": 5,
+                            "minimum": 1,
+                            "maximum": 20
                         }
                     },
                     "required": ["chunk_id"]
+                }
+            ),
+            Tool(
+                name="get_recent",
+                description="Get recent reading activity and chunks (Story 4.3). Consolidates get_recently_added and get_reading_activity into one call.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "period": {
+                            "type": "string",
+                            "description": "Time period (default 'last_7_days')",
+                            "enum": ["today", "yesterday", "last_3_days", "last_week", "last_7_days", "last_month", "last_30_days"],
+                            "default": "last_7_days"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum chunks to return (default 10)",
+                            "default": 10,
+                            "minimum": 1,
+                            "maximum": 50
+                        }
+                    }
                 }
             ),
             Tool(
@@ -158,140 +195,6 @@ def create_mcp_server() -> Server:
                 inputSchema={
                     "type": "object",
                     "properties": {}
-                }
-            ),
-            Tool(
-                name="search_by_date_range",
-                description="Query chunks by date range (e.g., what I read between two dates)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "start_date": {
-                            "type": "string",
-                            "description": "Start date in YYYY-MM-DD format (e.g., '2025-10-29')"
-                        },
-                        "end_date": {
-                            "type": "string",
-                            "description": "End date in YYYY-MM-DD format (e.g., '2025-10-31')"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum results (default 20)",
-                            "default": 20
-                        },
-                        "tags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional tag filter"
-                        },
-                        "author": {
-                            "type": "string",
-                            "description": "Optional author filter"
-                        },
-                        "source": {
-                            "type": "string",
-                            "description": "Optional source filter"
-                        }
-                    },
-                    "required": ["start_date", "end_date"]
-                }
-            ),
-            Tool(
-                name="search_by_relative_time",
-                description="Query chunks using relative time periods (yesterday, last week, last month, etc.)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "period": {
-                            "type": "string",
-                            "description": "Time period: 'yesterday', 'last_3_days', 'last_week', 'last_7_days', 'last_month', or 'last_30_days'"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum results (default 20)",
-                            "default": 20
-                        },
-                        "tags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional tag filter"
-                        },
-                        "author": {
-                            "type": "string",
-                            "description": "Optional author filter"
-                        },
-                        "source": {
-                            "type": "string",
-                            "description": "Optional source filter"
-                        }
-                    },
-                    "required": ["period"]
-                }
-            ),
-            Tool(
-                name="get_reading_activity",
-                description="Get reading activity summary and statistics (chunks added per day, top sources, top authors)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "period": {
-                            "type": "string",
-                            "description": "Time period: 'today', 'yesterday', 'last_3_days', 'last_7_days', 'last_week', 'last_30_days', or 'last_month'",
-                            "default": "last_7_days"
-                        }
-                    }
-                }
-            ),
-            Tool(
-                name="get_recently_added",
-                description="Get most recently added chunks (quick access to latest reading)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum chunks to return (default 10)",
-                            "default": 10
-                        },
-                        "days": {
-                            "type": "integer",
-                            "description": "Look back this many days (default 7)",
-                            "default": 7
-                        }
-                    }
-                }
-            ),
-            Tool(
-                name="get_knowledge_card",
-                description="Get knowledge card (AI summary and takeaways) for a specific chunk",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "chunk_id": {
-                            "type": "string",
-                            "description": "Chunk ID to fetch knowledge card for"
-                        }
-                    },
-                    "required": ["chunk_id"]
-                }
-            ),
-            Tool(
-                name="search_knowledge_cards",
-                description="Semantic search across knowledge card summaries only (not full content)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Natural language search query"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of results (default 10)",
-                            "default": 10
-                        }
-                    },
-                    "required": ["query"]
                 }
             ),
             Tool(
@@ -304,7 +207,7 @@ def create_mcp_server() -> Server:
             ),
             Tool(
                 name="get_cluster",
-                description="Get cluster details with member chunks",
+                description="Get cluster details with member chunks and related clusters (Story 4.4). Consolidates get_cluster and get_related_clusters.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -312,18 +215,85 @@ def create_mcp_server() -> Server:
                             "type": "string",
                             "description": "Cluster ID to fetch"
                         },
-                        "include_chunks": {
+                        "include_members": {
                             "type": "boolean",
                             "description": "Whether to include member chunks (default True)",
                             "default": True
                         },
-                        "limit": {
+                        "include_related": {
+                            "type": "boolean",
+                            "description": "Whether to include related clusters (default True)",
+                            "default": True
+                        },
+                        "member_limit": {
                             "type": "integer",
                             "description": "Maximum member chunks to return (default 20)",
-                            "default": 20
+                            "default": 20,
+                            "minimum": 1,
+                            "maximum": 50
+                        },
+                        "related_limit": {
+                            "type": "integer",
+                            "description": "Maximum related clusters to return (default 5)",
+                            "default": 5,
+                            "minimum": 1,
+                            "maximum": 20
                         }
                     },
                     "required": ["cluster_id"]
+                }
+            ),
+            Tool(
+                name="configure_kb",
+                description="Unified configuration tool for kx-hub settings (Story 4.5). Consolidates all configuration tools into single entry point.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "Action to perform",
+                            "enum": ["show_all", "show_ranking", "show_domains", "show_hot_sites", "update_ranking", "update_domains", "update_hot_sites"]
+                        },
+                        "params": {
+                            "type": "object",
+                            "description": "Action-specific parameters (optional)",
+                            "properties": {
+                                "weights": {
+                                    "type": "object",
+                                    "description": "Ranking weights for update_ranking (must sum to 1.0)",
+                                    "properties": {
+                                        "relevance": {"type": "number"},
+                                        "recency": {"type": "number"},
+                                        "depth": {"type": "number"},
+                                        "authority": {"type": "number"}
+                                    }
+                                },
+                                "settings": {
+                                    "type": "object",
+                                    "description": "Ranking settings for update_ranking"
+                                },
+                                "add": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Domains to add (for update_domains, update_hot_sites)"
+                                },
+                                "remove": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Domains to remove (for update_domains, update_hot_sites)"
+                                },
+                                "category": {
+                                    "type": "string",
+                                    "description": "Category name (for update_hot_sites)"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Category description (for update_hot_sites)"
+                                }
+                            }
+                        }
+                    },
+                    "required": ["action"]
                 }
             ),
             Tool(
@@ -347,31 +317,6 @@ def create_mcp_server() -> Server:
                         }
                     },
                     "required": ["cluster_id", "query"]
-                }
-            ),
-            Tool(
-                name="get_related_clusters",
-                description="Find clusters conceptually related to a given cluster using vector similarity on centroids (Story 3.4)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "cluster_id": {
-                            "type": "string",
-                            "description": "Source cluster ID to find relations for"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of related clusters (default 5, max 20)",
-                            "default": 5
-                        },
-                        "distance_measure": {
-                            "type": "string",
-                            "enum": ["COSINE", "EUCLIDEAN", "DOT_PRODUCT"],
-                            "description": "Distance measure for similarity (default COSINE)",
-                            "default": "COSINE"
-                        }
-                    },
-                    "required": ["cluster_id"]
                 }
             ),
             # Story 3.5 + 3.9: Reading Recommendations with Parameterization
@@ -426,130 +371,7 @@ def create_mcp_server() -> Server:
                     }
                 }
             ),
-            Tool(
-                name="update_recommendation_domains",
-                description="Update the domain whitelist for reading recommendations. Add or remove trusted sources.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "add_domains": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Domains to add to the quality whitelist (e.g., ['newsite.com'])"
-                        },
-                        "remove_domains": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Domains to remove from the whitelist"
-                        }
-                    }
-                }
-            ),
-            Tool(
-                name="get_recommendation_config",
-                description="Get current recommendation configuration including domain whitelist",
-                inputSchema={
-                    "type": "object",
-                    "properties": {}
-                }
-            ),
             # Story 3.8: Ranking Configuration
-            Tool(
-                name="get_ranking_config",
-                description="Get current ranking configuration for recommendations including weights (relevance, recency, depth, authority) and settings (recency decay, diversity, slots)",
-                inputSchema={
-                    "type": "object",
-                    "properties": {}
-                }
-            ),
-            # Story 3.9: Hot Sites Configuration
-            Tool(
-                name="get_hot_sites_config",
-                description="Get hot sites categories and their domains. Shows curated source lists for tech, tech_de, ai, devops, business.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {}
-                }
-            ),
-            Tool(
-                name="update_hot_sites_config",
-                description="Update hot sites configuration for a specific category. Add or remove domains from curated source lists.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "category": {
-                            "type": "string",
-                            "description": "Category name: tech, tech_de, ai, devops, business (or create new)"
-                        },
-                        "add_domains": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Domains to add to the category"
-                        },
-                        "remove_domains": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Domains to remove from the category"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "Optional new description for the category"
-                        }
-                    },
-                    "required": ["category"]
-                }
-            ),
-            Tool(
-                name="update_ranking_config",
-                description="Update ranking configuration for recommendations. Set factor weights (must sum to 1.0) or adjust recency decay, diversity, and slot settings.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "weights": {
-                            "type": "object",
-                            "description": "Factor weights (must sum to 1.0): {relevance, recency, depth, authority}",
-                            "properties": {
-                                "relevance": {"type": "number", "description": "Weight for semantic relevance (default 0.5)"},
-                                "recency": {"type": "number", "description": "Weight for publication freshness (default 0.25)"},
-                                "depth": {"type": "number", "description": "Weight for content quality (default 0.15)"},
-                                "authority": {"type": "number", "description": "Weight for author/source credibility (default 0.1)"}
-                            }
-                        },
-                        "settings": {
-                            "type": "object",
-                            "description": "Ranking settings for recency, diversity, and slots",
-                            "properties": {
-                                "recency": {
-                                    "type": "object",
-                                    "properties": {
-                                        "half_life_days": {"type": "integer", "description": "Days until recency score halves (default 90)"},
-                                        "max_age_days": {"type": "integer", "description": "Maximum article age in days (default 365)"},
-                                        "tavily_days_filter": {"type": "integer", "description": "Days to search in Tavily (default 180)"}
-                                    }
-                                },
-                                "diversity": {
-                                    "type": "object",
-                                    "properties": {
-                                        "shown_ttl_days": {"type": "integer", "description": "Days to track shown URLs (default 7)"},
-                                        "novelty_bonus": {"type": "number", "description": "Score bonus for unseen URLs (default 0.1)"},
-                                        "domain_duplicate_penalty": {"type": "number", "description": "Penalty per duplicate domain (default 0.05)"},
-                                        "stochastic_temperature": {"type": "number", "description": "Randomization level 0-1 (default 0.3)"}
-                                    }
-                                },
-                                "slots": {
-                                    "type": "object",
-                                    "properties": {
-                                        "relevance_count": {"type": "integer", "description": "Top relevance slots (default 2)"},
-                                        "serendipity_count": {"type": "integer", "description": "Discovery slots (default 1)"},
-                                        "stale_refresh_count": {"type": "integer", "description": "Refresh slots (default 1)"},
-                                        "trending_count": {"type": "integer", "description": "Fresh content slots (default 1)"}
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            )
         ]
 
     @server.call_tool()
@@ -558,70 +380,42 @@ def create_mcp_server() -> Server:
         logger.info(f"Handling call_tool request: {name}")
 
         try:
-            if name == "search_semantic":
-                result = tools.search_semantic(
+            if name == "search_kb":
+                result = tools.search_kb(
                     query=arguments.get("query"),
-                    limit=arguments.get("limit", 10),
-                    tags=arguments.get("tags"),
-                    author=arguments.get("author"),
-                    source=arguments.get("source")
-                )
-            elif name == "search_by_metadata":
-                result = tools.search_by_metadata(
-                    tags=arguments.get("tags"),
-                    author=arguments.get("author"),
-                    source=arguments.get("source"),
-                    limit=arguments.get("limit", 20)
-                )
-            elif name == "get_related_chunks":
-                result = tools.get_related_chunks(
-                    chunk_id=arguments["chunk_id"],
-                    limit=arguments.get("limit", 5)
-                )
-            elif name == "get_stats":
-                result = tools.get_stats()
-            elif name == "search_by_date_range":
-                result = tools.search_by_date_range(
-                    start_date=arguments["start_date"],
-                    end_date=arguments["end_date"],
-                    limit=arguments.get("limit", 20),
-                    tags=arguments.get("tags"),
-                    author=arguments.get("author"),
-                    source=arguments.get("source")
-                )
-            elif name == "search_by_relative_time":
-                result = tools.search_by_relative_time(
-                    period=arguments["period"],
-                    limit=arguments.get("limit", 20),
-                    tags=arguments.get("tags"),
-                    author=arguments.get("author"),
-                    source=arguments.get("source")
-                )
-            elif name == "get_reading_activity":
-                result = tools.get_reading_activity(
-                    period=arguments.get("period", "last_7_days")
-                )
-            elif name == "get_recently_added":
-                result = tools.get_recently_added(
-                    limit=arguments.get("limit", 10),
-                    days=arguments.get("days", 7)
-                )
-            elif name == "get_knowledge_card":
-                result = tools.get_knowledge_card(
-                    chunk_id=arguments["chunk_id"]
-                )
-            elif name == "search_knowledge_cards":
-                result = tools.search_knowledge_cards(
-                    query=arguments["query"],
+                    filters=arguments.get("filters"),
                     limit=arguments.get("limit", 10)
                 )
+
+            elif name == "get_chunk":
+                result = tools.get_chunk(
+                    chunk_id=arguments["chunk_id"],
+                    include_related=arguments.get("include_related", True),
+                    related_limit=arguments.get("related_limit", 5)
+                )
+
+            elif name == "get_recent":
+                result = tools.get_recent(
+                    period=arguments.get("period", "last_7_days"),
+                    limit=arguments.get("limit", 10)
+                )
+
+            elif name == "get_stats":
+                result = tools.get_stats()
             elif name == "list_clusters":
                 result = tools.list_clusters()
             elif name == "get_cluster":
                 result = tools.get_cluster(
                     cluster_id=arguments["cluster_id"],
-                    include_chunks=arguments.get("include_chunks", True),
-                    limit=arguments.get("limit", 20)
+                    include_members=arguments.get("include_members", True),
+                    include_related=arguments.get("include_related", True),
+                    member_limit=arguments.get("member_limit", 20),
+                    related_limit=arguments.get("related_limit", 5)
+                )
+            elif name == "configure_kb":
+                result = tools.configure_kb(
+                    action=arguments["action"],
+                    params=arguments.get("params")
                 )
             elif name == "search_within_cluster":
                 result = tools.search_within_cluster_tool(
@@ -629,13 +423,6 @@ def create_mcp_server() -> Server:
                     query=arguments["query"],
                     limit=arguments.get("limit", 10)
                 )
-            elif name == "get_related_clusters":
-                result = tools.get_related_clusters(
-                    cluster_id=arguments["cluster_id"],
-                    limit=arguments.get("limit", 5),
-                    distance_measure=arguments.get("distance_measure", "COSINE")
-                )
-            # Story 3.5 + 3.9: Reading Recommendations
             elif name == "get_reading_recommendations":
                 result = tools.get_reading_recommendations(
                     scope=arguments.get("scope", "both"),
@@ -646,31 +433,6 @@ def create_mcp_server() -> Server:
                     mode=arguments.get("mode", "balanced"),
                     include_seen=arguments.get("include_seen", False),
                     predictable=arguments.get("predictable", False)
-                )
-            elif name == "update_recommendation_domains":
-                result = tools.update_recommendation_domains(
-                    add_domains=arguments.get("add_domains"),
-                    remove_domains=arguments.get("remove_domains")
-                )
-            elif name == "get_recommendation_config":
-                result = tools.get_recommendation_config()
-            # Story 3.9: Hot Sites Configuration
-            elif name == "get_hot_sites_config":
-                result = tools.get_hot_sites_config()
-            elif name == "update_hot_sites_config":
-                result = tools.update_hot_sites_config(
-                    category=arguments["category"],
-                    add_domains=arguments.get("add_domains"),
-                    remove_domains=arguments.get("remove_domains"),
-                    description=arguments.get("description")
-                )
-            # Story 3.8: Ranking Configuration
-            elif name == "get_ranking_config":
-                result = tools.get_ranking_config()
-            elif name == "update_ranking_config":
-                result = tools.update_ranking_config(
-                    weights=arguments.get("weights"),
-                    settings=arguments.get("settings")
                 )
             else:
                 result = {"error": f"Unknown tool: {name}"}

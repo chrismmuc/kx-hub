@@ -794,7 +794,332 @@ Claude: [Calls save_recommendations_to_reader]
 
 ---
 
-## Epic 4: Knowledge Digest & Email Summaries
+## Epic 4: MCP Tool Consolidation
+
+**Goal:** Reduce MCP tool count from 21 to 8 through smart consolidation, decreasing token overhead by ~60% and improving AI tool selection accuracy.
+
+**Problem Statement:**
+- kx-hub currently exposes 21 MCP tools
+- Tool definitions consume ~15-20K tokens before conversation starts
+- Research shows Claude's tool selection degrades with many similar tools
+- Multiple overlapping search tools create confusion (6 different search variants)
+- Configuration tools rarely used but always loaded
+
+**Business Value:** Fewer, better-designed tools improve AI response quality, reduce API costs, and make the system easier to maintain. No new infrastructure required.
+
+**Dependencies:** None (refactoring existing tools)
+
+**Status:** Ready for Implementation
+
+---
+
+### Approach: Consolidation Over Abstraction
+
+Rather than wrapping existing tools in "workflow mega-tools" that hide complexity, we consolidate redundant tools into focused primitives. This maintains composability while reducing cognitive and token overhead.
+
+**Design Principle:** The AI can chain simple tools effectively. The problem isn't tool chaining—it's having too many similar tools to choose from.
+
+---
+
+## Current State: 21 Tools
+
+### Search & Query (6 tools) → Consolidate to 1
+| Current Tool | Purpose |
+|--------------|---------|
+| `search_semantic` | Natural language vector search |
+| `search_by_metadata` | Filter by tags, author, source |
+| `search_by_date_range` | Query by absolute dates |
+| `search_by_relative_time` | Query by "last week", etc. |
+| `search_knowledge_cards` | Search AI summaries only |
+| `search_within_cluster` | Semantic search scoped to cluster |
+
+### Chunks & Content (4 tools) → Consolidate to 2
+| Current Tool | Purpose |
+|--------------|---------|
+| `get_related_chunks` | Find similar chunks |
+| `get_knowledge_card` | Get AI summary for chunk |
+| `get_recently_added` | Latest chunks |
+| `get_reading_activity` | Activity stats |
+
+### Clusters (4 tools) → Keep 3
+| Current Tool | Purpose |
+|--------------|---------|
+| `list_clusters` | List all clusters |
+| `get_cluster` | Get cluster details + members |
+| `get_related_clusters` | Find conceptually related clusters |
+| `get_stats` | KB statistics |
+
+### Recommendations (3 tools) → Keep 1
+| Current Tool | Purpose |
+|--------------|---------|
+| `get_reading_recommendations` | AI-powered recommendations |
+| `get_recommendation_config` | View domain whitelist |
+| `update_recommendation_domains` | Modify whitelist |
+
+### Configuration (4 tools) → Consolidate to 1
+| Current Tool | Purpose |
+|--------------|---------|
+| `get_ranking_config` | View ranking weights |
+| `update_ranking_config` | Modify ranking |
+| `get_hot_sites_config` | View source categories |
+| `update_hot_sites_config` | Modify hot sites |
+
+---
+
+## Target State: 8 Tools
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Consolidated MCP Tools (8)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  SEARCH & DISCOVERY                                              │
+│  ├── search_kb(query, filters?)      # Unified search           │
+│  └── get_chunk(chunk_id)             # Chunk + card + related   │
+│                                                                  │
+│  TEMPORAL                                                        │
+│  └── get_recent(period?)             # Recent items + activity  │
+│                                                                  │
+│  CLUSTERS                                                        │
+│  ├── list_clusters()                 # All clusters             │
+│  ├── get_cluster(id)                 # Details + related        │
+│  └── get_stats()                     # KB statistics            │
+│                                                                  │
+│  RECOMMENDATIONS                                                 │
+│  └── get_recommendations(...)        # AI recommendations       │
+│                                                                  │
+│  CONFIGURATION                                                   │
+│  └── configure_kb(action, params)    # All config in one        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Consolidated Tool Specifications
+
+### 1. `search_kb` (replaces 6 tools)
+
+**Purpose:** Unified search across the knowledge base with optional filters.
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Natural language search query |
+| `filters` | object | No | Optional filters (see below) |
+| `limit` | integer | No | Max results (default 10) |
+
+**Filter options:**
+```json
+{
+  "cluster_id": "cluster-28",      // Scope to cluster
+  "tags": ["ai", "agents"],        // Tag filter
+  "author": "Simon Willison",      // Author filter
+  "source": "reader",              // Source filter
+  "date_range": {                  // Absolute dates
+    "start": "2025-01-01",
+    "end": "2025-01-31"
+  },
+  "period": "last_week",           // Relative time
+  "search_cards_only": true        // Search summaries only
+}
+```
+
+**Behavior:**
+- If only `query` provided → semantic vector search
+- If `cluster_id` provided → scoped search within cluster
+- If `period` or `date_range` provided → time-filtered search
+- Filters combine with AND logic
+- Returns chunks with knowledge cards and cluster info included
+
+---
+
+### 2. `get_chunk` (replaces 2 tools)
+
+**Purpose:** Get full details for a specific chunk including knowledge card and related chunks.
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `chunk_id` | string | Yes | Chunk ID to retrieve |
+| `include_related` | boolean | No | Include related chunks (default true) |
+| `related_limit` | integer | No | Max related chunks (default 5) |
+
+**Returns:**
+- Full chunk content
+- Knowledge card (summary + takeaways)
+- Related chunks (via vector similarity)
+- Cluster membership info
+- All URLs (source, Readwise, highlight)
+
+---
+
+### 3. `get_recent` (replaces 2 tools)
+
+**Purpose:** Get recent reading activity and items.
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `period` | string | No | Time period (default "last_7_days") |
+| `limit` | integer | No | Max items (default 10) |
+
+**Returns:**
+- Recent chunks ordered by date
+- Activity summary (chunks per day)
+- Top sources and authors for period
+- Cluster distribution of recent items
+
+---
+
+### 4. `list_clusters` (unchanged)
+
+**Purpose:** List all semantic clusters with metadata.
+
+**Returns:**
+- All clusters with names, descriptions, sizes
+- Sorted by size descending
+
+---
+
+### 5. `get_cluster` (absorbs get_related_clusters)
+
+**Purpose:** Get cluster details with members and related clusters.
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster_id` | string | Yes | Cluster ID |
+| `include_members` | boolean | No | Include member chunks (default true) |
+| `include_related` | boolean | No | Include related clusters (default true) |
+| `member_limit` | integer | No | Max members (default 20) |
+| `related_limit` | integer | No | Max related clusters (default 5) |
+
+**Returns:**
+- Cluster metadata (name, description, size)
+- Member chunks with knowledge cards
+- Related clusters via centroid similarity
+
+---
+
+### 6. `get_stats` (unchanged)
+
+**Purpose:** Get knowledge base statistics.
+
+**Returns:**
+- Total chunks and documents
+- Unique sources, authors, tags
+- Cluster count
+- Date range of content
+
+---
+
+### 7. `get_recommendations` (unchanged, rename only)
+
+**Purpose:** AI-powered reading recommendations.
+
+**Note:** This tool is already well-designed with appropriate parameters. Rename from `get_reading_recommendations` for consistency.
+
+---
+
+### 8. `configure_kb` (replaces 4 tools)
+
+**Purpose:** Single entry point for all configuration.
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | Action to perform (see below) |
+| `params` | object | No | Action-specific parameters |
+
+**Actions:**
+| Action | Description | Params |
+|--------|-------------|--------|
+| `show_all` | Display all configuration | - |
+| `show_ranking` | Show ranking weights | - |
+| `show_domains` | Show domain whitelist | - |
+| `show_hot_sites` | Show hot sites categories | - |
+| `update_ranking` | Update ranking weights | `{weights: {...}}` |
+| `update_domains` | Modify domain whitelist | `{add: [...], remove: [...]}` |
+| `update_hot_sites` | Modify hot sites | `{category, add, remove}` |
+
+---
+
+## Implementation Stories
+
+| Story | Description | Complexity | Effort |
+|-------|-------------|------------|--------|
+| 4.1 | Create `search_kb` unified search tool | Medium | 3 days |
+| 4.2 | Create `get_chunk` with embedded related + knowledge card | Low | 1 day |
+| 4.3 | Create `get_recent` combining activity + recent items | Low | 1 day |
+| 4.4 | Enhance `get_cluster` to include related clusters | Low | 0.5 days |
+| 4.5 | Create `configure_kb` unified configuration tool | Medium | 1.5 days |
+| 4.6 | Deprecate and remove old tools from MCP server | Low | 1 day |
+| 4.7 | Update documentation and test coverage | Low | 1 day |
+
+**Total Estimated Effort:** 9 days
+
+---
+
+## Migration Strategy
+
+### Phase 1: Add New Tools (Stories 4.1-4.5)
+- Implement consolidated tools alongside existing tools
+- New tools call existing implementation functions
+- No breaking changes
+
+### Phase 2: Deprecation Period (1 sprint)
+- Mark old tools as deprecated in descriptions
+- Log warnings when deprecated tools are called
+- Monitor usage to confirm new tools work
+
+### Phase 3: Remove Old Tools (Story 4.6)
+- Remove deprecated tool registrations
+- Keep internal functions for reuse
+- Update all documentation
+
+---
+
+## Success Metrics
+
+| Metric | Before | Target | How to Measure |
+|--------|--------|--------|----------------|
+| Tool count | 21 | 8 | Count in main.py |
+| Token overhead | ~18K | ~7K | Measure tool definitions |
+| Tool selection accuracy | Unknown | Improved | Manual testing |
+| Maintenance surface | 21 handlers | 8 handlers | Code complexity |
+
+---
+
+## Risks and Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Breaking existing workflows | Medium | High | Phased migration with deprecation period |
+| Filter complexity in search_kb | Low | Medium | Clear documentation, sensible defaults |
+| Missing edge cases | Low | Low | Comprehensive test coverage before removal |
+
+---
+
+## Decision Record
+
+**Decision:** Consolidate 21 MCP tools to 8 through smart combination rather than workflow abstraction.
+
+**Rationale:**
+1. AI can chain simple tools effectively—the problem is too many similar tools
+2. Workflow wrappers hide complexity but don't reduce it
+3. Consolidation reduces token overhead by ~60%
+4. Maintains composability for power users
+5. No new infrastructure or dependencies
+
+**Alternatives Considered:**
+- Option A (Web Interface): Rejected—adds infrastructure, doesn't solve tool overload
+- Option B (Obsidian Plugin): Rejected—platform-specific, high maintenance
+- Option C (Workflow mega-tools): Rejected—hides rather than reduces complexity
+
+---
+
+## Epic 5: Knowledge Digest & Email Summaries
 
 **Goal:** Build an AI-powered knowledge digest system that regularly summarizes content from the Knowledge Base and Reader Inbox, delivering comprehensive email summaries with key insights, actionable takeaways, and one-click Reader integration—transforming passive content accumulation into active knowledge consumption.
 
@@ -808,7 +1133,7 @@ Claude: [Calls save_recommendations_to_reader]
 
 ---
 
-### Story 4.1: Knowledge Base Digest Engine
+### Story 6.1: Knowledge Base Digest Engine
 
 **Status:** Backlog
 
@@ -884,7 +1209,7 @@ customers, applying product thinking to internal tooling...
 
 ---
 
-### Story 4.2: Reader Inbox Summarization
+### Story 6.2: Reader Inbox Summarization
 
 **Status:** Backlog
 
@@ -903,13 +1228,13 @@ customers, applying product thinking to internal tooling...
 - **Read Status Tracking:** Track which summaries have been delivered
 
 **Dependencies:**
-- Story 4.1 (KB Digest Engine) - summary generation infrastructure
+- Story 6.1 (KB Digest Engine) - summary generation infrastructure
 - Readwise Reader API - article content access
 
 **Technical Approach:**
 - Reader API: `GET /api/v3/list/?category=article&location=new`
 - Fetch full content via Reader's document endpoint
-- Reuse synthesis prompts from Story 4.1
+- Reuse synthesis prompts from Story 6.1
 - Store generated summaries in Firestore for caching
 - Track delivered summaries to prevent duplicates
 
@@ -939,7 +1264,7 @@ Params:
 
 ---
 
-### Story 4.3: Weekly Knowledge Email Digest
+### Story 6.3: Weekly Knowledge Email Digest
 
 **Status:** Backlog
 
@@ -965,8 +1290,8 @@ Params:
 - **SendGrid Integration:** Transactional email via SendGrid API
 
 **Dependencies:**
-- Story 4.1 (KB Digest Engine) - KB summaries
-- Story 4.2 (Reader Inbox Summarization) - inbox summaries
+- Story 6.1 (KB Digest Engine) - KB summaries
+- Story 6.2 (Reader Inbox Summarization) - inbox summaries
 - Story 3.6 (Email Digest) - email infrastructure
 
 **Technical Approach:**
@@ -1045,7 +1370,7 @@ Params:
 
 ---
 
-### Story 4.4: On-Demand Digest Generation via MCP
+### Story 6.4: On-Demand Digest Generation via MCP
 
 **Status:** Backlog
 
@@ -1065,8 +1390,8 @@ Params:
 - **Conversation Context:** Include digest in Claude conversation for follow-up questions
 
 **Dependencies:**
-- Story 4.1 (KB Digest Engine) - digest generation
-- Story 4.2 (Reader Inbox Summarization) - inbox summaries
+- Story 6.1 (KB Digest Engine) - digest generation
+- Story 6.2 (Reader Inbox Summarization) - inbox summaries
 - Story 2.6 (MCP Enhancements) - MCP infrastructure
 
 **Technical Approach:**
@@ -1102,7 +1427,7 @@ summarize_reader_inbox(
 
 ---
 
-### Story 4.5: Digest Personalization & Preferences
+### Story 6.5: Digest Personalization & Preferences
 
 **Status:** Backlog
 
@@ -1126,8 +1451,8 @@ summarize_reader_inbox(
 - **Unsubscribe:** Secure token-based one-click unsubscribe
 
 **Dependencies:**
-- Story 4.3 (Weekly Email Digest) - email delivery
-- Story 4.4 (On-Demand MCP) - MCP tools
+- Story 6.3 (Weekly Email Digest) - email delivery
+- Story 6.4 (On-Demand MCP) - MCP tools
 
 **Technical Approach:**
 - Firestore document `config/digest_preferences`
@@ -1175,7 +1500,7 @@ summarize_reader_inbox(
 
 ---
 
-### Story 4.6: Digest Analytics & Feedback Loop
+### Story 6.6: Digest Analytics & Feedback Loop
 
 **Status:** Backlog
 
@@ -1200,7 +1525,7 @@ summarize_reader_inbox(
   - Flag consistently low-rated summaries for review
 
 **Dependencies:**
-- Story 4.3 (Weekly Email Digest) - email delivery
+- Story 6.3 (Weekly Email Digest) - email delivery
 - SendGrid webhooks for tracking
 
 **Technical Approach:**
@@ -1234,11 +1559,11 @@ summarize_reader_inbox(
 | 4.6 | Digest Analytics & Feedback Loop | Low |
 
 **Recommended Implementation Order:**
-1. Story 4.1 (KB Digest Engine) - core synthesis capability
-2. Story 4.2 (Reader Inbox Summarization) - extend to inbox
-3. Story 4.3 (Weekly Email Digest) - delivery mechanism
-4. Story 4.4 (On-Demand MCP) - interactive access
-5. Story 4.5 (Preferences) + 4.6 (Analytics) - personalization & optimization
+1. Story 6.1 (KB Digest Engine) - core synthesis capability
+2. Story 6.2 (Reader Inbox Summarization) - extend to inbox
+3. Story 6.3 (Weekly Email Digest) - delivery mechanism
+4. Story 6.4 (On-Demand MCP) - interactive access
+5. Story 6.5 (Preferences) + 4.6 (Analytics) - personalization & optimization
 
 **Cost Analysis:**
 | Component | Monthly Cost |
@@ -1252,13 +1577,13 @@ summarize_reader_inbox(
 
 ---
 
-## Epic 5: AI-Powered Blogging Engine
+## Epic 6: AI-Powered Blogging Engine
 
 **Goal:** Build an intelligent blogging assistant that transforms Knowledge Base content into polished blog articles. The engine helps identify core ideas, generates article structures, creates drafts with proper referencing, and supports iterative article development over multiple sessions—enabling a workflow from knowledge synthesis to published content in Obsidian.
 
 **Business Value:** Transforms the Knowledge Base from a passive consumption tool into an active content creation platform. Users can leverage their accumulated knowledge to produce blog content, thought leadership pieces, and synthesis articles without starting from scratch. The engine provides AI-assisted drafting while keeping the user in control of the final output.
 
-**Dependencies:** Epic 4 (Story 4.1 - KB Digest Engine provides synthesis foundation)
+**Dependencies:** Epic 5 (Story 5.1 - KB Digest Engine provides synthesis foundation)
 
 **Estimated Complexity:** Very High - Content generation, multi-session state management, VS Code integration, Obsidian export
 
@@ -1266,7 +1591,7 @@ summarize_reader_inbox(
 
 ---
 
-### Story 5.1: Blog Idea Extraction from Knowledge Base
+### Story 6.1: Blog Idea Extraction from Knowledge Base
 
 **Status:** Backlog
 
@@ -1305,7 +1630,7 @@ summarize_reader_inbox(
 
 **Dependencies:**
 - Story 2.2 (Clustering) - cluster infrastructure
-- Story 4.1 (KB Digest Engine) - synthesis capabilities
+- Story 6.1 (KB Digest Engine) - synthesis capabilities
 
 **Technical Approach:**
 - Gemini analysis of cluster content and knowledge cards
@@ -1394,7 +1719,7 @@ get_blog_ideas(
 
 ---
 
-### Story 5.2: Article Structure & Outline Generation
+### Story 6.2: Article Structure & Outline Generation
 
 **Status:** Backlog
 
@@ -1438,7 +1763,7 @@ get_blog_ideas(
 - **Iterative Refinement:** Edit and regenerate outline sections
 
 **Dependencies:**
-- Story 5.1 (Blog Idea Extraction) - idea selection
+- Story 6.1 (Blog Idea Extraction) - idea selection
 - Story 2.1 (Knowledge Cards) - content for outline
 - Story 2.7 (URL Link Storage) - source URLs for citations
 
@@ -1550,7 +1875,7 @@ get_blog_ideas(
 
 ---
 
-### Story 5.3: AI-Assisted Draft Generation
+### Story 6.3: AI-Assisted Draft Generation
 
 **Status:** Backlog
 
@@ -1600,8 +1925,8 @@ get_blog_ideas(
 - **Markdown Output:** Compatible with VS Code and Obsidian
 
 **Dependencies:**
-- Story 5.2 (Article Outline) - outline as blueprint
-- Story 4.1 (KB Digest Engine) - synthesis capabilities
+- Story 6.2 (Article Outline) - outline as blueprint
+- Story 6.1 (KB Digest Engine) - synthesis capabilities
 - Story 2.7 (URL Link Storage) - source URLs
 
 **Technical Approach:**
@@ -1695,7 +2020,7 @@ not which tools you use, but how you use them to enable flow."[^4]
 
 ---
 
-### Story 5.4: Article Development Log (Blog Journal)
+### Story 6.4: Article Development Log (Blog Journal)
 
 **Status:** Backlog
 
@@ -1722,8 +2047,8 @@ not which tools you use, but how you use them to enable flow."[^4]
 - **Firestore Persistence:** Full article state stored for continuity
 
 **Dependencies:**
-- Story 5.3 (Draft Generation) - draft content to track
-- Story 5.2 (Outline Generation) - outline to track
+- Story 6.3 (Draft Generation) - draft content to track
+- Story 6.2 (Outline Generation) - outline to track
 
 **Technical Approach:**
 - Firestore collection `blog_articles` with versioned content
@@ -1786,7 +2111,7 @@ not which tools you use, but how you use them to enable flow."[^4]
 
 ---
 
-### Story 5.5: Article Series & Consolidation
+### Story 6.5: Article Series & Consolidation
 
 **Status:** Backlog
 
@@ -1814,8 +2139,8 @@ not which tools you use, but how you use them to enable flow."[^4]
   - `get_series_status(series_id)` - Track progress
 
 **Dependencies:**
-- Story 5.4 (Article Development Log) - article tracking
-- Story 5.3 (Draft Generation) - draft content
+- Story 6.4 (Article Development Log) - article tracking
+- Story 6.3 (Draft Generation) - draft content
 
 **Technical Approach:**
 - Series metadata in Firestore `blog_series` collection
@@ -1837,7 +2162,7 @@ not which tools you use, but how you use them to enable flow."[^4]
 
 ---
 
-### Story 5.6: Obsidian Export & Publishing Workflow
+### Story 6.6: Obsidian Export & Publishing Workflow
 
 **Status:** Backlog
 
@@ -1869,7 +2194,7 @@ not which tools you use, but how you use them to enable flow."[^4]
 - **MCP Tool:** `export_to_obsidian(article_id, vault_path, options)`
 
 **Dependencies:**
-- Story 5.4 (Article Development Log) - article content
+- Story 6.4 (Article Development Log) - article content
 - Obsidian vault path configuration
 
 **Technical Approach:**
@@ -1928,7 +2253,7 @@ demonstrations...
 
 ---
 
-### Story 5.7: Claude Code Integration for Article Editing
+### Story 6.7: Claude Code Integration for Article Editing
 
 **Status:** Backlog
 
@@ -1955,7 +2280,7 @@ demonstrations...
   - Verify citations and quotes
 
 **Dependencies:**
-- Story 5.4 (Article Development Log) - article storage
+- Story 6.4 (Article Development Log) - article storage
 - Claude Code installation
 - VS Code workspace setup
 
@@ -1992,12 +2317,12 @@ demonstrations...
 | 5.7 | Claude Code Integration for Article Editing | Low |
 
 **Recommended Implementation Order:**
-1. Story 5.1 (Blog Ideas) - foundation for content creation
-2. Story 5.2 (Outlines) - structure before content
-3. Story 5.3 (Draft Generation) - core capability
-4. Story 5.4 (Article Log) - multi-session support
-5. Story 5.6 (Obsidian Export) - publishing workflow
-6. Story 5.5 (Series) + 5.7 (VS Code) - advanced features
+1. Story 6.1 (Blog Ideas) - foundation for content creation
+2. Story 6.2 (Outlines) - structure before content
+3. Story 6.3 (Draft Generation) - core capability
+4. Story 6.4 (Article Log) - multi-session support
+5. Story 6.6 (Obsidian Export) - publishing workflow
+6. Story 6.5 (Series) + 5.7 (VS Code) - advanced features
 
 **Cost Analysis:**
 | Component | Monthly Cost |
@@ -2007,266 +2332,6 @@ demonstrations...
 | Firestore (article storage) | ~$0.05 |
 | Cloud Functions | ~$0.01 |
 | **Total** | **~$0.56/month** |
-
----
-
-## Epic 6: User Experience & Discoverability
-
-**Goal:** Reduce system complexity and make kx-hub's capabilities discoverable without memorizing MCP tool names. Address the "Too Many Tools" problem that degrades AI tool selection and overwhelms users.
-
-**Problem Statement:**
-- kx-hub accumulates 30+ MCP tools across Epics 1-5
-- Research shows Claude's tool selection degrades significantly with >30 tools
-- Users must "know" tool names to use features via chat
-- Token overhead can reach 100K+ before conversation starts
-- No visual way to explore knowledge or trigger workflows
-
-**Business Value:** Without addressing discoverability, the powerful features from Epics 4-5 remain underutilized. Users default to basic queries because they don't know what's possible.
-
-**Dependencies:** Epic 4 + Epic 5 (provides the functionality to expose)
-
-**Status:** Planned - **DECISION REQUIRED** (3 options below)
-
----
-
-### Architectural Decision: UI/UX Approach
-
-This epic requires a strategic decision between three approaches. Each has distinct trade-offs.
-
----
-
-## Option A: Minimal Web Interface
-
-**Concept:** Build a lightweight, single-purpose web app focused on exploration and one-click actions. NOT a full-featured app—just a dashboard for discovering and triggering kx-hub capabilities.
-
-### Key Features
-- **Knowledge Dashboard:** Visual overview of clusters, recent items, digest status
-- **One-Click Actions:** "Generate Digest", "Get Blog Ideas", "Summarize Inbox"
-- **Workflow Wizards:** Guided flows for complex operations (blogging pipeline)
-- **Results Viewer:** Display generated content with copy/export actions
-- **MCP Passthrough:** Actions trigger existing MCP tools (no new backend logic)
-
-### Technical Approach
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Minimal Web Interface                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │  Dashboard   │  │   Actions    │  │   Results    │          │
-│  │  (read-only) │  │  (triggers)  │  │   (display)  │          │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
-└─────────┼─────────────────┼─────────────────┼───────────────────┘
-          │                 │                 │
-          ▼                 ▼                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Cloud Functions (HTTP endpoints)                    │
-│   GET /dashboard   POST /actions/{tool}   GET /results/{id}     │
-└─────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Existing MCP Server Logic                     │
-│         (Firestore, Gemini, Readwise API - unchanged)           │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Implementation Stories (if chosen)
-| Story | Description | Complexity |
-|-------|-------------|------------|
-| 6.A.1 | Dashboard: KB Overview (clusters, item counts, recent activity) | Medium |
-| 6.A.2 | Action Buttons: Trigger digest/blog/synthesis workflows | Low |
-| 6.A.3 | Results Viewer: Display generated content with export | Medium |
-| 6.A.4 | Auth: Firebase Auth (Google Sign-in, single-user) | Low |
-| 6.A.5 | Hosting: Firebase Hosting (static SPA) | Low |
-
-### Pros
-- **Universal Access:** Works on any device with browser
-- **Visual Exploration:** See knowledge landscape at a glance
-- **No Learning Curve:** Click buttons instead of remembering commands
-- **Shareable:** Can share digest URLs (future)
-- **Modern UX:** Full control over design
-
-### Cons
-- **Additional Infrastructure:** New codebase to maintain
-- **Auth Complexity:** Need user authentication
-- **Duplication Risk:** May duplicate Claude Desktop UX
-- **Cost:** Firebase Hosting free tier, but Auth/Functions add ~$0-2/month
-- **Scope Creep:** Temptation to build "full app"
-
-### Estimated Effort: 8-12 days
-### Monthly Cost: ~$0-2 (Firebase free tier covers most usage)
-
----
-
-## Option B: Obsidian Plugin
-
-**Concept:** Build an Obsidian plugin that surfaces kx-hub capabilities within the existing Obsidian workflow. Leverages bidirectional sync for blogging and integrates with local vault.
-
-### Key Features
-- **Sidebar Panel:** Show KB clusters, digest status, blog ideas
-- **Command Palette Integration:** `/kx-digest`, `/kx-blog-ideas`, etc.
-- **Inline Actions:** Right-click on note → "Find related in KB"
-- **Blog Draft Injection:** Generate drafts directly into Obsidian notes
-- **Backlinks to KB:** Link Obsidian notes to kx-hub sources
-
-### Technical Approach
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Obsidian Vault                               │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                kx-hub Plugin                              │   │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐         │   │
-│  │  │  Sidebar   │  │  Commands  │  │  Note      │         │   │
-│  │  │  Panel     │  │  Palette   │  │  Actions   │         │   │
-│  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘         │   │
-│  └────────┼───────────────┼───────────────┼─────────────────┘   │
-└───────────┼───────────────┼───────────────┼─────────────────────┘
-            │               │               │
-            ▼               ▼               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              kx-hub Cloud Functions (HTTP API)                   │
-│    Same endpoints as Option A, but called from Obsidian plugin  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Implementation Stories (if chosen)
-| Story | Description | Complexity |
-|-------|-------------|------------|
-| 6.B.1 | Plugin Scaffold: TypeScript plugin with settings | Medium |
-| 6.B.2 | Sidebar Panel: KB overview, cluster list, stats | High |
-| 6.B.3 | Command Palette: 5-7 core commands for workflows | Medium |
-| 6.B.4 | Note Actions: Context menu items for KB integration | Medium |
-| 6.B.5 | Draft Injection: Create/update notes from blog engine | Medium |
-| 6.B.6 | HTTP Backend: Cloud Functions for plugin API | Medium |
-
-### Pros
-- **Workflow Integration:** Blogging happens where articles live
-- **No Context Switch:** Stay in Obsidian for everything
-- **Bidirectional Links:** Natural fit for KB ↔ Obsidian linking
-- **Existing Users:** 150,000+ AI plugin users in Obsidian ecosystem
-- **Local-First Option:** Can cache KB data locally
-
-### Cons
-- **Obsidian-Only:** Excludes users without Obsidian
-- **Plugin Development:** Obsidian API has learning curve
-- **UI Constraints:** Limited to Obsidian's UI paradigms
-- **Maintenance:** Must track Obsidian API changes
-- **Mobile Limitations:** Obsidian mobile has plugin restrictions
-
-### Estimated Effort: 12-18 days
-### Monthly Cost: $0 (no additional infrastructure)
-
----
-
-## Option C: Focused MCP with Workflow Tools
-
-**Concept:** Instead of building new UI, restructure MCP tools into workflow-oriented "mega-tools" that guide users through complex operations. Leverage Anthropic's new Tool Search Tool for discovery.
-
-### Key Features
-- **Workflow Tools:** Replace 30+ tools with 5-7 workflow-oriented tools
-  - `explore_knowledge()` - Guided KB exploration
-  - `weekly_ritual()` - Combined digest + recommendations + inbox
-  - `start_blog()` - Interactive blogging wizard via chat
-  - `what_can_i_do()` - Meta-tool explaining all capabilities
-- **Tool Search Integration:** Enable Anthropic's beta Tool Search Tool
-- **Contextual Help:** Each tool provides next-step suggestions
-- **Progressive Disclosure:** Start simple, offer "advanced" sub-commands
-
-### Technical Approach
-```
-BEFORE (30+ tools, overwhelming):
-┌──────────────────────────────────────────────────────────────┐
-│  get_clusters, search_kb, get_recommendations, generate_digest,
-│  summarize_inbox, get_blog_ideas, generate_outline, generate_draft,
-│  save_to_reader, get_cluster_digest, configure_preferences, ...
-└──────────────────────────────────────────────────────────────┘
-
-AFTER (5-7 workflow tools, focused):
-┌──────────────────────────────────────────────────────────────┐
-│                                                               │
-│  1. what_can_i_do()         - "What can kx-hub do for me?"   │
-│  2. explore_knowledge(topic) - Guided KB exploration          │
-│  3. weekly_ritual()          - Full weekly knowledge ritual   │
-│  4. start_blog(idea?)        - Interactive blogging wizard    │
-│  5. quick_action(action)     - Single-purpose shortcuts       │
-│                                                               │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Implementation Stories (if chosen)
-| Story | Description | Complexity |
-|-------|-------------|------------|
-| 6.C.1 | Refactor: Consolidate tools into 5-7 workflow tools | High |
-| 6.C.2 | `what_can_i_do()`: Meta-tool for capability discovery | Low |
-| 6.C.3 | `weekly_ritual()`: Combined digest workflow | Medium |
-| 6.C.4 | `start_blog()`: Interactive blogging wizard | Medium |
-| 6.C.5 | Tool Search Integration: Enable Anthropic beta feature | Low |
-| 6.C.6 | Contextual Prompts: Next-step suggestions in responses | Low |
-
-### Pros
-- **No New UI:** Stays in Claude Desktop/Code ecosystem
-- **85% Token Reduction:** Tool Search reduces overhead dramatically
-- **Natural Language:** Users describe intent, not tool names
-- **Maintains Simplicity:** No additional apps to maintain
-- **Future-Proof:** Aligns with Anthropic's MCP direction
-
-### Cons
-- **Still Chat-Based:** No visual exploration of knowledge
-- **Learning Curve:** Users must still learn to "ask the right questions"
-- **Depends on Beta:** Tool Search Tool is beta feature
-- **Less Discoverable:** Features hidden until asked about
-- **No Direct Manipulation:** Can't click/drag/browse visually
-
-### Estimated Effort: 6-10 days
-### Monthly Cost: $0 (no additional infrastructure)
-
----
-
-## Comparison Matrix
-
-| Criteria | Option A (Web) | Option B (Obsidian) | Option C (MCP) |
-|----------|----------------|---------------------|----------------|
-| **Discoverability** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ |
-| **Complexity Added** | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
-| **Blogging Integration** | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
-| **Maintenance Burden** | ⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
-| **Universal Access** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
-| **Development Effort** | 8-12 days | 12-18 days | 6-10 days |
-| **Monthly Cost** | ~$0-2 | $0 | $0 |
-
----
-
-## Recommendation
-
-**Start with Option C (Focused MCP)**, then evaluate need for Option A or B based on usage patterns.
-
-**Rationale:**
-1. **Lowest Risk:** No new infrastructure, fastest to implement
-2. **Tests Hypothesis:** Discover if discoverability is the real problem
-3. **Aligns with Ecosystem:** Anthropic's Tool Search is the industry direction
-4. **Keeps Options Open:** Can add Web/Obsidian later if needed
-
-**If Option C proves insufficient after 2-3 months:**
-- High blogging usage → Add Option B (Obsidian Plugin)
-- Need for sharing/visual exploration → Add Option A (Web Interface)
-
----
-
-## Epic 6 Summary (Pending Decision)
-
-| Option | Stories | Status | Complexity |
-|--------|---------|--------|------------|
-| A: Minimal Web Interface | 5 | Candidate | Medium |
-| B: Obsidian Plugin | 6 | Candidate | High |
-| C: Focused MCP Workflows | 6 | **Recommended** | Low-Medium |
-
-**Decision Needed:** Choose approach before implementation begins.
-
-**Cost Analysis (all options):**
-| Option | Monthly Cost |
-|--------|-------------|
-| A: Web Interface | ~$0-2 (Firebase) |
-| B: Obsidian Plugin | $0 |
-| C: Focused MCP | $0 |
 
 ---
 
@@ -2299,9 +2364,9 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 | Epic 1: Core Pipeline & KB Infrastructure | 8 | Complete | 8/8 Complete (100%) |
 | Epic 2: Enhanced Knowledge Graph & Clustering | 7 | Complete | 7/7 Complete (100%) |
 | Epic 3: Knowledge Graph Enhancement & Optimization | 10 | Active | 2/10 Complete (20%) |
-| Epic 4: Knowledge Digest & Email Summaries | 6 | Planned | 0/6 (0%) |
-| Epic 5: AI-Powered Blogging Engine | 7 | Planned | 0/7 (0%) |
-| Epic 6: User Experience & Discoverability | TBD | **Decision Required** | 0% |
+| Epic 4: MCP Tool Consolidation | 7 | Ready | 0% |
+| Epic 5: Knowledge Digest & Email Summaries | 6 | Planned | 0/6 (0%) |
+| Epic 6: AI-Powered Blogging Engine | 7 | Planned | 0/7 (0%) |
 | Epic 7: Export & Distribution (Future) | TBD | Backlog | 0% |
 | Epic 8: Advanced Integrations (Future) | TBD | Backlog | 0% |
 | Epic 9: Analytics & Insights (Future) | TBD | Backlog | 0% |
@@ -2313,5 +2378,5 @@ See [PRD Section 8: Future Features & Backlog](./prd.md#8-future-features--backl
 - **Architecture:** Serverless Google Cloud (Cloud Functions, Workflows, Firestore, Vertex AI)
 - **Cost Target:** <$5/month (Current: $1.40/month - **72% under budget**)
 - **Success Criteria:** All PRD section 7 metrics met or exceeded
-- **Next Milestone:** Complete Epic 3, then Epic 4 (Knowledge Digests) for email delivery
-- **Epic 6 Decision:** Required before Epics 4-5 complete to inform tool design
+- **Next Milestone:** Complete Epic 3, then Epic 4 (MCP Tool Consolidation)
+- **Epic 4:** Ready for implementation (tool consolidation approach decided)

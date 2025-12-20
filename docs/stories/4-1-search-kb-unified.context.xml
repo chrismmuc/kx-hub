@@ -1,0 +1,265 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>1</storyId>
+    <title>Create Unified search_kb Tool</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-12-19</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-1-search-kb-unified.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>AI assistant using kx-hub MCP tools</asA>
+    <iWant>a single unified search_kb tool that combines all search functionality</iWant>
+    <soThat>I can find relevant knowledge with fewer tool calls and reduced cognitive overhead when selecting the right search approach</soThat>
+    <tasks>
+      <task id="1" ac="1-10">Implement search_kb function in tools.py
+        <subtask id="1.1">Define unified parameter schema with query, filters, and limit</subtask>
+        <subtask id="1.2">Implement filter parsing and validation logic</subtask>
+        <subtask id="1.3">Route to appropriate search backend based on filter combination</subtask>
+        <subtask id="1.4">Ensure cluster_id filter calls search_within_cluster logic</subtask>
+        <subtask id="1.5">Ensure period/date_range filters call time-based query logic</subtask>
+        <subtask id="1.6">Implement AND logic for combining multiple filters</subtask>
+        <subtask id="1.7">Include knowledge_card and cluster info in all results</subtask>
+      </task>
+      <task id="2" ac="1">Register search_kb tool in main.py
+        <subtask id="2.1">Add Tool definition with complete inputSchema</subtask>
+        <subtask id="2.2">Add handler in call_tool_handler switch</subtask>
+      </task>
+      <task id="3" ac="1-10">Unit tests
+        <subtask id="3.1">Test semantic search only (query parameter)</subtask>
+        <subtask id="3.2">Test metadata filtering (tags, author, source)</subtask>
+        <subtask id="3.3">Test date range filtering</subtask>
+        <subtask id="3.4">Test relative time filtering (period)</subtask>
+        <subtask id="3.5">Test cluster scoping</subtask>
+        <subtask id="3.6">Test search_cards_only flag</subtask>
+        <subtask id="3.7">Test combined filters (AND logic)</subtask>
+        <subtask id="3.8">Test edge cases (empty query, invalid filters)</subtask>
+      </task>
+      <task id="4" ac="1-10">Integration testing
+        <subtask id="4.1">Test via MCP protocol with Claude Desktop</subtask>
+        <subtask id="4.2">Verify response format matches expected schema</subtask>
+        <subtask id="4.3">Verify URLs, knowledge cards, and cluster info included</subtask>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">New search_kb tool registered in MCP server with unified parameter schema</criterion>
+    <criterion id="2">Semantic search works when only query parameter is provided (replaces search_semantic)</criterion>
+    <criterion id="3">Metadata filtering works when filters.tags, filters.author, or filters.source are provided (replaces search_by_metadata)</criterion>
+    <criterion id="4">Date range filtering works when filters.date_range is provided with start and end dates (replaces search_by_date_range)</criterion>
+    <criterion id="5">Relative time filtering works when filters.period is provided (replaces search_by_relative_time)</criterion>
+    <criterion id="6">Cluster scoping works when filters.cluster_id is provided (replaces search_within_cluster)</criterion>
+    <criterion id="7">Knowledge card search works when filters.search_cards_only is true (replaces search_knowledge_cards)</criterion>
+    <criterion id="8">Filters combine with AND logic - multiple filters narrow results</criterion>
+    <criterion id="9">Results include knowledge cards and cluster info by default</criterion>
+    <criterion id="10">All URLs included (readwise_url, source_url, highlight_url) per Story 2.7</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic 4: MCP Tool Consolidation</title>
+        <section>Epic 4 - search_kb specification</section>
+        <snippet>Unified search with filters object supporting cluster_id, tags, author, source, date_range, period, search_cards_only. Filters combine with AND logic.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Query Tools</title>
+        <section>Claude Desktop Integration - Query Tools</section>
+        <snippet>Current 22 MCP tools listed. Vector search uses Firestore FIND_NEAREST with gemini-embedding-001. Response time target: less than 1s (P95).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture - Data Flow</title>
+        <section>Query Flow</section>
+        <snippet>Query embedding via Vertex AI, similarity search via Firestore Vector Search FIND_NEAREST, metadata fetch from Firestore.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_semantic</symbol>
+        <lines>120-209</lines>
+        <reason>Primary semantic search function to reuse/consolidate. Uses embeddings.generate_query_embedding and firestore_client.find_nearest.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_by_metadata</symbol>
+        <lines>212-299</lines>
+        <reason>Metadata filtering logic to incorporate. Calls firestore_client.query_by_metadata.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_by_date_range</symbol>
+        <lines>433-519</lines>
+        <reason>Date range query logic. Calls firestore_client.query_by_date_range.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_by_relative_time</symbol>
+        <lines>522-603</lines>
+        <reason>Relative time query logic. Calls firestore_client.query_by_relative_time.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_within_cluster_tool</symbol>
+        <lines>956-1041</lines>
+        <reason>Cluster-scoped search. Calls firestore_client.search_within_cluster.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>module</kind>
+        <symbol>search_knowledge_cards</symbol>
+        <lines>763-831</lines>
+        <reason>Knowledge card search. Same vector search but returns card summaries only.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>helper</kind>
+        <symbol>_format_urls</symbol>
+        <lines>28-44</lines>
+        <reason>URL extraction helper to reuse in unified search results.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>helper</kind>
+        <symbol>_format_knowledge_card</symbol>
+        <lines>47-64</lines>
+        <reason>Knowledge card formatting helper to reuse.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/tools.py</path>
+        <kind>helper</kind>
+        <symbol>_format_cluster_info</symbol>
+        <lines>67-117</lines>
+        <reason>Cluster info formatting helper to reuse.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/main.py</path>
+        <kind>handler</kind>
+        <symbol>list_tools_handler</symbol>
+        <lines>72-553</lines>
+        <reason>Tool registration pattern. Add new Tool definition here.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/main.py</path>
+        <kind>handler</kind>
+        <symbol>call_tool_handler</symbol>
+        <lines>555-689</lines>
+        <reason>Tool dispatch pattern. Add search_kb case here.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>client</kind>
+        <symbol>find_nearest</symbol>
+        <lines>299-351</lines>
+        <reason>Vector search function with optional filters parameter.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>client</kind>
+        <symbol>query_by_date_range</symbol>
+        <lines>421-490</lines>
+        <reason>Date range query with optional metadata filters.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>client</kind>
+        <symbol>query_by_relative_time</symbol>
+        <lines>491-569</lines>
+        <reason>Relative time query with period parsing.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/firestore_client.py</path>
+        <kind>client</kind>
+        <symbol>search_within_cluster</symbol>
+        <lines>807-995</lines>
+        <reason>Cluster-scoped vector search.</reason>
+      </artifact>
+      <artifact>
+        <path>src/mcp_server/embeddings.py</path>
+        <kind>module</kind>
+        <symbol>generate_query_embedding</symbol>
+        <reason>Generate embedding vector for search query.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <python>
+        <package name="mcp" version=">=1.0.0">MCP server framework</package>
+        <package name="google-cloud-firestore" version=">=2.16.0">Firestore client with vector search</package>
+        <package name="google-cloud-aiplatform" version=">=1.38.0">Vertex AI embeddings</package>
+        <package name="pytest" version=">=7.0.0">Testing framework</package>
+        <package name="pytest-asyncio" version=">=0.21.0">Async test support</package>
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint type="pattern">Follow existing tool implementation pattern in tools.py (function with docstring, logging, try/except, return Dict)</constraint>
+    <constraint type="pattern">Use existing helper functions (_format_urls, _format_knowledge_card, _format_cluster_info)</constraint>
+    <constraint type="pattern">Tool registration in main.py uses Tool() with inputSchema JSON Schema</constraint>
+    <constraint type="pattern">Tool handler uses elif chain in call_tool_handler</constraint>
+    <constraint type="testing">Unit tests mock firestore_client and embeddings modules</constraint>
+    <constraint type="testing">Follow pytest patterns in tests/test_mcp_tools.py</constraint>
+    <constraint type="api">Response time target: less than 1s (P95)</constraint>
+    <constraint type="api">Always include knowledge_card and cluster info in results</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>search_kb</name>
+      <kind>MCP Tool</kind>
+      <signature>search_kb(query: str, filters: Optional[Dict], limit: int = 10) -> Dict[str, Any]</signature>
+      <path>src/mcp_server/tools.py</path>
+    </interface>
+    <interface>
+      <name>find_nearest</name>
+      <kind>Firestore function</kind>
+      <signature>find_nearest(embedding_vector: List[float], limit: int, filters: Optional[Dict]) -> List[Dict]</signature>
+      <path>src/mcp_server/firestore_client.py</path>
+    </interface>
+    <interface>
+      <name>generate_query_embedding</name>
+      <kind>Embeddings function</kind>
+      <signature>generate_query_embedding(query: str) -> List[float]</signature>
+      <path>src/mcp_server/embeddings.py</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Unit tests use pytest with mocking for external services (Firestore, Vertex AI).
+      Integration tests validate MCP protocol responses.
+      Tests follow patterns in tests/test_mcp_tools.py and tests/test_recommendations.py.
+      Use pytest fixtures for common setup.
+      Mock firestore_client module functions, not Firestore directly.
+    </standards>
+    <locations>
+      <location>tests/test_mcp_tools.py</location>
+      <location>tests/test_search_kb.py (new file)</location>
+    </locations>
+    <ideas>
+      <idea ac="2">Test query-only semantic search returns results with knowledge cards and cluster info</idea>
+      <idea ac="3">Test filters.tags/author/source narrow results correctly</idea>
+      <idea ac="4">Test filters.date_range with start and end dates</idea>
+      <idea ac="5">Test filters.period with various values (yesterday, last_week, etc.)</idea>
+      <idea ac="6">Test filters.cluster_id scopes to specific cluster</idea>
+      <idea ac="7">Test filters.search_cards_only returns card summaries</idea>
+      <idea ac="8">Test multiple filters combine with AND logic</idea>
+      <idea ac="9">Test results always include knowledge_card and cluster fields</idea>
+      <idea ac="10">Test results include all URL fields (readwise_url, source_url, highlight_url)</idea>
+      <idea>Test empty query returns error</idea>
+      <idea>Test invalid filter values handled gracefully</idea>
+      <idea>Test conflicting filters (date_range + period) behavior</idea>
+    </ideas>
+  </tests>
+</story-context>
