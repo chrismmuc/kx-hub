@@ -128,7 +128,7 @@ def create_mcp_server() -> Server:
                                 "search_cards_only": {
                                     "type": "boolean",
                                     "description": "Search knowledge card summaries only (default false)",
-                                    "default": false
+                                    "default": False
                                 }
                             }
                         },
