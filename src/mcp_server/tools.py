@@ -2,6 +2,11 @@
 MCP Tool handlers for search and query operations.
 
 Tools:
+- configure_kb: Unified configuration tool for all settings (Story 4.5)
+- get_chunk: Get full chunk details with knowledge card and related chunks (Story 4.2)
+- get_cluster: Get cluster details with members and related clusters (Story 4.4)
+- get_recent: Get recent chunks and reading activity (Story 4.3)
+- search_kb: Unified search tool with flexible filters (Story 4.1)
 - search_semantic: Semantic search using query embeddings
 - search_by_metadata: Filter by tags, author, source
 - get_related_chunks: Find similar chunks to a given chunk
@@ -114,6 +119,619 @@ def _format_cluster_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             'cluster_id': primary_cluster_id,
             'name': f'Cluster {primary_cluster_id}',
             'description': 'Error fetching cluster metadata'
+        }
+
+
+def get_chunk(
+    chunk_id: str,
+    include_related: bool = True,
+    related_limit: int = 5
+) -> Dict[str, Any]:
+    """
+    Get full chunk details with embedded knowledge card and related chunks.
+
+    Story 4.2: Consolidates get_related_chunks and get_knowledge_card into one tool.
+    Returns comprehensive chunk information in a single API call.
+
+    Args:
+        chunk_id: Chunk ID to retrieve
+        include_related: Include related chunks via vector similarity (default True)
+        related_limit: Maximum related chunks to return (default 5, max 20)
+
+    Returns:
+        Dictionary with chunk details, knowledge card, cluster info, related chunks, and URLs
+    """
+    try:
+        logger.info(f"Getting chunk {chunk_id} (include_related={include_related}, related_limit={related_limit})")
+
+        # Validate related_limit
+        if related_limit < 1 or related_limit > 20:
+            related_limit = min(max(related_limit, 1), 20)
+            logger.warning(f"related_limit adjusted to valid range: {related_limit}")
+
+        # Task 1.2: Fetch chunk by ID from Firestore
+        chunk = firestore_client.get_chunk_by_id(chunk_id)
+
+        if not chunk:
+            # Task 1.7: Handle missing chunk gracefully
+            logger.warning(f"Chunk not found: {chunk_id}")
+            raise ValueError(f"Chunk not found: {chunk_id}")
+
+        # Extract basic chunk fields
+        title = chunk.get('title', 'Untitled')
+        author = chunk.get('author', 'Unknown')
+        source = chunk.get('source', 'unknown')
+        tags = chunk.get('tags', [])
+        content = chunk.get('content', '')
+        chunk_index = chunk.get('chunk_index', 0)
+        total_chunks = chunk.get('total_chunks', 1)
+        chunk_info = f"{chunk_index + 1}/{total_chunks}"
+
+        # Task 1.3: Extract and format knowledge card from chunk data
+        knowledge_card = _format_knowledge_card(chunk)
+
+        # Task 1.7: Handle missing knowledge card gracefully (already handled by _format_knowledge_card returning None)
+        if not knowledge_card:
+            logger.info(f"No knowledge card found for chunk {chunk_id}")
+
+        # Task 1.5: Extract cluster membership info from chunk.cluster_id
+        cluster_info = _format_cluster_info(chunk)
+
+        # Task 1.6: Format all URLs using _format_urls helper
+        urls = _format_urls(chunk)
+
+        # Task 1.4: Get related chunks via vector similarity (if include_related=true)
+        related_chunks = []
+        if include_related:
+            embedding = chunk.get('embedding')
+            if embedding:
+                logger.info(f"Finding {related_limit} related chunks using vector similarity")
+                # Find related chunks - request one extra to account for filtering out source chunk
+                similar_chunks = firestore_client.find_nearest(
+                    embedding_vector=embedding,
+                    limit=related_limit + 1  # Get one extra to filter out source chunk
+                )
+
+                # Filter out the source chunk and format related chunks
+                for similar_chunk in similar_chunks:
+                    similar_chunk_id = similar_chunk.get('id') or similar_chunk.get('chunk_id')
+
+                    # Skip the source chunk itself
+                    if similar_chunk_id == chunk_id:
+                        continue
+
+                    # Stop if we have enough related chunks
+                    if len(related_chunks) >= related_limit:
+                        break
+
+                    # Format related chunk
+                    similar_title = similar_chunk.get('title', 'Untitled')
+                    similar_author = similar_chunk.get('author', 'Unknown')
+                    similar_content = similar_chunk.get('content', '')
+
+                    # Create snippet (first 200 chars)
+                    snippet = similar_content[:200] + "..." if len(similar_content) > 200 else similar_content
+
+                    # Get similarity score if available (Firestore vector search includes this)
+                    similarity_score = similar_chunk.get('similarity_score', 0.0)
+
+                    related_chunks.append({
+                        'chunk_id': similar_chunk_id,
+                        'title': similar_title,
+                        'author': similar_author,
+                        'snippet': snippet,
+                        'similarity_score': similarity_score
+                    })
+
+                logger.info(f"Found {len(related_chunks)} related chunks")
+            else:
+                logger.warning(f"No embedding found for chunk {chunk_id}, cannot retrieve related chunks")
+
+        # Build complete response
+        response = {
+            'chunk_id': chunk_id,
+            'title': title,
+            'author': author,
+            'source': source,
+            'tags': tags,
+            'content': content,
+            'chunk_info': chunk_info,
+            'knowledge_card': knowledge_card,
+            'cluster': cluster_info,
+            'related_chunks': related_chunks,
+            **urls  # Unpack URL fields (readwise_url, source_url, highlight_url)
+        }
+
+        logger.info(f"Successfully retrieved chunk {chunk_id} with {len(related_chunks)} related chunks")
+        return response
+
+    except ValueError as e:
+        # Re-raise ValueError for chunk not found
+        raise e
+    except Exception as e:
+        logger.error(f"Error getting chunk {chunk_id}: {e}")
+        raise RuntimeError(f"Failed to retrieve chunk: {str(e)}")
+
+
+def get_recent(period: str = "last_7_days", limit: int = 10) -> Dict[str, Any]:
+    """
+    Get recent reading activity and chunks.
+
+    Story 4.3: Consolidates get_recently_added and get_reading_activity into one tool.
+    Returns recent chunks with activity summary and cluster distribution.
+
+    Args:
+        period: Time period (default "last_7_days")
+        limit: Maximum chunks to return (default 10)
+
+    Returns:
+        Dictionary with recent chunks, activity summary, and cluster distribution
+    """
+    try:
+        logger.info(f"Getting recent activity for period={period}, limit={limit}")
+
+        # Period to days mapping
+        PERIOD_TO_DAYS = {
+            "today": 1,
+            "yesterday": 1,
+            "last_3_days": 3,
+            "last_week": 7,
+            "last_7_days": 7,
+            "last_month": 30,
+            "last_30_days": 30
+        }
+
+        # Validate period
+        if period not in PERIOD_TO_DAYS:
+            logger.warning(f"Invalid period '{period}', defaulting to 'last_7_days'")
+            period = "last_7_days"
+
+        # Task 1.2: Fetch recently added chunks from Firestore
+        days = PERIOD_TO_DAYS[period]
+        chunks = firestore_client.get_recently_added(limit=limit, days=days)
+        logger.info(f"Fetched {len(chunks)} recent chunks from last {days} days")
+
+        # Task 1.3: Fetch activity summary from Firestore
+        activity_summary = firestore_client.get_activity_summary(period=period)
+        logger.info(f"Fetched activity summary: {activity_summary.get('total_chunks_added', 0)} chunks added")
+
+        # Task 1.4-1.6: Format each chunk with knowledge card, cluster info, and URLs
+        recent_chunks = []
+        cluster_counts = {}  # For cluster distribution calculation
+
+        for chunk in chunks:
+            chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+            title = chunk.get('title', 'Untitled')
+            author = chunk.get('author', 'Unknown')
+            source = chunk.get('source', 'unknown')
+            tags = chunk.get('tags', [])
+            content = chunk.get('content', '')
+            chunk_index = chunk.get('chunk_index', 0)
+            total_chunks = chunk.get('total_chunks', 1)
+            added_date = chunk.get('added_date', '')
+
+            # Content snippet (first 300 chars)
+            snippet = content[:300] + "..." if len(content) > 300 else content
+
+            # Task 1.4: Extract knowledge card
+            knowledge_card = _format_knowledge_card(chunk)
+
+            # Task 1.5: Extract cluster info
+            cluster_info = _format_cluster_info(chunk)
+
+            # Task 1.6: Extract URLs
+            urls = _format_urls(chunk)
+
+            # Task 1.7: Track cluster for distribution calculation
+            cluster_ids = chunk.get('cluster_id', [])
+            if cluster_ids:
+                primary_cluster = cluster_ids[0] if isinstance(cluster_ids, list) else cluster_ids
+                cluster_counts[primary_cluster] = cluster_counts.get(primary_cluster, 0) + 1
+
+            formatted_chunk = {
+                'chunk_id': chunk_id,
+                'title': title,
+                'author': author,
+                'source': source,
+                'tags': tags,
+                'snippet': snippet,
+                'chunk_info': f"{chunk_index + 1}/{total_chunks}",
+                'added_date': added_date,
+                'knowledge_card': knowledge_card,
+                'cluster': cluster_info,
+                **urls  # Unpack URL fields
+            }
+
+            recent_chunks.append(formatted_chunk)
+
+        # Task 1.7: Calculate cluster distribution with names
+        cluster_distribution = {}
+        for cluster_id, count in cluster_counts.items():
+            if cluster_id == 'noise':
+                cluster_distribution[cluster_id] = {
+                    'name': 'Outliers / Noise',
+                    'count': count
+                }
+            else:
+                # Fetch cluster metadata
+                try:
+                    cluster_metadata = firestore_client.get_cluster_by_id(cluster_id)
+                    cluster_name = cluster_metadata.get('name', f'Cluster {cluster_id}') if cluster_metadata else f'Cluster {cluster_id}'
+                except Exception as e:
+                    logger.warning(f"Failed to fetch cluster name for {cluster_id}: {e}")
+                    cluster_name = f'Cluster {cluster_id}'
+
+                cluster_distribution[cluster_id] = {
+                    'name': cluster_name,
+                    'count': count
+                }
+
+        # Task 1.8: Combine chunks and activity summary into unified response
+        response = {
+            'period': period,
+            'recent_chunks': recent_chunks,
+            'activity_summary': activity_summary,
+            'cluster_distribution': cluster_distribution
+        }
+
+        logger.info(f"Successfully retrieved recent activity: {len(recent_chunks)} chunks, {len(cluster_distribution)} clusters")
+        return response
+
+    except Exception as e:
+        logger.error(f"Error getting recent activity: {e}")
+        raise RuntimeError(f"Failed to retrieve recent activity: {str(e)}")
+
+
+def search_kb(
+    query: str,
+    filters: Optional[Dict[str, Any]] = None,
+    limit: int = 10
+) -> Dict[str, Any]:
+    """
+    Unified knowledge base search with flexible filtering options.
+
+    Story 4.1: Consolidates 6 separate search tools into one unified interface.
+    Routes to appropriate backend based on filter combination.
+
+    Args:
+        query: Natural language search query
+        filters: Optional dict with filter options:
+            - cluster_id (str): Scope search to specific cluster
+            - tags (list): Filter by tags
+            - author (str): Filter by author name
+            - source (str): Filter by source
+            - date_range (dict): {start: "YYYY-MM-DD", end: "YYYY-MM-DD"}
+            - period (str): Relative time ("yesterday", "last_week", etc.)
+            - search_cards_only (bool): Search knowledge card summaries only
+        limit: Maximum number of results (default 10)
+
+    Returns:
+        Dictionary with results including knowledge cards, cluster info, and URLs
+    """
+    try:
+        logger.info(f"Unified search for query: '{query}' with filters: {filters} (limit: {limit})")
+
+        # Parse filters
+        filters = filters or {}
+        cluster_id = filters.get('cluster_id')
+        tags = filters.get('tags')
+        author = filters.get('author')
+        source = filters.get('source')
+        date_range = filters.get('date_range')
+        period = filters.get('period')
+        search_cards_only = filters.get('search_cards_only', False)
+
+        # Validate conflicting filters
+        if date_range and period:
+            return {
+                'query': query,
+                'result_count': 0,
+                'error': 'Cannot specify both date_range and period filters',
+                'results': []
+            }
+
+        # Route to appropriate backend
+
+        # 1. Cluster-scoped search
+        if cluster_id:
+            logger.info(f"Routing to cluster-scoped search (cluster: {cluster_id})")
+
+            # Verify cluster exists
+            cluster = firestore_client.get_cluster_by_id(cluster_id)
+            if not cluster:
+                return {
+                    'query': query,
+                    'filters': filters,
+                    'result_count': 0,
+                    'error': f'Cluster not found: {cluster_id}',
+                    'results': []
+                }
+
+            # Generate embedding for query
+            query_embedding = embeddings.generate_query_embedding(query)
+
+            # Execute cluster-scoped vector search
+            chunks = firestore_client.search_within_cluster(
+                cluster_id=cluster_id,
+                embedding_vector=query_embedding,
+                limit=limit
+            )
+
+            # Format results
+            results = []
+            for rank, chunk in enumerate(chunks, 1):
+                chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+                title = chunk.get('title', 'Untitled')
+                author_name = chunk.get('author', 'Unknown')
+                source_name = chunk.get('source', 'unknown')
+                tags_list = chunk.get('tags', [])
+                content = chunk.get('content', '')
+                chunk_index = chunk.get('chunk_index', 0)
+                total_chunks = chunk.get('total_chunks', 1)
+
+                snippet = content[:500] + "..." if len(content) > 500 else content
+
+                knowledge_card = _format_knowledge_card(chunk)
+                cluster_info = _format_cluster_info(chunk)
+                urls = _format_urls(chunk)
+
+                result = {
+                    'rank': rank,
+                    'chunk_id': chunk_id,
+                    'title': title,
+                    'author': author_name,
+                    'source': source_name,
+                    'tags': tags_list,
+                    'chunk_info': f"{chunk_index + 1}/{total_chunks}",
+                    'snippet': snippet,
+                    'full_content': content,
+                    'knowledge_card': knowledge_card,
+                    'cluster': cluster_info,
+                    **urls
+                }
+                results.append(result)
+
+            return {
+                'query': query,
+                'filters': filters,
+                'result_count': len(results),
+                'limit': limit,
+                'cluster_name': cluster.get('name', f'Cluster {cluster_id}'),
+                'results': results
+            }
+
+        # 2. Date range filtering
+        if date_range:
+            logger.info(f"Routing to date range search")
+            start_date = date_range.get('start')
+            end_date = date_range.get('end')
+
+            if not start_date or not end_date:
+                return {
+                    'query': query,
+                    'filters': filters,
+                    'result_count': 0,
+                    'error': 'date_range requires both start and end dates',
+                    'results': []
+                }
+
+            # Query with date range
+            chunks = firestore_client.query_by_date_range(
+                start_date=start_date,
+                end_date=end_date,
+                limit=limit,
+                tags=tags,
+                author=author,
+                source=source
+            )
+
+            # Format results
+            results = []
+            for rank, chunk in enumerate(chunks, 1):
+                chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+                title = chunk.get('title', 'Untitled')
+                author_name = chunk.get('author', 'Unknown')
+                source_name = chunk.get('source', 'unknown')
+                tags_list = chunk.get('tags', [])
+                content = chunk.get('content', '')
+                chunk_index = chunk.get('chunk_index', 0)
+                total_chunks = chunk.get('total_chunks', 1)
+
+                snippet = content[:500] + "..." if len(content) > 500 else content
+
+                knowledge_card = _format_knowledge_card(chunk)
+                cluster_info = _format_cluster_info(chunk)
+                urls = _format_urls(chunk)
+
+                result = {
+                    'rank': rank,
+                    'chunk_id': chunk_id,
+                    'title': title,
+                    'author': author_name,
+                    'source': source_name,
+                    'tags': tags_list,
+                    'chunk_info': f"{chunk_index + 1}/{total_chunks}",
+                    'snippet': snippet,
+                    'full_content': content,
+                    'knowledge_card': knowledge_card,
+                    'cluster': cluster_info,
+                    **urls
+                }
+                results.append(result)
+
+            return {
+                'query': query,
+                'filters': filters,
+                'result_count': len(results),
+                'limit': limit,
+                'results': results
+            }
+
+        # 3. Relative time filtering
+        if period:
+            logger.info(f"Routing to relative time search (period: {period})")
+
+            # Query with relative time
+            chunks = firestore_client.query_by_relative_time(
+                period=period,
+                limit=limit,
+                tags=tags,
+                author=author,
+                source=source
+            )
+
+            # Format results
+            results = []
+            for rank, chunk in enumerate(chunks, 1):
+                chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+                title = chunk.get('title', 'Untitled')
+                author_name = chunk.get('author', 'Unknown')
+                source_name = chunk.get('source', 'unknown')
+                tags_list = chunk.get('tags', [])
+                content = chunk.get('content', '')
+                chunk_index = chunk.get('chunk_index', 0)
+                total_chunks = chunk.get('total_chunks', 1)
+
+                snippet = content[:500] + "..." if len(content) > 500 else content
+
+                knowledge_card = _format_knowledge_card(chunk)
+                cluster_info = _format_cluster_info(chunk)
+                urls = _format_urls(chunk)
+
+                result = {
+                    'rank': rank,
+                    'chunk_id': chunk_id,
+                    'title': title,
+                    'author': author_name,
+                    'source': source_name,
+                    'tags': tags_list,
+                    'chunk_info': f"{chunk_index + 1}/{total_chunks}",
+                    'snippet': snippet,
+                    'full_content': content,
+                    'knowledge_card': knowledge_card,
+                    'cluster': cluster_info,
+                    **urls
+                }
+                results.append(result)
+
+            return {
+                'query': query,
+                'filters': filters,
+                'result_count': len(results),
+                'limit': limit,
+                'results': results
+            }
+
+        # 4. Knowledge card search only
+        if search_cards_only:
+            logger.info("Routing to knowledge card search")
+
+            # Generate embedding for query
+            query_embedding = embeddings.generate_query_embedding(query)
+
+            # Execute vector search
+            chunks = firestore_client.find_nearest(
+                embedding_vector=query_embedding,
+                limit=limit
+            )
+
+            # Format results - return only knowledge card summaries
+            results = []
+            for rank, chunk in enumerate(chunks, 1):
+                chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+                title = chunk.get('title', 'Untitled')
+                author_name = chunk.get('author', 'Unknown')
+                source_name = chunk.get('source', 'unknown')
+
+                # Extract knowledge card
+                knowledge_card = chunk.get('knowledge_card')
+                urls = _format_urls(chunk)
+
+                result = {
+                    'rank': rank,
+                    'chunk_id': chunk_id,
+                    'title': title,
+                    'author': author_name,
+                    'source': source_name,
+                    'knowledge_card': {
+                        'summary': knowledge_card.get('summary', '') if knowledge_card else 'Knowledge card not available',
+                        'takeaways': knowledge_card.get('takeaways', []) if knowledge_card else []
+                    },
+                    **urls
+                }
+                results.append(result)
+
+            return {
+                'query': query,
+                'filters': filters,
+                'result_count': len(results),
+                'limit': limit,
+                'results': results
+            }
+
+        # 5. Default: Semantic search with optional metadata filters
+        logger.info("Routing to semantic search with metadata filters")
+
+        # Generate embedding for query
+        query_embedding = embeddings.generate_query_embedding(query)
+
+        # Execute vector search with filters
+        chunks = firestore_client.find_nearest(
+            embedding_vector=query_embedding,
+            limit=limit,
+            filters={'tags': tags, 'author': author, 'source': source} if (tags or author or source) else None
+        )
+
+        # Format results
+        results = []
+        for rank, chunk in enumerate(chunks, 1):
+            chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
+            title = chunk.get('title', 'Untitled')
+            author_name = chunk.get('author', 'Unknown')
+            source_name = chunk.get('source', 'unknown')
+            tags_list = chunk.get('tags', [])
+            content = chunk.get('content', '')
+            chunk_index = chunk.get('chunk_index', 0)
+            total_chunks = chunk.get('total_chunks', 1)
+
+            snippet = content[:500] + "..." if len(content) > 500 else content
+
+            knowledge_card = _format_knowledge_card(chunk)
+            cluster_info = _format_cluster_info(chunk)
+            urls = _format_urls(chunk)
+
+            result = {
+                'rank': rank,
+                'chunk_id': chunk_id,
+                'title': title,
+                'author': author_name,
+                'source': source_name,
+                'tags': tags_list,
+                'chunk_info': f"{chunk_index + 1}/{total_chunks}",
+                'snippet': snippet,
+                'full_content': content,
+                'knowledge_card': knowledge_card,
+                'cluster': cluster_info,
+                **urls
+            }
+            results.append(result)
+
+        return {
+            'query': query,
+            'filters': filters,
+            'result_count': len(results),
+            'limit': limit,
+            'results': results
+        }
+
+    except Exception as e:
+        logger.error(f"Unified search failed: {e}")
+        return {
+            'query': query,
+            'filters': filters,
+            'result_count': 0,
+            'error': str(e),
+            'results': []
         }
 
 
@@ -883,20 +1501,31 @@ def list_clusters() -> Dict[str, Any]:
         }
 
 
-def get_cluster(cluster_id: str, include_chunks: bool = True, limit: int = 20) -> Dict[str, Any]:
+def get_cluster(
+    cluster_id: str,
+    include_members: bool = True,
+    include_related: bool = True,
+    member_limit: int = 20,
+    related_limit: int = 5
+) -> Dict[str, Any]:
     """
-    Get cluster details with member chunks.
+    Get cluster details with member chunks and related clusters.
+
+    Story 4.4: Enhanced to include related clusters via centroid similarity.
+    Consolidates get_cluster and get_related_clusters into unified tool.
 
     Args:
         cluster_id: Cluster ID to fetch
-        include_chunks: Whether to include member chunks (default True)
-        limit: Maximum member chunks to return (default 20)
+        include_members: Whether to include member chunks (default True)
+        include_related: Whether to include related clusters (default True)
+        member_limit: Maximum member chunks to return (default 20)
+        related_limit: Maximum related clusters to return (default 5)
 
     Returns:
-        Dictionary with cluster metadata and member chunks
+        Dictionary with cluster metadata, member chunks, and related clusters
     """
     try:
-        logger.info(f"Fetching cluster {cluster_id} (include_chunks: {include_chunks})")
+        logger.info(f"Fetching cluster {cluster_id} (members: {include_members}, related: {include_related})")
 
         # Fetch cluster metadata
         cluster = firestore_client.get_cluster_by_id(cluster_id)
@@ -917,8 +1546,8 @@ def get_cluster(cluster_id: str, include_chunks: bool = True, limit: int = 20) -
         }
 
         # Fetch member chunks if requested
-        if include_chunks:
-            member_chunks = firestore_client.get_chunks_by_cluster(cluster_id, limit=limit)
+        if include_members:
+            member_chunks = firestore_client.get_chunks_by_cluster(cluster_id, limit=member_limit)
 
             # Format member chunks with knowledge cards and URLs
             members = []
@@ -941,7 +1570,69 @@ def get_cluster(cluster_id: str, include_chunks: bool = True, limit: int = 20) -
             response['member_count'] = len(members)
             response['members'] = members
 
-        logger.info(f"Retrieved cluster {cluster_id} with {response.get('member_count', 0)} members")
+        # Fetch related clusters if requested (Story 4.4)
+        if include_related:
+            # Get centroid from cluster
+            source_centroid = cluster.get('centroid_768d')
+
+            if source_centroid:
+                try:
+                    # Import Firestore vector search types
+                    from google.cloud.firestore_v1.vector import Vector
+                    from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+
+                    # Perform vector search on cluster centroids
+                    db = firestore_client.get_firestore_client()
+                    vector_query = db.collection('clusters').find_nearest(
+                        vector_field='centroid_768d',
+                        query_vector=Vector(source_centroid),
+                        distance_measure=DistanceMeasure.COSINE,
+                        limit=related_limit + 1,  # +1 to account for source cluster
+                        distance_result_field='vector_distance'
+                    )
+
+                    # Format related clusters
+                    related_clusters = []
+                    for doc in vector_query.stream():
+                        # Skip source cluster itself
+                        if doc.id == cluster_id:
+                            continue
+
+                        # Skip noise clusters
+                        doc_data = doc.to_dict()
+                        cluster_name = doc_data.get('name', '')
+                        if doc.id in ('-1', 'cluster_-1', 'noise', 'cluster-noise') or \
+                           'noise' in cluster_name.lower() or 'noise' in doc.id.lower():
+                            continue
+
+                        # Calculate similarity from distance
+                        distance_value = doc_data.get('vector_distance', 0)
+                        similarity = 1 - (distance_value / 2)  # COSINE: 0-2 range
+
+                        related_clusters.append({
+                            'cluster_id': doc.id,
+                            'name': doc_data.get('name', f'Cluster {doc.id}'),
+                            'description': doc_data.get('description', ''),
+                            'similarity_score': round(similarity, 3),
+                            'size': doc_data.get('size', 0)
+                        })
+
+                        if len(related_clusters) >= related_limit:
+                            break
+
+                    response['related_count'] = len(related_clusters)
+                    response['related_clusters'] = related_clusters
+
+                except ImportError:
+                    logger.warning("Firestore vector search not available for related clusters")
+                    response['related_count'] = 0
+                    response['related_clusters'] = []
+            else:
+                logger.warning(f"Cluster {cluster_id} has no centroid_768d - cannot find related clusters")
+                response['related_count'] = 0
+                response['related_clusters'] = []
+
+        logger.info(f"Retrieved cluster {cluster_id} with {response.get('member_count', 0)} members and {response.get('related_count', 0)} related")
 
         return response
 
@@ -1887,5 +2578,193 @@ def update_ranking_config(
         logger.error(f"Update ranking config failed: {e}")
         return {
             'success': False,
+            'error': str(e)
+        }
+
+
+# ============================================================================
+# Story 4.5: Unified Configuration Tool
+# ============================================================================
+
+def configure_kb(action: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Unified configuration tool for kx-hub.
+
+    Story 4.5: Consolidates 4 configuration tools into single entry point.
+    Replaces: get_recommendation_config, update_recommendation_domains,
+              get_ranking_config, update_ranking_config,
+              get_hot_sites_config, update_hot_sites_config
+
+    Args:
+        action: Action to perform (show_all, show_ranking, show_domains,
+                show_hot_sites, update_ranking, update_domains, update_hot_sites)
+        params: Action-specific parameters (optional)
+
+    Returns:
+        Dictionary with action-specific results
+
+    Actions:
+        - show_all: Display all configuration (no params)
+        - show_ranking: Show ranking weights and settings (no params)
+        - show_domains: Show domain whitelist (no params)
+        - show_hot_sites: Show hot sites categories (no params)
+        - update_ranking: Update ranking weights/settings (params: {weights, settings})
+        - update_domains: Modify domain whitelist (params: {add, remove})
+        - update_hot_sites: Modify hot sites (params: {category, add, remove, description})
+
+    Examples:
+        >>> configure_kb(action="show_all")
+        {
+            "ranking": {...},
+            "domains": {...},
+            "hot_sites": {...}
+        }
+
+        >>> configure_kb(action="update_domains", params={"add": ["newsite.com"]})
+        {
+            "success": true,
+            "quality_domains": [...],
+            "changes": {"domains_added": ["newsite.com"]}
+        }
+    """
+    try:
+        logger.info(f"configure_kb: action={action}, params={params}")
+
+        params = params or {}
+
+        # Validate action
+        valid_actions = [
+            'show_all', 'show_ranking', 'show_domains', 'show_hot_sites',
+            'update_ranking', 'update_domains', 'update_hot_sites'
+        ]
+
+        if action not in valid_actions:
+            return {
+                'error': f'Invalid action: {action}',
+                'valid_actions': valid_actions
+            }
+
+        # Route to appropriate handler
+        if action == 'show_all':
+            # Return all configuration
+            ranking = get_ranking_config()
+            domains = get_recommendation_config()
+            hot_sites = get_hot_sites_config()
+
+            return {
+                'action': 'show_all',
+                'ranking': ranking,
+                'domains': domains,
+                'hot_sites': hot_sites
+            }
+
+        elif action == 'show_ranking':
+            # Return ranking configuration
+            return {
+                'action': 'show_ranking',
+                **get_ranking_config()
+            }
+
+        elif action == 'show_domains':
+            # Return domain whitelist
+            return {
+                'action': 'show_domains',
+                **get_recommendation_config()
+            }
+
+        elif action == 'show_hot_sites':
+            # Return hot sites configuration
+            return {
+                'action': 'show_hot_sites',
+                **get_hot_sites_config()
+            }
+
+        elif action == 'update_ranking':
+            # Update ranking configuration
+            weights = params.get('weights')
+            settings = params.get('settings')
+
+            if not weights and not settings:
+                return {
+                    'error': 'update_ranking requires weights or settings in params',
+                    'example': {
+                        'action': 'update_ranking',
+                        'params': {
+                            'weights': {
+                                'relevance': 0.5,
+                                'recency': 0.25,
+                                'depth': 0.15,
+                                'authority': 0.1
+                            }
+                        }
+                    }
+                }
+
+            result = update_ranking_config(weights=weights, settings=settings)
+            return {
+                'action': 'update_ranking',
+                **result
+            }
+
+        elif action == 'update_domains':
+            # Update domain whitelist
+            add_domains = params.get('add')
+            remove_domains = params.get('remove')
+
+            if not add_domains and not remove_domains:
+                return {
+                    'error': 'update_domains requires add or remove in params',
+                    'example': {
+                        'action': 'update_domains',
+                        'params': {
+                            'add': ['newsite.com'],
+                            'remove': ['oldsite.com']
+                        }
+                    }
+                }
+
+            result = update_recommendation_domains(
+                add_domains=add_domains,
+                remove_domains=remove_domains
+            )
+            return {
+                'action': 'update_domains',
+                **result
+            }
+
+        elif action == 'update_hot_sites':
+            # Update hot sites configuration
+            category = params.get('category')
+            add_domains = params.get('add')
+            remove_domains = params.get('remove')
+            description = params.get('description')
+
+            if not category:
+                return {
+                    'error': 'update_hot_sites requires category in params',
+                    'example': {
+                        'action': 'update_hot_sites',
+                        'params': {
+                            'category': 'ai',
+                            'add': ['newaisite.com']
+                        }
+                    }
+                }
+
+            result = update_hot_sites_config(
+                category=category,
+                add_domains=add_domains,
+                remove_domains=remove_domains,
+                description=description
+            )
+            return {
+                'action': 'update_hot_sites',
+                **result
+            }
+
+    except Exception as e:
+        logger.error(f"configure_kb failed: {e}")
+        return {
+            'action': action,
             'error': str(e)
         }

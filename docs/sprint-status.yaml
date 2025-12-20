@@ -3,8 +3,8 @@
 # Last Updated: 2025-12-11
 
 project_name: kx-hub
-epic_count: 3
-total_stories: 20
+epic_count: 4
+total_stories: 27
 
 # STATUS DEFINITIONS
 # backlog     - Story identified but not yet drafted
@@ -159,6 +159,49 @@ development_status:
     completion_date: 2025-12-12
     notes: "Bug fix complete. 4-layer deduplication: URL, title containment, author+topic, embedding. 61 tests pass."
 
+# Epic 4: MCP Tool Consolidation
+
+  4-1-search-kb-unified:
+    status: review
+    story_file: docs/stories/4-1-search-kb-unified.md
+    context_file: docs/stories/4-1-search-kb-unified.context.xml
+    completion_date: 2025-12-19
+    notes: "Implementation complete. Unified search_kb tool with filters for cluster, metadata, time, and knowledge cards. 11 unit tests pass. Ready for integration testing."
+
+  4-2-get-chunk-enhanced:
+    status: review
+    story_file: docs/stories/4-2-get-chunk-enhanced.md
+    context_file: docs/stories/4-2-get-chunk-enhanced.context.xml
+    completion_date: 2025-12-19
+    notes: "Implementation complete. Unified get_chunk tool with knowledge card + related chunks. 8/8 tests pass. Ready for integration testing."
+
+  4-3-get-recent-combined:
+    status: done
+    story_file: docs/stories/4-3-get-recent-combined.md
+    context_file: docs/stories/4-3-get-recent-combined.context.xml
+    completion_date: 2025-12-20
+    notes: "Complete. Unified get_recent tool with activity summary + cluster distribution. 9/9 tests pass."
+
+  4-4-get-cluster-enhanced:
+    status: done
+    completion_date: 2025-12-20
+    notes: "Complete. Enhanced get_cluster with related clusters via centroid similarity. 8/8 tests pass. Consolidates get_cluster and get_related_clusters."
+
+  4-5-configure-kb-unified:
+    status: done
+    completion_date: 2025-12-20
+    notes: "Complete. Unified configure_kb tool with 7 actions (show_all, show_ranking, show_domains, show_hot_sites, update_ranking, update_domains, update_hot_sites). 11/11 tests pass. Consolidates 4 configuration tools."
+
+  4-6-deprecate-old-tools:
+    status: done
+    completion_date: 2025-12-20
+    notes: "Complete. Removed 16 deprecated tools from MCP server. Reduced from 25 tools to 9 tools (8 core + search_within_cluster). 447 lines removed (45% reduction). All 53 tests pass."
+
+  4-7-documentation-tests:
+    status: done
+    completion_date: 2025-12-20
+    notes: "Complete. Created comprehensive MCP Tools API reference (docs/mcp-tools-api.md). Updated README with v2.0 features. 53 comprehensive tests covering all 9 tools (100% coverage for consolidated tools)."
+
 # Epic Completion
 epic-1:
   status: complete
@@ -175,3 +218,9 @@ epic-3:
   status: in-progress
   completion: 6/10 (60%)
   notes: "Story 3.3 deferred, Stories 3.4-3.5, 3.8, 3.10 done. Story 3.1 review. Story 3.2 backlog. Stories 3.6-3.7, 3.9 drafted."
+
+epic-4:
+  status: complete
+  completion: 7/7 (100%)
+  completion_date: 2025-12-20
+  notes: "MCP Tool Consolidation COMPLETE. Reduced from 25 to 9 tools (64% reduction). All stories complete: 4.1 (search_kb), 4.2 (get_chunk), 4.3 (get_recent), 4.4 (get_cluster), 4.5 (configure_kb), 4.6 (deprecation), 4.7 (documentation). 53 comprehensive tests, API reference published."

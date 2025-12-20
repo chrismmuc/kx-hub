@@ -1,0 +1,182 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>4</epicId>
+    <storyId>2</storyId>
+    <title>Create `get_chunk` Tool with Embedded Related Chunks and Knowledge Card</title>
+    <status>drafted</status>
+    <generatedAt>2025-12-19</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/stories/4-2-get-chunk-enhanced.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>AI assistant using kx-hub MCP tools</asA>
+    <iWant>single `get_chunk` tool that returns full chunk details with knowledge card and related chunks embedded</iWant>
+    <soThat>I can retrieve comprehensive chunk information in one API call instead of chaining `get_related_chunks` and `get_knowledge_card`</soThat>
+    <tasks>
+- Task 1: Implement `get_chunk` function in tools.py (AC: 1-9)
+  - 1.1 Define parameter schema (chunk_id, include_related, related_limit)
+  - 1.2 Fetch chunk by ID from Firestore
+  - 1.3 Extract and format knowledge card from chunk data
+  - 1.4 Get related chunks via vector similarity (if include_related=true)
+  - 1.5 Extract cluster membership info from chunk.cluster_id
+  - 1.6 Format all URLs using _format_urls helper
+  - 1.7 Handle missing chunk, missing knowledge card gracefully
+- Task 2: Register `get_chunk` tool in main.py (AC: 1)
+  - 2.1 Add Tool definition with complete inputSchema
+  - 2.2 Add handler in call_tool_handler switch
+- Task 3: Unit tests (AC: 1-9)
+  - 3.1 Test get chunk with all fields included
+  - 3.2 Test knowledge card extraction and formatting
+  - 3.3 Test related chunks retrieval and ranking
+  - 3.4 Test cluster membership info
+  - 3.5 Test include_related=false option
+  - 3.6 Test related_limit parameter
+  - 3.7 Test chunk not found (error handling)
+  - 3.8 Test missing knowledge card (graceful degradation)
+  - 3.9 Test URL fields inclusion
+- Task 4: Integration testing (AC: 1-10)
+  - 4.1 Test via MCP protocol with Claude Desktop
+  - 4.2 Verify response format matches expected schema
+  - 4.3 Verify all embedded data (card, related, cluster, URLs) present
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+1. New `get_chunk` tool registered in MCP server with chunk_id parameter
+2. Full chunk content returned including all fields (title, author, source, tags, content, URLs)
+3. Knowledge card embedded by default (summary + takeaways) from chunk.knowledge_card field
+4. Related chunks included by default via vector similarity (default limit: 5)
+5. Cluster membership info included showing which cluster(s) the chunk belongs to
+6. All URLs included (readwise_url, source_url, highlight_url) per Story 2.7
+7. Optional include_related parameter allows disabling related chunks retrieval (default: true)
+8. Optional related_limit parameter controls max related chunks (default: 5)
+9. Returns gracefully when chunk_id not found or knowledge card missing
+10. Replaces 2 separate tools (`get_related_chunks` and `get_knowledge_card`) reducing tool count
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc path="docs/epics.md" title="Epic 4: MCP Tool Consolidation" section="Story 4.2 Specification">
+        Story 4.2 consolidates get_related_chunks and get_knowledge_card into unified get_chunk tool. Returns full chunk details with knowledge card and related chunks embedded. Estimated effort: 1 day, complexity: Low.
+      </doc>
+      <doc path="docs/epics.md" title="Epic 4: MCP Tool Consolidation" section="Consolidated Tool Specification - get_chunk">
+        Defines complete parameter schema (chunk_id, include_related, related_limit) and expected response format including chunk fields, knowledge_card object, related chunks array, cluster info, and URLs. Default behavior includes related chunks (limit 5) and knowledge card.
+      </doc>
+      <doc path="docs/architecture.md" title="MCP Server Architecture" section="Tool Registration Pattern">
+        MCP tools registered in main.py using Tool() class with name, description, and inputSchema. Handler logic in call_tool_handler async function. Tool functions implemented in tools.py module.
+      </doc>
+      <doc path="docs/stories/4-1-search-kb-unified.md" title="Story 4.1: Create Unified search_kb Tool" section="Dev Notes">
+        Establishes helper functions _format_urls(), _format_knowledge_card(), _format_cluster_info() in tools.py for reuse. Shows pattern for unified tool implementation with flexible parameters. TestSearchKBUnified provides testing pattern with 11 comprehensive tests.
+      </doc>
+    </docs>
+    <code>
+      <artifact path="src/mcp_server/tools.py" kind="module" symbol="_format_urls" lines="28-50" reason="Helper function to extract and format URL fields (readwise_url, source_url, highlight_url) from chunk data - REUSE for AC 6"/>
+      <artifact path="src/mcp_server/tools.py" kind="module" symbol="_format_knowledge_card" lines="53-85" reason="Helper function to extract and format knowledge card from chunk.knowledge_card field - REUSE for AC 3"/>
+      <artifact path="src/mcp_server/tools.py" kind="module" symbol="_format_cluster_info" lines="88-117" reason="Helper function to extract cluster membership info from chunk.cluster_id - REUSE for AC 5"/>
+      <artifact path="src/mcp_server/tools.py" kind="module" symbol="search_kb" lines="121-471" reason="Example of unified tool implementation pattern with flexible filter object - follow for get_chunk design (Story 4.1)"/>
+      <artifact path="src/mcp_server/firestore_client.py" kind="module" symbol="get_chunk_by_id" reason="Function to fetch single chunk by ID from Firestore - use for Task 1.2"/>
+      <artifact path="src/mcp_server/firestore_client.py" kind="module" symbol="find_nearest" reason="Vector similarity search function - use with chunk.embedding to find related chunks for Task 1.4"/>
+      <artifact path="src/mcp_server/main.py" kind="server" symbol="list_tools_handler" lines="72-620" reason="Tool registration pattern - add get_chunk Tool definition here for Task 2.1"/>
+      <artifact path="src/mcp_server/main.py" kind="server" symbol="call_tool_handler" lines="622-850" reason="Tool handler switch statement - add get_chunk case here for Task 2.2"/>
+      <artifact path="tests/test_mcp_tools.py" kind="test" symbol="TestSearchKBUnified" lines="208-525" reason="Comprehensive test class pattern with 11 tests covering all filter combinations and edge cases - follow for TestGetChunk class"/>
+      <artifact path="tests/test_mcp_tools.py" kind="test" symbol="test_get_related_chunks_success" lines="118-176" reason="Test pattern for related chunks retrieval with vector similarity - adapt for get_chunk related chunks logic"/>
+    </code>
+    <dependencies>
+      <python>
+        <package name="google-cloud-firestore" version="^2.11.0" reason="Firestore client for chunk retrieval"/>
+        <package name="pytest" version="^9.0.1" reason="Testing framework for unit tests"/>
+        <package name="unittest.mock" version="stdlib" reason="Mocking for Firestore and embedding calls in tests"/>
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+- Follow pattern from Story 4.1 (search_kb): single function in tools.py, registration in main.py, comprehensive test class
+- REUSE existing helper functions (_format_urls, _format_knowledge_card, _format_cluster_info) - do NOT recreate
+- Use existing firestore_client functions (get_chunk_by_id, find_nearest) - do NOT reimplement data access
+- Default behavior: include_related=true, related_limit=5 (user can override)
+- Handle missing data gracefully: chunk not found returns error, missing knowledge_card returns null/empty object
+- Filter out source chunk from related chunks results (chunk should not be related to itself)
+- Return all URLs (readwise_url, source_url, highlight_url) in response per Story 2.7 pattern
+- Maintain backward compatibility: existing tools (get_related_chunks, get_knowledge_card) remain functional until Epic 4.6 deprecation
+  </constraints>
+
+  <interfaces>
+    <interface name="get_chunk MCP Tool" kind="MCP Tool Definition" path="src/mcp_server/main.py">
+      <signature>
+Tool(
+  name="get_chunk",
+  description="Get full details for a specific chunk including knowledge card and related chunks",
+  inputSchema={
+    "type": "object",
+    "properties": {
+      "chunk_id": {"type": "string", "description": "Chunk ID to retrieve", "required": true},
+      "include_related": {"type": "boolean", "description": "Include related chunks (default true)", "default": true},
+      "related_limit": {"type": "integer", "description": "Max related chunks (default 5)", "default": 5, "minimum": 1, "maximum": 20}
+    },
+    "required": ["chunk_id"]
+  }
+)
+      </signature>
+    </interface>
+    <interface name="get_chunk Function" kind="Python Function" path="src/mcp_server/tools.py">
+      <signature>
+def get_chunk(chunk_id: str, include_related: bool = True, related_limit: int = 5) -> Dict[str, Any]:
+    """
+    Get full chunk details with embedded knowledge card and related chunks.
+
+    Returns:
+    {
+      "chunk_id": str,
+      "title": str,
+      "author": str,
+      "source": str,
+      "tags": List[str],
+      "content": str,
+      "chunk_info": str,
+      "knowledge_card": {"summary": str, "takeaways": List[str]} | None,
+      "cluster": {"cluster_id": List[str], "cluster_name": str, "description": str},
+      "related_chunks": List[{"chunk_id": str, "title": str, "author": str, "snippet": str, "similarity_score": float}],
+      "readwise_url": str | None,
+      "source_url": str | None,
+      "highlight_url": str | None
+    }
+    """
+      </signature>
+    </interface>
+    <interface name="firestore_client.get_chunk_by_id" kind="Python Function" path="src/mcp_server/firestore_client.py">
+      <signature>
+def get_chunk_by_id(chunk_id: str) -> Dict[str, Any] | None:
+    """Fetch single chunk by ID. Returns None if not found."""
+      </signature>
+    </interface>
+    <interface name="firestore_client.find_nearest" kind="Python Function" path="src/mcp_server/firestore_client.py">
+      <signature>
+def find_nearest(embedding_vector: List[float], limit: int, filters: Dict = None) -> List[Dict[str, Any]]:
+    """Vector similarity search using embedding. Returns chunks sorted by similarity."""
+      </signature>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+Unit tests use pytest with unittest.mock for mocking Firestore and embedding calls. Tests are located in tests/test_mcp_tools.py. Each test class follows pattern TestToolName with descriptive test method names. Mock data includes all required chunk fields. Tests verify both success paths and error handling (chunk not found, missing knowledge card).
+    </standards>
+    <locations>
+tests/test_mcp_tools.py - Add new TestGetChunk class alongside TestSearchKBUnified
+    </locations>
+    <ideas>
+- AC1: Test tool registered and accessible via MCP server
+- AC2: Test full chunk content returned with all fields (title, author, source, tags, content, URLs)
+- AC3: Test knowledge card extraction and formatting from chunk.knowledge_card
+- AC4: Test related chunks retrieval with vector similarity, verify ranking and source chunk filtered out
+- AC5: Test cluster membership info extraction from chunk.cluster_id field
+- AC6: Test all URL fields (readwise_url, source_url, highlight_url) present in response
+- AC7: Test include_related=false disables related chunks retrieval
+- AC8: Test related_limit parameter controls max related chunks returned
+- AC9: Test chunk_id not found returns error gracefully, test missing knowledge_card returns null/empty object
+- AC10: Integration test via MCP protocol verifies tool reduces call count from 2 to 1
+    </ideas>
+  </tests>
+</story-context>
