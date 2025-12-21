@@ -127,10 +127,10 @@ resource "google_service_account" "mcp_server" {
   description  = "Least-privilege service account for remote MCP server on Cloud Run"
 }
 
-# Grant Firestore read permissions
-resource "google_project_iam_member" "firestore_viewer" {
+# Grant Firestore read/write permissions (needed for OAuth client registration)
+resource "google_project_iam_member" "firestore_user" {
   project = var.project_id
-  role    = "roles/datastore.viewer"
+  role    = "roles/datastore.user"
   member  = "serviceAccount:${google_service_account.mcp_server.email}"
 }
 
@@ -168,7 +168,7 @@ resource "google_cloud_run_v2_service" "mcp_server" {
       max_instance_count = 3
     }
 
-    timeout = "120s"
+    timeout = "3600s"  # Maximum timeout for SSE connections (1 hour)
 
     containers {
       image = "gcr.io/${var.project_id}/${var.service_name}:latest"
@@ -220,6 +220,41 @@ resource "google_cloud_run_v2_service" "mcp_server" {
         }
       }
 
+      # OAuth 2.1 configuration (conditional on oauth_enabled variable)
+      dynamic "env" {
+        for_each = var.oauth_enabled ? [1] : []
+        content {
+          name  = "OAUTH_ENABLED"
+          value = "true"
+        }
+      }
+
+      # OAUTH_ISSUER - explicit HTTPS issuer URL (prevents HTTP/HTTPS mismatch)
+      # Set oauth_issuer_override in terraform.tfvars after first deployment
+      dynamic "env" {
+        for_each = var.oauth_enabled && var.oauth_issuer_override != "" ? [1] : []
+        content {
+          name  = "OAUTH_ISSUER"
+          value = var.oauth_issuer_override
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.oauth_enabled ? [1] : []
+        content {
+          name  = "OAUTH_USER_EMAIL"
+          value = var.oauth_user_email
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.oauth_enabled && var.oauth_user_password_hash != "" ? [1] : []
+        content {
+          name  = "OAUTH_USER_PASSWORD_HASH"
+          value = var.oauth_user_password_hash
+        }
+      }
+
       ports {
         container_port = 8080
       }
@@ -236,7 +271,8 @@ resource "google_cloud_run_v2_service" "mcp_server" {
   depends_on = [
     google_project_service.required_apis,
     google_secret_manager_secret_version.mcp_auth_token,
-    google_secret_manager_secret_version.tavily_api_key
+    google_secret_manager_secret_version.tavily_api_key,
+    null_resource.build_mcp_image
   ]
 }
 

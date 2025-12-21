@@ -5,6 +5,7 @@
 # Secrets and sensitive configuration
 secrets/
 setup-secrets.sh
+scripts/setup_oauth_secrets.sh
 initial-import.py
 .import-checkpoint.json
 terraform/terraform.tfvars
@@ -17,6 +18,11 @@ terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 terraform/*.tfplan
 terraform/.terraform.tfstate.lock.info
+terraform/mcp-remote/.terraform/
+terraform/mcp-remote/.terraform.lock.hcl
+terraform/mcp-remote/terraform.tfstate
+terraform/mcp-remote/terraform.tfstate.backup
+terraform/mcp-remote/terraform.tfvars
 
 # Python
 __pycache__/
@@ -42,14 +48,6 @@ Thumbs.db
 # Temporary files
 *.log
 .env
-input/Build Remote MCP with Authorization | by Danila Loginov | Medium.html
-input/The Missing MCP Playbook: Deploying Custom Agents on Claude.ai and Claude Mobile | by George Vettica.html
-terraform/mcp-remote/terraform.tfstate.backup
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/google/5.45.2/darwin_arm64/LICENSE.txt
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/google/5.45.2/darwin_arm64/terraform-provider-google_v5.45.2_x5
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/null/3.2.4/darwin_arm64/LICENSE.txt
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/null/3.2.4/darwin_arm64/terraform-provider-null_v3.2.4_x5
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/random/3.7.2/darwin_arm64/LICENSE.txt
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/random/3.7.2/darwin_arm64/terraform-provider-random_v3.7.2_x5
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/tls/4.1.0/darwin_arm64/LICENSE.txt
-terraform/mcp-remote/.terraform/providers/registry.terraform.io/hashicorp/tls/4.1.0/darwin_arm64/terraform-provider-tls_v4.1.0_x5
+
+# Input documentation (reference only, not committed)
+input/

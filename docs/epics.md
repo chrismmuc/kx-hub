@@ -468,6 +468,120 @@
 
 ---
 
+### Story 3.1.1: OAuth 2.1 + Dynamic Client Registration for Mobile Access
+
+**Status:** Ready
+
+**Summary:** Implement OAuth 2.1 authentication with Dynamic Client Registration (RFC 7591) to enable kx-hub MCP server access from Claude Mobile and Claude.ai Web. Claude Mobile requires DCR-compliant OAuth, which Google Cloud OAuth does not support natively. This story builds a lightweight OAuth 2.1 authorization server directly into the Cloud Run MCP server.
+
+**Key Features:**
+- **Dynamic Client Registration (RFC 7591):**
+  - `POST /register` endpoint for client registration
+  - Auto-generate client_id and client_secret
+  - Store registrations in Firestore `oauth_clients` collection
+  - Support client metadata (redirect_uris, client_name, etc.)
+- **OAuth 2.1 Authorization Flow:**
+  - `GET /authorize` - Authorization endpoint with user consent
+  - `POST /token` - Token exchange endpoint (authorization_code grant)
+  - `POST /token` - Refresh token support
+  - JWT-based access tokens with expiry
+- **Authentication Method:**
+  - Single-user setup (you are the only authorized user)
+  - Google Sign-In for /authorize endpoint (via Identity Platform)
+  - Alternative: Simple password-based auth for personal use
+- **Token Management:**
+  - JWT signing with keys from Secret Manager
+  - Access token expiry (1 hour default)
+  - Refresh token expiry (30 days default)
+  - Token validation middleware for /sse endpoint
+- **Claude Integration:**
+  - OAuth callback URL: `https://claude.ai/api/mcp/auth_callback`
+  - OAuth client name: `Claude`
+  - Supports token refresh for long sessions
+
+**Dependencies:**
+- Story 3.1 (Remote MCP Server Deployment) - requires Cloud Run deployment
+- Story 2.6 (MCP Enhancements) - requires functional MCP tools
+
+**Technical Approach:**
+- **OAuth Library:** `authlib` Python library (OAuth 2.1 + RFC 7591 compliant)
+- **Client Storage:** Firestore collection `oauth_clients` with schema:
+  ```json
+  {
+    "client_id": "generated-uuid",
+    "client_secret": "hashed-secret",
+    "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"],
+    "client_name": "Claude",
+    "grant_types": ["authorization_code", "refresh_token"],
+    "response_types": ["code"],
+    "created_at": "2025-12-20T..."
+  }
+  ```
+- **Token Storage:** Firestore collection `oauth_tokens` for authorization codes and refresh tokens
+- **JWT Signing:** RSA keys stored in Secret Manager (`oauth-jwt-private-key`, `oauth-jwt-public-key`)
+- **Authorization UI:** Simple HTML form for user consent (served at /authorize)
+- **User Authentication:** Google Sign-In via Identity Platform (or password for single-user)
+- **Token Validation:** Middleware validates JWT on every /sse request
+- **Existing SSE Logic:** No changes to MCP protocol, only adds auth layer
+
+**Implementation Details:**
+1. **New Python Modules:**
+   - `src/mcp_server/oauth_server.py` - OAuth endpoints (register, authorize, token)
+   - `src/mcp_server/oauth_storage.py` - Firestore storage for clients/tokens
+   - `src/mcp_server/oauth_middleware.py` - JWT validation middleware
+   - `src/mcp_server/oauth_templates.py` - HTML templates for consent UI
+
+2. **Updated Modules:**
+   - `src/mcp_server/server_sse.py` - Add OAuth middleware to SSE app
+   - `src/mcp_server/main.py` - Register OAuth endpoints alongside /sse
+
+3. **Terraform Updates:**
+   - Generate JWT RSA key pair and store in Secret Manager
+   - Grant Cloud Run service account access to oauth secrets
+   - Add Firestore indexes for oauth_clients and oauth_tokens collections
+
+4. **Environment Variables:**
+   - `OAUTH_ISSUER` - Token issuer (e.g., `https://kx-hub-mcp.run.app`)
+   - `OAUTH_JWT_PRIVATE_KEY` - Secret Manager reference
+   - `OAUTH_JWT_PUBLIC_KEY` - Secret Manager reference
+   - `OAUTH_USER_EMAIL` - Authorized user email (for single-user mode)
+
+**Success Metrics:**
+- DCR endpoint compliant with RFC 7591 (passes validation)
+- Claude.ai Web successfully registers and obtains access token
+- Claude Mobile successfully connects to MCP server
+- Token refresh works without re-authentication
+- <200ms token validation overhead per request (P95)
+- Zero authentication failures for valid tokens
+- Cost impact: ~$0.05/month (minimal Firestore reads/writes)
+
+**Business Value:**
+- ✅ Access kx-hub from Claude Mobile (iPhone/Android)
+- ✅ Access kx-hub from Claude.ai Web (any browser)
+- ✅ Single sign-in across all devices (token refresh)
+- ✅ No dependency on external OAuth providers (Auth0, Okta)
+- ✅ 100% Google Cloud native solution
+- ✅ Secure, standards-compliant authentication
+
+**Security Considerations:**
+- JWT tokens signed with RSA-256 (asymmetric)
+- Client secrets hashed with bcrypt before storage
+- Refresh tokens one-time use (rotated on each refresh)
+- Authorization codes expire after 10 minutes
+- Rate limiting on /register and /token endpoints
+- HTTPS enforced (Cloud Run default)
+- Secret Manager for sensitive keys (never in code/env)
+
+**Testing Strategy:**
+- Unit tests for OAuth flows (register, authorize, token, refresh)
+- Integration tests with mock Claude client
+- Manual testing with Claude.ai Web UI
+- Manual testing with Claude Mobile app
+- Token expiry and refresh validation
+- Security testing (invalid tokens, expired codes, etc.)
+
+---
+
 ### Story 3.2: Periodic Reclustering with Drift Detection
 
 **Status:** Planned
