@@ -1,0 +1,27 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy package files
+COPY src/mcp_server_ts/package.json ./
+COPY src/mcp_server_ts/tsconfig.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY src/mcp_server_ts/src ./src
+
+# Build TypeScript
+RUN npm run build
+
+# Environment variables (set via Cloud Run)
+ENV PORT=8080
+ENV NODE_ENV=production
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); })"
+
+# Run the server
+CMD ["npm", "start"]

@@ -1,0 +1,32 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY src/mcp_tools_api/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the tools API application
+COPY src/mcp_tools_api/ ./src/mcp_tools_api/
+
+# Copy ALL required modules from mcp_server (we reuse the implementations)
+COPY src/mcp_server/__init__.py ./src/mcp_server/__init__.py
+COPY src/mcp_server/tools.py ./src/mcp_server/tools.py
+COPY src/mcp_server/firestore_client.py ./src/mcp_server/firestore_client.py
+COPY src/mcp_server/embeddings.py ./src/mcp_server/embeddings.py
+COPY src/mcp_server/prompts.py ./src/mcp_server/prompts.py
+COPY src/mcp_server/recommendation_filter.py ./src/mcp_server/recommendation_filter.py
+COPY src/mcp_server/recommendation_queries.py ./src/mcp_server/recommendation_queries.py
+COPY src/mcp_server/tavily_client.py ./src/mcp_server/tavily_client.py
+COPY src/mcp_server/resources.py ./src/mcp_server/resources.py
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+
+# Run the FastAPI application
+CMD ["python", "-m", "uvicorn", "src.mcp_tools_api.main:app", "--host", "0.0.0.0", "--port", "8080"]
