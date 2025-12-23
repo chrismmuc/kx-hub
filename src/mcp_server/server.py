@@ -164,7 +164,13 @@ def verify_jwt_token(request: Request) -> Optional[Dict[str, Any]]:
     try:
         import jwt
         public_key = oauth_server.get_public_key()
-        decoded = jwt.decode(token, public_key, algorithms=["RS256"])
+        # Skip audience verification - aud is dynamic client_id from DCR
+        decoded = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            options={"verify_aud": False}
+        )
         return decoded
     except Exception as e:
         logger.error(f"JWT verification failed: {e}")
@@ -278,6 +284,7 @@ async def token_endpoint(request: Request):
 # ==================== MCP Streamable HTTP ====================
 
 @app.post("/")
+@app.post("/mcp")
 async def mcp_endpoint(request: Request):
     """
     MCP Streamable HTTP endpoint.

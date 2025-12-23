@@ -30,9 +30,9 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'GCP_PROJECT=$PROJECT_ID,FIRESTORE_DATABASE=(default),OAUTH_ISSUER=${_OAUTH_ISSUER},OAUTH_USER_EMAIL=${_OAUTH_USER_EMAIL},OAUTH_USER_PASSWORD_HASH=${_OAUTH_USER_PASSWORD_HASH}'
+      - 'GCP_PROJECT=$PROJECT_ID,FIRESTORE_DATABASE=(default),OAUTH_ISSUER=${_OAUTH_ISSUER},OAUTH_USER_EMAIL=${_OAUTH_USER_EMAIL}'
       - '--set-secrets'
-      - 'TAVILY_API_KEY=TAVILY_API_KEY:latest'
+      - 'TAVILY_API_KEY=TAVILY_API_KEY:latest,OAUTH_USER_PASSWORD_HASH=OAUTH_USER_PASSWORD_HASH:latest'
       - '--memory'
       - '512Mi'
       - '--cpu'
@@ -51,7 +51,6 @@ substitutions:
   _SERVICE_NAME: kx-hub-mcp
   _OAUTH_ISSUER: https://kx-hub-mcp-386230044357.europe-west1.run.app
   _OAUTH_USER_EMAIL: chrismu82@googlemail.com
-  _OAUTH_USER_PASSWORD_HASH: $$2b$$12$$E/voXAj5L90n0xWWQeiu9OfAs.2YDX5a7GL.zGF5x2z3H/15eGWwu
 
 options:
   logging: CLOUD_LOGGING_ONLY
