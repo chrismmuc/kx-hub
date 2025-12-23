@@ -2,13 +2,6 @@
 OAuth 2.1 Authorization Server for Cloud Run.
 """
 
-import os
-import sys
-from pathlib import Path
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "mcp_server"))
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from oauth_server import OAuthServer
