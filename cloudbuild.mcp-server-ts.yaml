@@ -32,7 +32,7 @@ steps:
       - '--set-env-vars'
       - 'PYTHON_TOOLS_API_URL=${_PYTHON_TOOLS_API_URL},OAUTH_LAMBDA_URL=${_OAUTH_LAMBDA_URL}'
       - '--update-secrets'
-      - '/secrets/jwt-public-key/latest=jwt-public-key:latest'
+      - '/secrets/jwt-public-key/latest=oauth-jwt-public-key:latest'
 
 substitutions:
   _REGION: europe-west1

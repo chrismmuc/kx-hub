@@ -160,15 +160,39 @@ app.post('/token', async (req, res) => {
 });
 
 // SSE endpoint - requires OAuth
-app.get('/', authMiddleware, async (req, res) => {
+app.get('/sse', authMiddleware, async (req, res) => {
   console.log('SSE connection request from authenticated client');
   await sseController.handleSseConnection(req, res);
 });
 
-// Messages endpoint - requires OAuth
+// Messages endpoint for SSE transport - requires OAuth
 app.post('/messages', authMiddleware, async (req, res) => {
   console.log('Messages endpoint called');
   await sseController.handleMessage(req, res);
+});
+
+// Streamable HTTP transport (POST to /) - for Claude Code compatibility
+// This is the newer MCP transport that doesn't require SSE
+app.post('/', authMiddleware, async (req, res) => {
+  console.log('Streamable HTTP POST received');
+  console.log('Request body:', JSON.stringify(req.body).substring(0, 500));
+  await sseController.handleStreamableHttp(req, res);
+});
+
+// Root GET - return info about available transports
+app.get('/', (req, res) => {
+  res.json({
+    name: 'kx-hub-mcp-server',
+    version: '1.0.0',
+    transports: {
+      sse: '/sse',
+      streamable_http: '/'
+    },
+    oauth: {
+      metadata: '/.well-known/oauth-authorization-server',
+      protected_resource: '/.well-known/oauth-protected-resource'
+    }
+  });
 });
 
 // Start server

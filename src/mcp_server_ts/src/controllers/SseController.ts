@@ -326,6 +326,181 @@ export class SseController {
   }
 
   /**
+   * Handle Streamable HTTP transport (POST to /)
+   * This is for clients like Claude Code that use direct POST instead of SSE
+   */
+  async handleStreamableHttp(req: Request, res: Response): Promise<void> {
+    console.log('handleStreamableHttp called');
+
+    try {
+      const body = req.body;
+      console.log('Received JSON-RPC request:', JSON.stringify(body).substring(0, 200));
+
+      // Handle JSON-RPC request directly
+      if (body.method === 'initialize') {
+        // MCP initialize request
+        res.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            protocolVersion: '2024-11-05',
+            serverInfo: {
+              name: 'kx-hub',
+              version: '1.0.0'
+            },
+            capabilities: {
+              tools: {}
+            }
+          }
+        });
+      } else if (body.method === 'tools/list') {
+        // Return tool list - reuse the same definitions
+        res.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            tools: [
+              {
+                name: 'search_kb',
+                description: 'Unified knowledge base search with flexible filtering',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    query: { type: 'string', description: 'Natural language search query' },
+                    filters: { type: 'object', description: 'Optional filters' },
+                    limit: { type: 'integer', description: 'Max results', default: 10 }
+                  },
+                  required: ['query']
+                }
+              },
+              {
+                name: 'get_chunk',
+                description: 'Get full chunk details with knowledge card and related chunks',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    chunk_id: { type: 'string', description: 'Chunk ID to retrieve' },
+                    include_related: { type: 'boolean', default: true },
+                    related_limit: { type: 'integer', default: 5 }
+                  },
+                  required: ['chunk_id']
+                }
+              },
+              {
+                name: 'get_recent',
+                description: 'Get recent reading activity and chunks',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    limit: { type: 'integer', default: 10 },
+                    period: { type: 'string', default: 'last_7_days' }
+                  }
+                }
+              },
+              {
+                name: 'get_stats',
+                description: 'Get knowledge base statistics',
+                inputSchema: { type: 'object', properties: {} }
+              },
+              {
+                name: 'list_clusters',
+                description: 'List all semantic clusters',
+                inputSchema: { type: 'object', properties: {} }
+              },
+              {
+                name: 'get_cluster',
+                description: 'Get cluster details with members and related clusters',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    cluster_id: { type: 'string' },
+                    include_members: { type: 'boolean', default: true },
+                    include_related: { type: 'boolean', default: true }
+                  },
+                  required: ['cluster_id']
+                }
+              },
+              {
+                name: 'configure_kb',
+                description: 'Configure kx-hub settings',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    action: { type: 'string' },
+                    params: { type: 'object' }
+                  },
+                  required: ['action']
+                }
+              },
+              {
+                name: 'search_within_cluster',
+                description: 'Semantic search within a cluster',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    cluster_id: { type: 'string' },
+                    query: { type: 'string' },
+                    limit: { type: 'integer', default: 10 }
+                  },
+                  required: ['cluster_id', 'query']
+                }
+              },
+              {
+                name: 'get_reading_recommendations',
+                description: 'Get AI-powered reading recommendations',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    cluster_ids: { type: 'array', items: { type: 'string' } },
+                    days: { type: 'integer', default: 14 },
+                    limit: { type: 'integer', default: 10 },
+                    mode: { type: 'string', default: 'balanced' }
+                  }
+                }
+              }
+            ]
+          }
+        });
+      } else if (body.method === 'tools/call') {
+        // Call tool via Python proxy
+        const toolName = body.params?.name;
+        const toolArgs = body.params?.arguments || {};
+        console.log(`Calling tool: ${toolName} with args:`, toolArgs);
+
+        const result = await this.toolProxy.callTool(toolName, toolArgs);
+        res.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: result
+        });
+      } else if (body.method === 'notifications/initialized') {
+        // Acknowledgement, just return empty response
+        res.status(204).send();
+      } else {
+        console.log(`Unknown method: ${body.method}`);
+        res.status(400).json({
+          jsonrpc: '2.0',
+          id: body.id,
+          error: {
+            code: -32601,
+            message: `Method not found: ${body.method}`
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error in handleStreamableHttp:', error);
+      res.status(500).json({
+        jsonrpc: '2.0',
+        id: req.body?.id,
+        error: {
+          code: -32603,
+          message: `Internal error: ${error}`
+        }
+      });
+    }
+  }
+
+  /**
    * Close all active SSE connections
    */
   closeAllConnections(): void {
