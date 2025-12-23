@@ -27,7 +27,7 @@ Query your knowledge base conversationally through Claude Desktop using natural 
 **Quick Start:**
 ```bash
 # See setup guide
-cat docs/mcp-server-setup.md
+cat docs/guides/mcp-setup.md
 ```
 
 **Example Queries:**
@@ -36,7 +36,7 @@ cat docs/mcp-server-setup.md
 - "Give me reading recommendations based on what I've been reading"
 - "What did I read yesterday with activity summary?"
 
-→ [Setup Guide](docs/mcp-server-setup.md) | [MCP Tools API](docs/mcp-tools-api.md) | [User Guide](docs/mcp-server-guide.md)
+→ [Setup Guide](docs/guides/mcp-setup.md) | [MCP Tools API](docs/reference/mcp-tools-api.md) | [User Guide](docs/guides/mcp-usage.md)
 
 ## 💰 Cost
 

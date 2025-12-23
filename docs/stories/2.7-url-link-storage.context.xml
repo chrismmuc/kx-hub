@@ -63,7 +63,7 @@
         <snippet>Documentation already added for URL fields in responses. Documents readwise_url, source_url, highlight_url with example response JSON. Lines 357-392.</snippet>
       </doc>
       <doc>
-        <path>docs/sprint-change-proposal-2025-11-20.md</path>
+        <path>docs/sprints/sprint-change-proposal-2025-11-20.md</path>
         <title>Sprint Change Proposal - URL Link Storage</title>
         <section>Implementation Details</section>
         <snippet>Comprehensive change proposal approved by Chris. Contains detailed implementation plan, code patterns, and handoff instructions.</snippet>

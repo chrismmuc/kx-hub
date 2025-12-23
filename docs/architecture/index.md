@@ -1,12 +1,17 @@
-# Architecture – Google Cloud + Vertex AI (MVP)
+# KX-Hub Architecture Documentation
 
 ## Table of Contents
 
-- [Architecture – Google Cloud + Vertex AI (MVP)](#table-of-contents)
+- [KX-Hub Architecture Documentation](#table-of-contents)
   - [Overview](./overview.md)
   - [System Architecture](./system-architecture.md)
     - [Batch Processing Pipeline (Daily)](./system-architecture.md#batch-processing-pipeline-daily)
     - [On-Demand Query Flow (User-Initiated)](./system-architecture.md#on-demand-query-flow-user-initiated)
+  - [MCP Integration](./mcp-integration.md) - Model Context Protocol architecture
+  - [Hybrid MCP Architecture](./hybrid-mcp.md) - TypeScript SSE + Python Tools API
+  - [Document Chunking](./document-chunking.md)
+    - [Chunk Schema](./chunk-schema.md)
+    - [Chunking Monitoring](./chunking-monitoring.md)
   - [AI Provider Integration (Vertex AI)](./ai-provider-integration-vertex-ai.md)
     - [Architecture](./ai-provider-integration-vertex-ai.md#architecture)
     - [Secrets Management](./ai-provider-integration-vertex-ai.md#secrets-management)

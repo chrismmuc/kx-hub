@@ -13,6 +13,10 @@ import { authMiddleware } from './middlewares/AuthMiddleware';
 const app: Application = express();
 const port = process.env.PORT || 8080;
 
+// Trust proxy (Cloud Run terminates SSL at load balancer)
+// This ensures req.protocol returns 'https' based on X-Forwarded-Proto header
+app.set('trust proxy', 1);
+
 // Required environment variables
 const PYTHON_TOOLS_API_URL = process.env.PYTHON_TOOLS_API_URL;
 const OAUTH_LAMBDA_URL = process.env.OAUTH_LAMBDA_URL;
@@ -117,8 +121,17 @@ app.post('/authorize', async (req, res) => {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData
+      body: formData,
+      redirect: 'manual'  // Don't follow redirects - pass them to browser
     });
+
+    // If OAuth server returns a redirect, forward it to the browser
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (location) {
+        return res.redirect(response.status, location);
+      }
+    }
 
     const html = await response.text();
     res.status(response.status).send(html);

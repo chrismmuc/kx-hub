@@ -200,7 +200,7 @@ development_status:
   4-7-documentation-tests:
     status: done
     completion_date: 2025-12-20
-    notes: "Complete. Created comprehensive MCP Tools API reference (docs/mcp-tools-api.md). Updated README with v2.0 features. 53 comprehensive tests covering all 9 tools (100% coverage for consolidated tools)."
+    notes: "Complete. Created comprehensive MCP Tools API reference (docs/reference/mcp-tools-api.md). Updated README with v2.0 features. 53 comprehensive tests covering all 9 tools (100% coverage for consolidated tools)."
 
 # Epic Completion
 epic-1:
