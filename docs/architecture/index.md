@@ -7,8 +7,8 @@
   - [System Architecture](./system-architecture.md)
     - [Batch Processing Pipeline (Daily)](./system-architecture.md#batch-processing-pipeline-daily)
     - [On-Demand Query Flow (User-Initiated)](./system-architecture.md#on-demand-query-flow-user-initiated)
-  - [MCP Integration](./mcp-integration.md) - Model Context Protocol architecture
-  - [Hybrid MCP Architecture](./hybrid-mcp.md) - TypeScript SSE + Python Tools API
+  - [MCP Integration](./mcp-integration.md) - Model Context Protocol architecture (local stdio)
+  - [Remote MCP Server](./remote-mcp.md) - OAuth 2.1 + Streamable HTTP for Claude.ai
   - [Document Chunking](./document-chunking.md)
     - [Chunk Schema](./chunk-schema.md)
     - [Chunking Monitoring](./chunking-monitoring.md)

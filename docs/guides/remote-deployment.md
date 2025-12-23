@@ -1,4 +1,4 @@
-# Remote MCP Server - Setup Guide
+# Remote MCP Server - Deployment Guide
 
 Der kx-hub MCP Server kann sowohl **lokal** (stdio) als auch **remote** (Cloud Run) betrieben werden.
 
@@ -11,32 +11,37 @@ Der kx-hub MCP Server kann sowohl **lokal** (stdio) als auch **remote** (Cloud R
 - **Auth**: Keine (localhost)
 - **Kosten**: $0
 
-### Remote (Optional)
-- **Transport**: SSE (Server-Sent Events)
+### Remote (Cloud Run)
+- **Transport**: MCP Streamable HTTP
 - **Zugriff**: Von überall via HTTPS
-- **Clients**: ChatGPT Desktop, andere HTTP-Clients
-- **Auth**: Bearer Token (Secret Manager)
-- **Kosten**: ~$0.21/Monat
+- **Clients**: Claude.ai, Claude Mobile, Claude Code
+- **Auth**: OAuth 2.1 mit JWT
+- **Kosten**: ~$0.70/Monat
 
-## Kosten Remote-Deployment
+## Architektur
 
-**Monatliche Kosten:** ~$0.21
+```
+Claude.ai / Claude Code
+  ↓ (Streamable HTTP + OAuth 2.1)
+Python MCP Server (Cloud Run)
+  ↓ (Firestore + Vertex AI)
+GCP Services
+```
 
-| Service | Kosten |
-|---------|--------|
-| Cloud Run | $0.08 |
-| Secret Manager | $0.12 |
-| Container Registry | $0.01 |
-| **Gesamt** | **$0.21** |
+**Service URL**: `https://kx-hub-mcp-386230044357.europe-west1.run.app`
 
-Bei hoher Nutzung (1000 Requests/Monat): ~$1.73/Monat
+### Konsolidierter Service
+
+Ein einziger Python-Service kombiniert:
+- OAuth 2.1 mit Dynamic Client Registration
+- MCP Streamable HTTP Transport
+- Alle Knowledge Base Tools
 
 ## Lokale Nutzung (Kein Deployment nötig)
 
-Läuft wie bisher:
+Läuft wie bisher mit Claude Desktop:
 
-```bash
-# Im Claude Desktop MCP Config
+```json
 {
   "mcpServers": {
     "kx-hub": {
@@ -60,267 +65,184 @@ Läuft wie bisher:
 1. **Google Cloud SDK**
    ```bash
    gcloud auth login
-   gcloud config set project YOUR_PROJECT_ID
+   gcloud config set project kx-hub
    ```
 
-2. **Docker**
+2. **Docker** (für lokales Testen)
    ```bash
    docker --version
    ```
 
-3. **Terraform**
-   ```bash
-   terraform --version
-   ```
-
-4. **Tavily API Key**
-   - Registriere dich auf https://tavily.com
-   - Kopiere deinen API Key
-
-### Deployment-Schritte
-
-#### 1. Terraform konfigurieren
+### Deployment mit Cloud Build
 
 ```bash
-cd terraform/mcp-remote
-cp terraform.tfvars.example terraform.tfvars
-
-# Editiere terraform.tfvars:
-# - project_id: Deine GCP Project ID
-# - tavily_api_key: Dein Tavily API Key
-# - alert_email: Deine E-Mail für Alerts
+gcloud builds submit --config cloudbuild.mcp-consolidated.yaml --project=kx-hub
 ```
 
-#### 2. Docker Image bauen und pushen
+### Manuelles Deployment
 
 ```bash
-# Von project root
-export PROJECT_ID=$(gcloud config get-value project)
-export IMAGE_TAG="gcr.io/${PROJECT_ID}/kx-hub-mcp-remote:latest"
+# 1. Docker Image bauen
+docker build -f Dockerfile.mcp-consolidated -t europe-west1-docker.pkg.dev/kx-hub/kx-hub/mcp-consolidated:latest .
 
-# Image bauen
-docker build \
-  -f Dockerfile.mcp-server \
-  -t "${IMAGE_TAG}" \
-  --platform linux/amd64 \
-  .
+# 2. Image pushen
+docker push europe-west1-docker.pkg.dev/kx-hub/kx-hub/mcp-consolidated:latest
 
-# Docker für GCR konfigurieren
-gcloud auth configure-docker
-
-# Image pushen
-docker push "${IMAGE_TAG}"
+# 3. Cloud Run deployen
+gcloud run deploy kx-hub-mcp \
+  --image=europe-west1-docker.pkg.dev/kx-hub/kx-hub/mcp-consolidated:latest \
+  --region=europe-west1 \
+  --platform=managed \
+  --allow-unauthenticated \
+  --set-env-vars="GCP_PROJECT=kx-hub,FIRESTORE_DATABASE=kx-hub,OAUTH_ISSUER=https://kx-hub-mcp-386230044357.europe-west1.run.app,OAUTH_USER_EMAIL=your-email@example.com,OAUTH_USER_PASSWORD_HASH=\$2b\$12\$..." \
+  --set-secrets="TAVILY_API_KEY=TAVILY_API_KEY:latest" \
+  --memory=512Mi \
+  --cpu=1 \
+  --min-instances=0 \
+  --max-instances=10 \
+  --timeout=300 \
+  --project=kx-hub
 ```
 
-#### 3. Infrastructure deployen
+## Environment Variables
+
+| Variable | Beschreibung |
+|----------|--------------|
+| `GCP_PROJECT` | GCP Project ID |
+| `FIRESTORE_DATABASE` | Firestore Datenbank |
+| `OAUTH_ISSUER` | OAuth Issuer URL (Service URL) |
+| `OAUTH_USER_EMAIL` | Autorisierter Benutzer |
+| `OAUTH_USER_PASSWORD_HASH` | bcrypt Passwort-Hash |
+
+## Secrets
+
+| Secret | Beschreibung |
+|--------|--------------|
+| `TAVILY_API_KEY` | Für Reading Recommendations |
+| `oauth-jwt-private-key` | RSA Private Key für JWT Signatur |
+| `oauth-jwt-public-key` | RSA Public Key für JWT Verifizierung |
+
+## Dateien
+
+```
+src/mcp_server/
+├── server.py           # FastAPI Server (OAuth + MCP + Tools)
+├── oauth_server.py     # OAuth 2.1 Implementation
+├── oauth_storage.py    # Firestore Token Storage
+├── oauth_templates.py  # Login/Consent HTML Pages
+├── tools.py            # Tool Implementations
+├── firestore_client.py # Firestore Queries
+├── embeddings.py       # Vertex AI Embeddings
+└── requirements.txt    # Python Dependencies
+
+Dockerfile.mcp-consolidated
+cloudbuild.mcp-consolidated.yaml
+```
+
+## Testen
+
+### Health Check
 
 ```bash
-cd terraform/mcp-remote
-
-# Terraform initialisieren
-terraform init
-
-# Plan reviewen
-terraform plan
-
-# Deployen
-terraform apply
+curl https://kx-hub-mcp-386230044357.europe-west1.run.app/health
+# {"status":"healthy","service":"kx-hub-mcp-server","transport":"streamable-http"}
 ```
 
-#### 4. Credentials holen
+### Server Info
 
 ```bash
-# Service URL
-terraform output service_url
-
-# Auth Token (GEHEIM HALTEN!)
-terraform output -raw auth_token
+curl https://kx-hub-mcp-386230044357.europe-west1.run.app/
 ```
 
-### Nutzung mit ChatGPT
+### OAuth Discovery
 
-1. Öffne ChatGPT Desktop
-2. Gehe zu Settings → Custom GPTs
-3. Erstelle neue Action:
-
-```json
-{
-  "openapi": "3.0.0",
-  "info": {
-    "title": "kx-hub Knowledge Base",
-    "version": "1.0.0"
-  },
-  "servers": [
-    {
-      "url": "https://your-service-url"
-    }
-  ],
-  "paths": {
-    "/sse": {
-      "post": {
-        "operationId": "query_knowledge_base",
-        "summary": "Query knowledge base",
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    }
-  },
-  "components": {
-    "securitySchemes": {
-      "BearerAuth": {
-        "type": "http",
-        "scheme": "bearer"
-      }
-    }
-  }
-}
+```bash
+curl https://kx-hub-mcp-386230044357.europe-west1.run.app/.well-known/oauth-authorization-server | jq
 ```
 
-4. Füge Bearer Token hinzu (aus `terraform output`)
+### MCP Endpoint (erfordert Auth)
 
-## Sicherheit
+```bash
+curl -X POST https://kx-hub-mcp-386230044357.europe-west1.run.app/ \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+```
 
-### Authentication
-- **Methode**: Bearer Token
-- **Token**: 48-char random string (Secret Manager)
-- **Endpoint**: Alle Requests außer `/health`
+## Nutzung mit Claude.ai
 
-### Service Account
-- **Name**: `mcp-server-remote@PROJECT.iam.gserviceaccount.com`
-- **Permissions**:
-  - ✅ Firestore read (kb_items, clusters, config)
-  - ✅ Secret Manager accessor (MCP_AUTH_TOKEN, TAVILY_API_KEY)
-  - ✅ Vertex AI user (embeddings, Gemini)
-  - ✅ Write zu config/recommendation_shown (URL tracking)
-  - ❌ Keine anderen Schreibrechte
-
-### Secrets
-- **MCP_AUTH_TOKEN**: Auto-generiert (48 Zeichen)
-- **TAVILY_API_KEY**: Von dir bereitgestellt
-- **Storage**: Google Secret Manager
-- **Zugriff**: Nur Service Account
-
-### Network
-- **Endpoint**: Public HTTPS
-- **Auth**: Application-level (Bearer Token)
-- **TLS**: Cloud Run managed certificate
-- **CORS**: Disabled
+1. Öffne [claude.ai/settings](https://claude.ai/settings)
+2. Gehe zu **Connectors** / **Integrations**
+3. Klicke **"Add MCP Server"**
+4. Gib ein:
+   - **Name**: `kx-hub`
+   - **URL**: `https://kx-hub-mcp-386230044357.europe-west1.run.app`
+   - **OAuth**: *(leer lassen - wird automatisch konfiguriert)*
+5. Durchlaufe OAuth Flow (Login + Consent)
+6. Fertig!
 
 ## Monitoring
 
 ### Logs anzeigen
 
 ```bash
-gcloud run services logs read kx-hub-mcp-remote \
-  --region=us-central1 \
-  --limit=50
+gcloud run services logs read kx-hub-mcp --region=europe-west1 --project=kx-hub --limit=50
 ```
 
-### Dashboard öffnen
+### Service Status
 
 ```bash
-# URL ausgeben
-PROJECT_ID=$(gcloud config get-value project)
-echo "https://console.cloud.google.com/monitoring/dashboards?project=${PROJECT_ID}"
+gcloud run services describe kx-hub-mcp --region=europe-west1 --project=kx-hub
 ```
-
-### Alerts
-
-Automatische Alerts bei:
-- **5xx Errors**: >5/min für 5 Minuten
-- **Auth Failures**: >10/min für 5 Minuten
-
-Email-Benachrichtigung an `alert_email` (terraform.tfvars)
 
 ## Troubleshooting
 
-### Health Check
+### 401 Unauthorized
+- Token abgelaufen (1 Stunde Lifetime)
+- Client sollte refresh_token verwenden
 
-```bash
-SERVICE_URL=$(cd terraform/mcp-remote && terraform output -raw service_url)
-curl ${SERVICE_URL}/health
+### JWT verification failed
+- Überprüfe ob `oauth-jwt-public-key` mit `oauth-jwt-private-key` übereinstimmt
+- Issuer URL muss mit Service URL übereinstimmen
 
-# Erwartete Antwort:
-# {"status":"healthy"}
-```
+### Service nicht erreichbar
+- Cloud Run Logs prüfen
+- Health Endpoint testen
 
-### Auth Test
+## Kosten
 
-```bash
-AUTH_TOKEN=$(cd terraform/mcp-remote && terraform output -raw auth_token)
-curl -H "Authorization: Bearer ${AUTH_TOKEN}" ${SERVICE_URL}/sse
-```
+**Monatliche Kosten:** ~$0.70
 
-### Häufige Fehler
-
-**401 Unauthorized**
-- Bearer Token falsch oder fehlt
-- Token aus `terraform output -raw auth_token` holen
-
-**500 Internal Server Error**
-- Logs checken: `gcloud run services logs read kx-hub-mcp-remote`
-- Secrets validieren: MCP_AUTH_TOKEN und TAVILY_API_KEY vorhanden?
-
-**Timeout (504)**
-- Recommendation-Query dauert >120s
-- Timeout in Terraform erhöhen (main.tf, template.timeout)
+| Service | Kosten |
+|---------|--------|
+| Cloud Run | $0.50 |
+| Secret Manager | $0.12 |
+| Firestore | $0.08 |
+| **Gesamt** | **$0.70** |
 
 ## Updates
 
 Nach Code-Änderungen:
 
 ```bash
-# 1. Image neu bauen und pushen
-docker build -f Dockerfile.mcp-server -t "${IMAGE_TAG}" .
-docker push "${IMAGE_TAG}"
-
-# 2. Cloud Run neu deployen (pullt neues Image)
-cd terraform/mcp-remote
-terraform apply
+gcloud builds submit --config cloudbuild.mcp-consolidated.yaml --project=kx-hub
 ```
 
 ## Cleanup
 
-Alle Ressourcen löschen:
+Service löschen:
 
 ```bash
-cd terraform/mcp-remote
-terraform destroy
+gcloud run services delete kx-hub-mcp --region=europe-west1 --project=kx-hub
 ```
-
-**Warnung**: Löscht:
-- Cloud Run Service
-- Service Account
-- Secrets (inkl. Auth Token)
-- Monitoring Alerts
 
 ## FAQ
 
 **Q: Funktioniert das auf iOS?**
-A: Nein, Claude iOS unterstützt kein MCP (weder lokal noch remote).
+A: Ja! Claude Mobile unterstützt Remote MCP Server mit OAuth.
 
 **Q: Kann ich beides nutzen (lokal + remote)?**
-A: Ja! Lokal für Claude Desktop, remote für ChatGPT/andere Clients.
+A: Ja! Lokal für Claude Desktop (stdio), remote für Claude.ai/Mobile.
 
 **Q: Was passiert mit meinen Daten?**
 A: Nichts wird gespeichert. Server ist stateless, liest nur aus Firestore.
-
-**Q: Wie sichere ich den Endpoint ab?**
-A: Bearer Token Auth ist bereits implementiert. Optional: IP Whitelisting über Cloud Armor.
-
-**Q: Kostet mehr bei hoher Nutzung?**
-A: Ja, aber begrenzt: Max $1.73/Monat (1000 Requests). Danach skaliert linear.
-
-**Q: Kann ich den Token rotieren?**
-A: Ja, neuen Secret-Wert in Secret Manager setzen, dann `terraform apply`.
-
-## Support
-
-Bei Problemen:
-1. Logs checken
-2. Health endpoint testen
-3. Terraform outputs validieren
-4. GitHub Issue erstellen

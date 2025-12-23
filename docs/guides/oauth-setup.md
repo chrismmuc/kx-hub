@@ -4,104 +4,64 @@ This guide explains how to enable OAuth 2.1 authentication for kx-hub MCP server
 
 ## Overview
 
-**Story 3.1.1** implements OAuth 2.1 with Dynamic Client Registration (RFC 7591) to enable kx-hub access from:
-- ✅ Claude.ai Web (any browser)
-- ✅ Claude Mobile (iPhone/Android)
-- ✅ Claude Desktop (with OAuth or Bearer token)
+The kx-hub remote MCP server implements OAuth 2.1 with Dynamic Client Registration (RFC 7591) to enable access from:
+- Claude.ai Web (any browser)
+- Claude Mobile (iPhone/Android)
+- Claude Code (via remote MCP)
 
 ## Architecture
 
 ```
-Claude Mobile/Web → OAuth Flow → Cloud Run (kx-hub-mcp-remote)
+Claude Mobile/Web → OAuth Flow → Cloud Run (kx-hub-mcp)
+                                      ├─ /.well-known/* (discovery)
                                       ├─ /register (DCR)
                                       ├─ /authorize (login/consent)
                                       ├─ /token (token exchange)
-                                      └─ /sse (MCP protocol)
+                                      └─ POST / (MCP Streamable HTTP)
 ```
 
 ### Components
 
-- **OAuth Server** (`oauth_server.py`) - RFC 7591 compliant endpoints
-- **OAuth Storage** (`oauth_storage.py`) - Firestore client/token management
-- **OAuth Middleware** (`oauth_middleware.py`) - JWT validation
-- **OAuth Templates** (`oauth_templates.py`) - HTML login/consent UI
-- **Terraform** (`terraform/mcp-remote/oauth.tf`) - JWT keys & Firestore indexes
+All components are in a single consolidated Python service:
+
+- **server.py** - FastAPI server with OAuth + MCP endpoints
+- **oauth_server.py** - RFC 7591 compliant OAuth implementation
+- **oauth_storage.py** - Firestore client/token management
+- **oauth_templates.py** - HTML login/consent UI
+- **tools.py** - MCP tool implementations
 
 ## Prerequisites
 
 - Google Cloud Project with billing enabled
-- Terraform >= 1.0
-- Docker installed
 - gcloud CLI configured
 - Claude Pro/Team/Enterprise plan (for Custom Connectors)
 
 ## Deployment
 
-### Option 1: Automated Deployment (Recommended)
+### Deploy with Cloud Build
 
 ```bash
-# Run deployment script
-./scripts/deploy_oauth_mcp.sh
+gcloud builds submit --config cloudbuild.mcp-consolidated.yaml --project=kx-hub
 ```
 
-The script will:
-1. Check requirements
-2. Ask if you want OAuth enabled
-3. Generate password hash
-4. Build & push Docker image
-5. Deploy infrastructure with Terraform
-6. Output configuration instructions
-
-### Option 2: Manual Deployment
-
-#### Step 1: Configure Terraform Variables
+Or deploy directly:
 
 ```bash
-cd terraform/mcp-remote
-cp terraform.tfvars.example terraform.tfvars
+gcloud run deploy kx-hub-mcp \
+  --image=europe-west1-docker.pkg.dev/kx-hub/kx-hub/mcp-consolidated:latest \
+  --region=europe-west1 \
+  --platform=managed \
+  --allow-unauthenticated \
+  --set-env-vars="GCP_PROJECT=kx-hub,FIRESTORE_DATABASE=kx-hub,OAUTH_ISSUER=https://kx-hub-mcp-386230044357.europe-west1.run.app,OAUTH_USER_EMAIL=your-email@example.com,OAUTH_USER_PASSWORD_HASH=\$2b\$12\$..." \
+  --set-secrets="TAVILY_API_KEY=TAVILY_API_KEY:latest" \
+  --project=kx-hub
 ```
 
-Edit `terraform.tfvars`:
-
-```hcl
-project_id  = "your-gcp-project-id"
-region      = "europe-west4"
-oauth_enabled = true
-oauth_user_email = "your-email@example.com"
-
-# Generate with: python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"
-oauth_user_password_hash = "$2b$12$..."
-```
-
-#### Step 2: Generate Password Hash
+### Generate Password Hash
 
 ```bash
 python3 -c "import bcrypt; print(bcrypt.hashpw(b'YourSecurePassword', bcrypt.gensalt()).decode())"
 ```
-
-Copy the output to `oauth_user_password_hash` in terraform.tfvars.
-
-#### Step 3: Build Docker Image
-
-```bash
-export PROJECT_ID=$(gcloud config get-value project)
-export IMAGE_TAG="gcr.io/${PROJECT_ID}/kx-hub-mcp-remote:latest"
-
-docker build -f Dockerfile.mcp-server -t "${IMAGE_TAG}" --platform linux/amd64 .
-gcloud auth configure-docker
-docker push "${IMAGE_TAG}"
-```
-
-#### Step 4: Deploy with Terraform
-
-```bash
-cd terraform/mcp-remote
-terraform init
-terraform plan
-terraform apply
-```
-
-Note the `service_url` output - you'll need it for Claude configuration.
 
 ## Configure Claude.ai Web/Mobile
 
@@ -116,7 +76,7 @@ Note the `service_url` output - you'll need it for Claude configuration.
 **IMPORTANT:** Leave OAuth fields EMPTY - Claude will auto-configure via Dynamic Client Registration!
 
 - **Name**: `kx-hub`
-- **Remote MCP Server URL**: `https://kx-hub-mcp-remote-xxx.run.app` (from terraform output)
+- **Remote MCP Server URL**: `https://kx-hub-mcp-386230044357.europe-west1.run.app`
 - **OAuth Client ID**: *(leave empty)*
 - **OAuth Client Secret**: *(leave empty)*
 
@@ -128,8 +88,7 @@ Note the `service_url` output - you'll need it for Claude configuration.
 4. Review permissions and click **"Authorize"**
 5. You should see a **success page** with a countdown timer
 6. **Auto-redirect** back to Claude.ai after 3 seconds
-   - If auto-redirect doesn't work, click the **"Return to Claude"** button
-7. Status should change to **"Connected"** ✅
+7. Status should change to **"Connected"**
 
 ### Verification
 
@@ -138,123 +97,62 @@ Test the connection:
 - Claude should use the `get_stats` tool from kx-hub
 - You should see a response with chunk count, cluster count, etc.
 
-**Success!** kx-hub is now accessible from Claude Web, Mobile, and Desktop! 🎉
-
 ## Testing
 
 ### Test OAuth Endpoints
 
 ```bash
-# Get service URL
-SERVICE_URL=$(cd terraform/mcp-remote && terraform output -raw service_url)
+SERVICE_URL=https://kx-hub-mcp-386230044357.europe-west1.run.app
 
-# Test discovery endpoint
+# Health check
+curl $SERVICE_URL/health
+
+# Server info
+curl $SERVICE_URL/
+
+# OAuth discovery
 curl $SERVICE_URL/.well-known/oauth-authorization-server | jq
 
 # Expected output:
 {
-  "issuer": "https://kx-hub-mcp-remote-xxx.run.app",
-  "authorization_endpoint": "https://kx-hub-mcp-remote-xxx.run.app/authorize",
-  "token_endpoint": "https://kx-hub-mcp-remote-xxx.run.app/token",
-  "registration_endpoint": "https://kx-hub-mcp-remote-xxx.run.app/register",
+  "issuer": "https://kx-hub-mcp-386230044357.europe-west1.run.app",
+  "authorization_endpoint": "https://kx-hub-mcp-386230044357.europe-west1.run.app/authorize",
+  "token_endpoint": "https://kx-hub-mcp-386230044357.europe-west1.run.app/token",
+  "registration_endpoint": "https://kx-hub-mcp-386230044357.europe-west1.run.app/register",
   ...
 }
 ```
-
-### Test in Claude Mobile
-
-1. Open Claude app on your phone
-2. Start a new conversation
-3. Type: "Get knowledge base statistics"
-4. Claude should use kx-hub tools to retrieve stats
-
-### Test in Claude.ai Web
-
-1. Go to [claude.ai](https://claude.ai)
-2. Start a new conversation
-3. Type: "Search my knowledge base for 'platform engineering'"
-4. Claude should use kx-hub search_kb tool
 
 ## Troubleshooting
 
 ### Issue: "Connector not connected" in Claude.ai
 
-**Symptom:** After OAuth flow completes, Claude.ai shows "nicht verbunden" (not connected)
-
 **Possible Causes:**
 
 1. **`.well-known` endpoints not reachable**
-   - **Test:** `curl https://your-server/.well-known/oauth-protected-resource`
+   - **Test:** `curl https://kx-hub-mcp-386230044357.europe-west1.run.app/.well-known/oauth-protected-resource`
    - **Expected:** 200 OK with OAuth metadata
-   - **Fix:** Ensure `oauth_enabled=true` in terraform.tfvars and service is deployed
 
-2. **Incorrect Redirect URI**
-   - Claude.ai callback URL **MUST** be `https://claude.ai/api/mcp/auth_callback`
-   - **Check:** Firestore → `oauth_clients` collection → `redirect_uris` field
-   - **Fix:** Delete invalid clients in Firestore, let Claude re-register automatically
-
-3. **HTTP instead of HTTPS Issuer**
-   - **Test:** `curl https://your-server/.well-known/oauth-authorization-server | jq .issuer`
+2. **HTTP instead of HTTPS Issuer**
+   - **Test:** `curl .../.well-known/oauth-authorization-server | jq .issuer`
    - **Expected:** `https://` URL (not `http://`)
-   - **Fix:** Set `oauth_issuer_override` in terraform.tfvars after first deployment:
-     ```bash
-     # Get your service URL
-     cd terraform/mcp-remote
-     terraform output service_url
+   - **Fix:** Ensure OAUTH_ISSUER env var is set correctly
 
-     # Add to terraform.tfvars
-     oauth_issuer_override = "https://kx-hub-mcp-remote-xxxxxx.run.app"
-
-     # Redeploy
-     terraform apply
-     ```
-
-4. **CORS blocking preflight requests**
-   - **Check:** Browser DevTools → Network tab → Look for OPTIONS requests
-   - **Expected:** `Access-Control-Allow-Origin: https://claude.ai` header present
-   - **Fix:** This should be automatic with the OAuth fix. Check Cloud Run logs for errors.
-
-5. **Token validation fails**
+3. **Token validation fails**
    - **Check Cloud Run logs:**
      ```bash
-     gcloud run services logs read kx-hub-mcp-remote --region=europe-west4 --limit=50
+     gcloud run services logs read kx-hub-mcp --region=europe-west1 --limit=50
      ```
-   - **Look for:** "Invalid JWT token" or "Token validation failed" errors
-   - **Fix:** Verify OAUTH_ISSUER matches the issuer in JWT tokens
-
-### Issue: Success page doesn't redirect
-
-**Symptom:** After clicking "Authorize", stuck on success page
-
-**Cause:** JavaScript auto-redirect might be blocked
-
-**Fix:** Click "Return to Claude" button manually (should appear on success page)
-
-### Issue: "Invalid redirect_uri" error
-
-**Symptom:** Authorization fails with "redirect_uri is not registered"
-
-**Cause:** Redirect URI mismatch between registration and authorization request
-
-**Fix:**
-1. Delete existing client in Firestore: `oauth_clients/<client_id>`
-2. Clear browser cache and cookies for claude.ai
-3. Let Claude.ai re-register with correct redirect_uri
-
-### Issue: "Invalid client" error
-
-**Cause**: Client registration failed
-**Solution**: Check terraform logs, ensure oauth_enabled=true
+   - **Look for:** "JWT verification failed" errors
 
 ### Issue: "Invalid password" on login
 
 **Cause**: Password hash doesn't match
-**Solution**: Regenerate hash and update terraform:
+**Solution**: Regenerate hash and update environment:
 
 ```bash
 python3 -c "import bcrypt; print(bcrypt.hashpw(b'YourPassword', bcrypt.gensalt()).decode())"
-# Update terraform.tfvars
-terraform apply
+# Update OAUTH_USER_PASSWORD_HASH env var and redeploy
 ```
 
 ### Issue: "Token expired" errors
@@ -262,78 +160,36 @@ terraform apply
 **Cause**: Access token expired (1 hour expiry)
 **Solution**: Claude automatically refreshes tokens. If it fails, re-authorize in Settings.
 
-### Issue: Server not accessible
-
-**Cause**: Cloud Run service not deployed or IAM issues
-**Solution**: Check Cloud Run logs:
-
-```bash
-gcloud run services logs read kx-hub-mcp-remote --region=europe-west4 --limit=50
-```
-
 ### Debugging Tips
 
-**View OAuth flow in browser:**
-1. Open browser DevTools (F12)
-2. Go to Network tab
-3. Add connector in Claude.ai
-4. Watch requests to:
-   - `/.well-known/oauth-authorization-server` (discovery)
-   - `/register` (client registration)
-   - `/authorize` (user login/consent)
-   - `/token` (token exchange)
-5. Check for any 4xx or 5xx errors
+**View logs:**
+```bash
+gcloud run services logs read kx-hub-mcp --region=europe-west1 --project=kx-hub --limit=50
+```
 
 **Check Firestore data:**
 ```bash
 # List registered clients
-gcloud firestore documents list oauth_clients --project=your-project-id
-
-# View specific client
-gcloud firestore documents describe oauth_clients/CLIENT_ID --project=your-project-id
-```
-
-**Verify HTTPS issuer:**
-```bash
-SERVICE_URL=$(cd terraform/mcp-remote && terraform output -raw service_url)
-curl $SERVICE_URL/.well-known/oauth-authorization-server | jq .issuer
-
-# Should output: "https://kx-hub-mcp-remote-xxx.run.app" (NOT http://)
+gcloud firestore documents list oauth_clients --project=kx-hub
 ```
 
 ## Security Considerations
 
-- ✅ JWT tokens signed with RSA-256 (asymmetric)
-- ✅ Client secrets hashed with bcrypt
-- ✅ Refresh tokens rotate on each use (one-time)
-- ✅ Authorization codes expire after 10 minutes
-- ✅ Access tokens expire after 1 hour
-- ✅ HTTPS enforced by Cloud Run
-- ✅ Secret Manager for sensitive keys
-- ✅ Single-user system (only you can authorize)
+- JWT tokens signed with RS256 (asymmetric)
+- Client secrets hashed with bcrypt
+- Refresh tokens rotate on each use (one-time)
+- Authorization codes expire after 10 minutes
+- Access tokens expire after 1 hour
+- HTTPS enforced by Cloud Run
+- Secret Manager for sensitive keys
+- Single-user system (only you can authorize)
 
 ## Cost Estimate
 
-With OAuth enabled:
-
 - Cloud Run: ~$0.50-1.00/month (free tier)
-- Secret Manager: ~$0.12/month (4 secrets)
-- Firestore: ~$0.05/month (minimal reads/writes)
+- Secret Manager: ~$0.12/month
+- Firestore: ~$0.05/month
 - **Total**: ~$0.70/month
-
-## Disable OAuth
-
-To switch back to simple Bearer token auth:
-
-```bash
-cd terraform/mcp-remote
-# Edit terraform.tfvars
-oauth_enabled = false
-
-terraform apply
-```
-
-This removes OAuth endpoints and uses MCP_AUTH_TOKEN instead.
 
 ## Architecture Details
 
@@ -357,10 +213,11 @@ This removes OAuth endpoints and uses MCP_AUTH_TOKEN instead.
    - Issues JWT access token (1 hour)
    - Issues refresh token (30 days)
 
-4. **API Requests**:
-   - Claude includes `Authorization: Bearer <jwt>` header
-   - Middleware validates JWT signature
-   - Request proceeds to MCP endpoints
+4. **MCP Requests**:
+   - Claude POSTs to `/` with `Authorization: Bearer <jwt>`
+   - Server validates JWT signature
+   - Processes MCP JSON-RPC request
+   - Returns tool results
 
 ### Data Model
 
@@ -377,22 +234,10 @@ This removes OAuth endpoints and uses MCP_AUTH_TOKEN instead.
 
 - `oauth-jwt-private-key`: RSA private key for JWT signing
 - `oauth-jwt-public-key`: RSA public key for JWT validation
+- `TAVILY_API_KEY`: For reading recommendations
 
 ## References
 
 - [RFC 7591: OAuth 2.0 Dynamic Client Registration](https://datatracker.ietf.org/doc/html/rfc7591)
 - [RFC 6749: OAuth 2.0 Authorization Framework](https://datatracker.ietf.org/doc/html/rfc6749)
-- [Claude Custom Connectors Documentation](https://support.claude.com/en/articles/11503834)
 - [MCP Protocol Specification](https://modelcontextprotocol.io)
-
-## Next Steps
-
-- [x] Deploy OAuth-enabled MCP server
-- [x] Configure Claude.ai Web
-- [ ] Test on Claude Mobile
-- [ ] Monitor OAuth token usage
-- [ ] Set up alerts for failed authentications
-
----
-
-**Deployed successfully?** You should now have kx-hub accessible from Claude Mobile, Web, and Desktop! 🎉

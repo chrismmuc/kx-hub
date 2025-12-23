@@ -6,7 +6,7 @@ steps:
       - '-t'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:latest'
       - '-f'
-      - 'Dockerfile.oauth-service'
+      - 'Dockerfile.mcp-consolidated'
       - '.'
 
   # Push the container image to Artifact Registry
@@ -30,17 +30,28 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'GCP_PROJECT=$PROJECT_ID,OAUTH_USER_EMAIL=${_OAUTH_USER_EMAIL},OAUTH_USER_PASSWORD_HASH=${_OAUTH_USER_PASSWORD_HASH}'
+      - 'GCP_PROJECT=$PROJECT_ID,FIRESTORE_DATABASE=(default),OAUTH_ISSUER=${_OAUTH_ISSUER},OAUTH_USER_EMAIL=${_OAUTH_USER_EMAIL},OAUTH_USER_PASSWORD_HASH=${_OAUTH_USER_PASSWORD_HASH}'
       - '--set-secrets'
-      - 'JWT_PRIVATE_KEY=jwt-private-key:latest'
+      - 'TAVILY_API_KEY=TAVILY_API_KEY:latest'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '10'
+      - '--timeout'
+      - '300'
 
 substitutions:
   _REGION: europe-west1
   _REPOSITORY: kx-hub
-  _IMAGE_NAME: oauth-service
-  _SERVICE_NAME: kx-hub-oauth-server
+  _IMAGE_NAME: mcp-consolidated
+  _SERVICE_NAME: kx-hub-mcp
+  _OAUTH_ISSUER: https://kx-hub-mcp-386230044357.europe-west1.run.app
   _OAUTH_USER_EMAIL: chrismu82@googlemail.com
-  _OAUTH_USER_PASSWORD_HASH: $2b$12$E/voXAj5L90n0xWWQeiu9OfAs.2YDX5a7GL.zGF5x2z3H/15eGWwu
+  _OAUTH_USER_PASSWORD_HASH: $$2b$$12$$E/voXAj5L90n0xWWQeiu9OfAs.2YDX5a7GL.zGF5x2z3H/15eGWwu
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -119,6 +119,26 @@ class OAuthServer:
             logger.error(f"Failed to load JWT private key: {e}")
             raise
 
+    def get_public_key(self) -> str:
+        """
+        Get RSA public key from Secret Manager for JWT verification.
+
+        Returns:
+            PEM-encoded public key
+        """
+        if not hasattr(self, '_public_key') or self._public_key is None:
+            secret_name = f"projects/{self.project_id}/secrets/oauth-jwt-public-key/versions/latest"
+
+            try:
+                response = self.secret_client.access_secret_version(request={"name": secret_name})
+                self._public_key = response.payload.data.decode("UTF-8")
+                logger.info("Loaded OAuth JWT public key from Secret Manager")
+            except Exception as e:
+                logger.error(f"Failed to load JWT public key: {e}")
+                raise
+
+        return self._public_key
+
     def create_jwt_token(
         self,
         user_id: str,
