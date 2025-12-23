@@ -2,6 +2,12 @@
 OAuth 2.1 Authorization Server for Cloud Run.
 """
 
+import sys
+from pathlib import Path
+
+# Add oauth_service directory to path for module imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from oauth_server import OAuthServer
