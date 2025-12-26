@@ -7,6 +7,7 @@ This single FastAPI server handles:
 - All knowledge base tools
 """
 
+import json
 import os
 import sys
 import logging
@@ -334,7 +335,7 @@ async def mcp_endpoint(request: Request):
                 return JSONResponse(content={
                     "jsonrpc": "2.0",
                     "id": request_id,
-                    "result": {"content": [{"type": "text", "text": str(result)}]}
+                    "result": {"content": [{"type": "text", "text": json.dumps(result)}]}
                 })
             except Exception as e:
                 logger.error(f"Tool call error: {e}", exc_info=True)
