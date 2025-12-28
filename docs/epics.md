@@ -1247,7 +1247,7 @@ Rather than wrapping existing tools in "workflow mega-tools" that hide complexit
 
 ---
 
-### Story 6.1: Knowledge Base Digest Engine
+### Story 5.1: Knowledge Base Digest Engine
 
 **Status:** Backlog
 
@@ -1323,7 +1323,7 @@ customers, applying product thinking to internal tooling...
 
 ---
 
-### Story 6.2: Reader Inbox Summarization
+### Story 5.2: Reader Inbox Summarization
 
 **Status:** Backlog
 
@@ -1342,13 +1342,13 @@ customers, applying product thinking to internal tooling...
 - **Read Status Tracking:** Track which summaries have been delivered
 
 **Dependencies:**
-- Story 6.1 (KB Digest Engine) - summary generation infrastructure
+- Story 5.1 (KB Digest Engine) - summary generation infrastructure
 - Readwise Reader API - article content access
 
 **Technical Approach:**
 - Reader API: `GET /api/v3/list/?category=article&location=new`
 - Fetch full content via Reader's document endpoint
-- Reuse synthesis prompts from Story 6.1
+- Reuse synthesis prompts from Story 5.1
 - Store generated summaries in Firestore for caching
 - Track delivered summaries to prevent duplicates
 
@@ -1378,7 +1378,7 @@ Params:
 
 ---
 
-### Story 6.3: Weekly Knowledge Email Digest
+### Story 5.3: Weekly Knowledge Email Digest
 
 **Status:** Backlog
 
@@ -1404,8 +1404,8 @@ Params:
 - **SendGrid Integration:** Transactional email via SendGrid API
 
 **Dependencies:**
-- Story 6.1 (KB Digest Engine) - KB summaries
-- Story 6.2 (Reader Inbox Summarization) - inbox summaries
+- Story 5.1 (KB Digest Engine) - KB summaries
+- Story 5.2 (Reader Inbox Summarization) - inbox summaries
 - Story 3.6 (Email Digest) - email infrastructure
 
 **Technical Approach:**
@@ -1484,7 +1484,7 @@ Params:
 
 ---
 
-### Story 6.4: On-Demand Digest Generation via MCP
+### Story 5.4: On-Demand Digest Generation via MCP
 
 **Status:** Backlog
 
@@ -1504,13 +1504,13 @@ Params:
 - **Conversation Context:** Include digest in Claude conversation for follow-up questions
 
 **Dependencies:**
-- Story 6.1 (KB Digest Engine) - digest generation
-- Story 6.2 (Reader Inbox Summarization) - inbox summaries
+- Story 5.1 (KB Digest Engine) - digest generation
+- Story 5.2 (Reader Inbox Summarization) - inbox summaries
 - Story 2.6 (MCP Enhancements) - MCP infrastructure
 
 **Technical Approach:**
 - Extend MCP server with new tools
-- Reuse digest generation from Stories 4.1/4.2
+- Reuse digest generation from Stories 5.1/5.2
 - Firestore caching with TTL
 - Markdown output for Claude conversation
 
@@ -1541,7 +1541,7 @@ summarize_reader_inbox(
 
 ---
 
-### Story 6.5: Digest Personalization & Preferences
+### Story 5.5: Digest Personalization & Preferences
 
 **Status:** Backlog
 
@@ -1565,8 +1565,8 @@ summarize_reader_inbox(
 - **Unsubscribe:** Secure token-based one-click unsubscribe
 
 **Dependencies:**
-- Story 6.3 (Weekly Email Digest) - email delivery
-- Story 6.4 (On-Demand MCP) - MCP tools
+- Story 5.3 (Weekly Email Digest) - email delivery
+- Story 5.4 (On-Demand MCP) - MCP tools
 
 **Technical Approach:**
 - Firestore document `config/digest_preferences`
@@ -1614,7 +1614,7 @@ summarize_reader_inbox(
 
 ---
 
-### Story 6.6: Digest Analytics & Feedback Loop
+### Story 5.6: Digest Analytics & Feedback Loop
 
 **Status:** Backlog
 
@@ -1639,7 +1639,7 @@ summarize_reader_inbox(
   - Flag consistently low-rated summaries for review
 
 **Dependencies:**
-- Story 6.3 (Weekly Email Digest) - email delivery
+- Story 5.3 (Weekly Email Digest) - email delivery
 - SendGrid webhooks for tracking
 
 **Technical Approach:**
@@ -1661,23 +1661,23 @@ summarize_reader_inbox(
 
 ---
 
-## Epic 4 Summary
+## Epic 5 Summary
 
 | Story | Description | Complexity |
 |-------|-------------|------------|
-| 4.1 | Knowledge Base Digest Engine | High |
-| 4.2 | Reader Inbox Summarization | Medium |
-| 4.3 | Weekly Knowledge Email Digest | Medium |
-| 4.4 | On-Demand Digest Generation via MCP | Medium |
-| 4.5 | Digest Personalization & Preferences | Low |
-| 4.6 | Digest Analytics & Feedback Loop | Low |
+| 5.1 | Knowledge Base Digest Engine | High |
+| 5.2 | Reader Inbox Summarization | Medium |
+| 5.3 | Weekly Knowledge Email Digest | Medium |
+| 5.4 | On-Demand Digest Generation via MCP | Medium |
+| 5.5 | Digest Personalization & Preferences | Low |
+| 5.6 | Digest Analytics & Feedback Loop | Low |
 
 **Recommended Implementation Order:**
-1. Story 6.1 (KB Digest Engine) - core synthesis capability
-2. Story 6.2 (Reader Inbox Summarization) - extend to inbox
-3. Story 6.3 (Weekly Email Digest) - delivery mechanism
-4. Story 6.4 (On-Demand MCP) - interactive access
-5. Story 6.5 (Preferences) + 4.6 (Analytics) - personalization & optimization
+1. Story 5.1 (KB Digest Engine) - core synthesis capability
+2. Story 5.2 (Reader Inbox Summarization) - extend to inbox
+3. Story 5.3 (Weekly Email Digest) - delivery mechanism
+4. Story 5.4 (On-Demand MCP) - interactive access
+5. Story 5.5 (Preferences) + 5.6 (Analytics) - personalization & optimization
 
 **Cost Analysis:**
 | Component | Monthly Cost |
@@ -2418,17 +2418,17 @@ demonstrations...
 
 ---
 
-## Epic 5 Summary
+## Epic 6 Summary
 
 | Story | Description | Complexity |
 |-------|-------------|------------|
-| 5.1 | Blog Idea Extraction from Knowledge Base | Medium |
-| 5.2 | Article Structure & Outline Generation | Medium |
-| 5.3 | AI-Assisted Draft Generation | High |
-| 5.4 | Article Development Log (Blog Journal) | Medium |
-| 5.5 | Article Series & Consolidation | Medium |
-| 5.6 | Obsidian Export & Publishing Workflow | Medium |
-| 5.7 | Claude Code Integration for Article Editing | Low |
+| 6.1 | Blog Idea Extraction from Knowledge Base | Medium |
+| 6.2 | Article Structure & Outline Generation | Medium |
+| 6.3 | AI-Assisted Draft Generation | High |
+| 6.4 | Article Development Log (Blog Journal) | Medium |
+| 6.5 | Article Series & Consolidation | Medium |
+| 6.6 | Obsidian Export & Publishing Workflow | Medium |
+| 6.7 | Claude Code Integration for Article Editing | Low |
 
 **Recommended Implementation Order:**
 1. Story 6.1 (Blog Ideas) - foundation for content creation
@@ -2436,7 +2436,7 @@ demonstrations...
 3. Story 6.3 (Draft Generation) - core capability
 4. Story 6.4 (Article Log) - multi-session support
 5. Story 6.6 (Obsidian Export) - publishing workflow
-6. Story 6.5 (Series) + 5.7 (VS Code) - advanced features
+6. Story 6.5 (Series) + 6.7 (VS Code) - advanced features
 
 **Cost Analysis:**
 | Component | Monthly Cost |
