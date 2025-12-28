@@ -201,7 +201,7 @@
 - **Clustering Algorithm:** UMAP (768D → 5D) + HDBSCAN density-based clustering
 - **Initial Load Mode:** Local Python script for bulk cluster assignment
   - Direct Firestore updates (kb_items.cluster_id field)
-  - Processes all 823 chunks in batches
+  - Processes all 900 chunks in batches
   - AI-generated cluster names via Gemini
   - Idempotent: can be re-run to recompute clusters
 - **Delta Processing Mode:** Cloud Function integrated into daily batch pipeline
@@ -679,14 +679,14 @@ If auto-tuning yields unclear results, use these 5 universal types that work acr
 
 **LLM Model Selection (Stand: Dezember 2025):**
 
-| Modell | Input/1M | Output/1M | 823 Chunks | Use Case |
+| Modell | Input/1M | Output/1M | 900 Chunks | Use Case |
 |--------|----------|-----------|------------|----------|
-| **Gemini 3 Flash** | $0.50 | $3.00 | ~$0.89 | **Default** |
-| Claude Haiku 4.5 | $1.00 | $5.00 | ~$1.61 | Alternative (bessere JSON-Konsistenz) |
-| Claude Sonnet 4.5 | $3.00 | $15.00 | ~$4.82 | Benchmarking / Qualitätsvergleich |
+| **Gemini 3 Flash** | $0.50 | $3.00 | ~$1.00 | **Default** |
+| Claude Haiku 4.5 | $1.00 | $5.00 | ~$1.80 | Alternative (bessere JSON-Konsistenz) |
+| Claude Sonnet 4.5 | $3.00 | $15.00 | ~$5.30 | Benchmarking / Qualitätsvergleich |
 
 **Empfehlung:**
-- **Discovery Phase:** Gemini 3 Flash (alle 823 Chunks, ~$0.89)
+- **Discovery Phase:** Gemini 3 Flash (alle 900 Chunks, ~$1.00)
 - **Produktion:** Gemini 3 Flash via Vertex AI
 - **Optional Benchmarking:** 50 Chunks parallel mit Claude Sonnet 4.5 zur Qualitätsprüfung
 
@@ -719,8 +719,8 @@ If auto-tuning yields unclear results, use these 5 universal types that work acr
   - Extracts entities in batches (50 chunks per batch)
   - Deduplicates entities via embedding similarity
   - Stores in `kg_nodes` collection
-  - Estimated runtime: ~20-30 minutes for 823 chunks
-  - Estimated cost: ~$0.89 one-time (Gemini 3 Flash)
+  - Estimated runtime: ~20-30 minutes for 900 chunks
+  - Estimated cost: ~$1.00 one-time (Gemini 3 Flash)
 - **Incremental Mode:** Daily pipeline integration for new chunks
 - **Idempotent:** Can be re-run safely (upserts based on entity label + type)
 
