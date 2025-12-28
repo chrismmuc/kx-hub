@@ -677,6 +677,25 @@ If auto-tuning yields unclear results, use these 5 universal types that work acr
 
 **Research Basis:** Based on [Microsoft GraphRAG](https://microsoft.github.io/graphrag/) auto-tuning approach and [B2NERD research](https://aclanthology.org/2025.coling-main.725/) showing that universal taxonomies must balance coverage with consistency.
 
+**LLM Model Selection (Stand: Dezember 2025):**
+
+| Modell | Input/1M | Output/1M | 823 Chunks | Use Case |
+|--------|----------|-----------|------------|----------|
+| **Gemini 3 Flash** | $0.50 | $3.00 | ~$0.89 | **Default** |
+| Claude Haiku 4.5 | $1.00 | $5.00 | ~$1.61 | Alternative (bessere JSON-Konsistenz) |
+| Claude Sonnet 4.5 | $3.00 | $15.00 | ~$4.82 | Benchmarking / Qualitätsvergleich |
+
+**Empfehlung:**
+- **Discovery Phase:** Gemini 3 Flash (alle 823 Chunks, ~$0.89)
+- **Produktion:** Gemini 3 Flash via Vertex AI
+- **Optional Benchmarking:** 50 Chunks parallel mit Claude Sonnet 4.5 zur Qualitätsprüfung
+
+**Qualitätsvergleich (basierend auf Benchmarks):**
+- Accuracy: Gemini ~96%, Claude ~97% (Δ ~1%)
+- JSON Validity: Gemini ~95%, Claude ~100%
+- Geschwindigkeit: Gemini 3x schneller
+- **Fazit:** Für Entity Extraction ist der Qualitätsunterschied minimal; Gemini bietet besseres Preis-Leistungs-Verhältnis
+
 **Technical Approach:**
 - Extend `KnowledgeCardGenerator` with entity extraction prompt
 - New Firestore collection `kg_nodes` with schema:
@@ -700,8 +719,8 @@ If auto-tuning yields unclear results, use these 5 universal types that work acr
   - Extracts entities in batches (50 chunks per batch)
   - Deduplicates entities via embedding similarity
   - Stores in `kg_nodes` collection
-  - Estimated runtime: ~30 minutes for 823 chunks
-  - Estimated cost: ~$0.50 one-time (Gemini API)
+  - Estimated runtime: ~20-30 minutes for 823 chunks
+  - Estimated cost: ~$0.89 one-time (Gemini 3 Flash)
 - **Incremental Mode:** Daily pipeline integration for new chunks
 - **Idempotent:** Can be re-run safely (upserts based on entity label + type)
 
