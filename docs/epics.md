@@ -663,9 +663,9 @@ Before defining the final entity types, run auto-tuning on existing content:
 3. **Consolidation:** Review proposed types, merge similar ones, aim for 5-8 final types
 4. **Validation:** Test schema on 20 additional chunks, refine if needed
 
-**Recommended Universal Entity Types (Fallback):**
+**Example Entity Types (Orientation):**
 
-If auto-tuning yields unclear results, use these 5 universal types that work across diverse reading domains (tech, management, parenting, relationships, fiction):
+The following 5 universal types serve as orientation for the Discovery Phase. They work across diverse reading domains (tech, management, parenting, relationships, fiction):
 
 | Type | Description | Examples |
 |------|-------------|----------|
@@ -681,20 +681,20 @@ If auto-tuning yields unclear results, use these 5 universal types that work acr
 
 | Modell | Input/1M | Output/1M | 900 Chunks | Use Case |
 |--------|----------|-----------|------------|----------|
-| **Gemini 3 Flash** | $0.50 | $3.00 | ~$1.00 | **Default** |
-| Claude Haiku 4.5 | $1.00 | $5.00 | ~$1.80 | Alternative (bessere JSON-Konsistenz) |
+| **Claude Haiku 4.5** | $1.00 | $5.00 | ~$1.80 | **Default** (beste JSON-Konsistenz) |
+| Gemini 3 Flash | $0.50 | $3.00 | ~$1.00 | Budget-Alternative |
 | Claude Sonnet 4.5 | $3.00 | $15.00 | ~$5.30 | Benchmarking / Qualitätsvergleich |
 
 **Empfehlung:**
-- **Discovery Phase:** Gemini 3 Flash (alle 900 Chunks, ~$1.00)
-- **Produktion:** Gemini 3 Flash via Vertex AI
+- **Discovery Phase:** Claude Haiku 4.5 (alle 900 Chunks, ~$1.80)
+- **Produktion:** Claude Haiku 4.5 via Vertex AI
 - **Optional Benchmarking:** 50 Chunks parallel mit Claude Sonnet 4.5 zur Qualitätsprüfung
 
 **Qualitätsvergleich (basierend auf Benchmarks):**
-- Accuracy: Gemini ~96%, Claude ~97% (Δ ~1%)
-- JSON Validity: Gemini ~95%, Claude ~100%
+- Accuracy: Claude ~97%, Gemini ~96% (Δ ~1%)
+- JSON Validity: Claude ~100%, Gemini ~95%
 - Geschwindigkeit: Gemini 3x schneller
-- **Fazit:** Für Entity Extraction ist der Qualitätsunterschied minimal; Gemini bietet besseres Preis-Leistungs-Verhältnis
+- **Fazit:** Claude Haiku bietet zuverlässigere strukturierte Outputs; Mehrkosten von ~$0.80 für bessere Konsistenz gerechtfertigt
 
 **Technical Approach:**
 - Extend `KnowledgeCardGenerator` with entity extraction prompt
@@ -720,7 +720,7 @@ If auto-tuning yields unclear results, use these 5 universal types that work acr
   - Deduplicates entities via embedding similarity
   - Stores in `kg_nodes` collection
   - Estimated runtime: ~20-30 minutes for 900 chunks
-  - Estimated cost: ~$1.00 one-time (Gemini 3 Flash)
+  - Estimated cost: ~$1.80 one-time (Claude Haiku 4.5)
 - **Incremental Mode:** Daily pipeline integration for new chunks
 - **Idempotent:** Can be re-run safely (upserts based on entity label + type)
 
