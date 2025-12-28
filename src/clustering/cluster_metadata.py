@@ -3,18 +3,23 @@ Cluster metadata generation and management.
 
 Generates cluster metadata including:
 - Centroids (average embeddings)
-- Names and descriptions (via Gemini API)
+- Names and descriptions (via LLM - supports Gemini, Claude)
 - Statistics (size, coherence)
 """
 
 import logging
+import os
+import sys
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import numpy as np
 from google.cloud import firestore
 from google.cloud.firestore_v1.vector import Vector
-import vertexai
-from vertexai.generative_models import GenerativeModel
+
+# Add parent directory to path for llm module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from llm import get_client, BaseLLMClient, GenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +42,8 @@ class ClusterMetadataGenerator:
         clusters_collection: str = 'clusters',
         dry_run: bool = False,
         umap_model = None,
-        umap_version: str = None
+        umap_version: str = None,
+        llm_client: Optional[BaseLLMClient] = None
     ):
         """
         Initialize cluster metadata generator.
@@ -50,6 +56,7 @@ class ClusterMetadataGenerator:
             dry_run: If True, don't write to Firestore
             umap_model: UMAP model for generating 5D centroids
             umap_version: UMAP model version string
+            llm_client: Optional pre-configured LLM client (uses default if None)
         """
         self.project_id = project_id
         self.region = region
@@ -63,9 +70,9 @@ class ClusterMetadataGenerator:
         logger.info(f"Initializing Firestore for project: {project_id}")
         self.db = firestore.Client(project=project_id)
 
-        logger.info(f"Initializing Vertex AI in region: {region}")
-        vertexai.init(project=project_id, location=region)
-        self.model = GenerativeModel('gemini-2.5-flash')
+        # Initialize LLM client (uses LLM_MODEL env var or default)
+        self.llm_client = llm_client or get_client()
+        logger.info(f"Using LLM client: {self.llm_client}")
 
     def generate_all_clusters(self) -> Dict[str, Any]:
         """
@@ -299,7 +306,7 @@ DESCRIPTION: <1-2 sentences explaining the common theme and key recurring concep
 Format your response EXACTLY as shown above."""
 
         try:
-            response = self.model.generate_content(prompt)
+            response = self.llm_client.generate(prompt)
             text = response.text.strip()
 
             # Parse response
@@ -312,12 +319,12 @@ Format your response EXACTLY as shown above."""
                 elif line.startswith('DESCRIPTION:'):
                     description = line.replace('DESCRIPTION:', '').strip()
 
-            logger.info(f"  Generated: {name}")
+            logger.info(f"  Generated: {name} [model={self.llm_client.model_id}]")
 
             return name, description
 
         except Exception as e:
-            logger.warning(f"Failed to generate cluster name via Gemini: {e}")
+            logger.warning(f"Failed to generate cluster name via LLM: {e}")
             # Fallback to tag-based name
             all_tags = []
             for chunk in sample_chunks:
