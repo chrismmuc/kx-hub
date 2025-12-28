@@ -647,13 +647,35 @@ update_recommendation_domains(
 **Summary:** Extend the Knowledge Card generation pipeline to also extract named entities (concepts, technologies, people, frameworks, practices) from each chunk. Store entities in a dedicated Firestore collection with references back to source chunks.
 
 **Key Features:**
-- **Entity Types:** concept, technology, person, framework, practice, methodology
+- **Entity Types:** Domain-adapted via Discovery Phase (see below)
 - **Extraction Method:** Gemini-based extraction during Knowledge Card generation
 - **Entity Normalization:** Deduplicate similar entities (e.g., "K8s" → "Kubernetes")
 - **Source Tracking:** Link each entity to source chunks for provenance
 - **Embedding Storage:** Generate embeddings for entity names for similarity search
 
 **Dependencies:** Story 2.1 (Knowledge Cards) - extends existing generation pipeline
+
+**Discovery Phase (Entity Type Schema):**
+
+Before defining the final entity types, run auto-tuning on existing content:
+1. **Sample Extraction:** Run open extraction on 50 random chunks (no predefined types)
+2. **Type Analysis:** Let LLM analyze extracted entities and propose type categories
+3. **Consolidation:** Review proposed types, merge similar ones, aim for 5-8 final types
+4. **Validation:** Test schema on 20 additional chunks, refine if needed
+
+**Recommended Universal Entity Types (Fallback):**
+
+If auto-tuning yields unclear results, use these 5 universal types that work across diverse reading domains (tech, management, parenting, relationships, fiction):
+
+| Type | Description | Examples |
+|------|-------------|----------|
+| `concept` | Abstract ideas, mental models, themes | Growth mindset, Microservices, Love languages |
+| `person` | Authors, thought leaders, experts | Tiago Forte, Martin Fowler, John Gottman |
+| `technique` | Concrete actions, practices | Active listening, Pair programming, Bedtime routines |
+| `framework` | Structured methodologies, models | Gottman Method, 12-Factor App, GTD |
+| `principle` | Guiding rules, truths | DRY, "Assume positive intent", "Connection before correction" |
+
+**Research Basis:** Based on [Microsoft GraphRAG](https://microsoft.github.io/graphrag/) auto-tuning approach and [B2NERD research](https://aclanthology.org/2025.coling-main.725/) showing that universal taxonomies must balance coverage with consistency.
 
 **Technical Approach:**
 - Extend `KnowledgeCardGenerator` with entity extraction prompt
