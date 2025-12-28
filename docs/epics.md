@@ -672,11 +672,23 @@ update_recommendation_domains(
 - Entity deduplication via embedding similarity (>0.95 = same entity)
 - Batch processing for existing chunks, incremental for new chunks
 
+**Migration Strategy (Existing Chunks):**
+- **Backfill Script:** `python3 -m src.knowledge_graph.initial_load`
+  - Reads all existing chunks from Firestore
+  - Extracts entities in batches (50 chunks per batch)
+  - Deduplicates entities via embedding similarity
+  - Stores in `kg_nodes` collection
+  - Estimated runtime: ~30 minutes for 823 chunks
+  - Estimated cost: ~$0.50 one-time (Gemini API)
+- **Incremental Mode:** Daily pipeline integration for new chunks
+- **Idempotent:** Can be re-run safely (upserts based on entity label + type)
+
 **Success Metrics:**
 - Entities extracted from 100% of chunks
 - <5% duplicate entities after normalization
 - Entity extraction adds <2 seconds to Knowledge Card generation
-- Cost impact: <$0.05/month additional
+- Cost impact: <$0.05/month additional (ongoing)
+- Backfill completes in <1 hour
 
 ---
 
