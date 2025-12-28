@@ -18,7 +18,7 @@
 
 **Estimated Complexity:** High - Core infrastructure with vector search, embedding pipeline, and intelligent chunking
 
-**Status:** Active Development (Stories 1.1-1.6 Complete, 1.7 Ready)
+**Status:** Complete
 
 ---
 
@@ -54,7 +54,7 @@
 
 ### Story 1.3: Embed & Store to Vertex AI Vector Search + Firestore
 
-**Status:** Ready for Review
+**Status:** Done
 
 **Summary:** Generate embeddings using Vertex AI gemini-embedding-001 model and store vectors in Vector Search with metadata in Firestore for semantic search capabilities.
 
@@ -69,7 +69,7 @@
 
 ### Story 1.4: Pipeline Delta Manifests & Resume Controls
 
-**Status:** Ready for Review
+**Status:** Done
 
 **Summary:** Implement manifest-based delta processing and resume controls to ensure the pipeline processes only new/changed items and can safely recover from failures without duplicates.
 
@@ -99,7 +99,7 @@
 
 ### Story 1.6: Intelligent Document Chunking with Overlap
 
-**Status:** Completed
+**Status:** Done
 
 **Summary:** Implement intelligent document chunking with semantic boundary detection and overlap to enable passage-level search results instead of whole-document retrieval, with full content storage in Firestore for single-query retrieval.
 
@@ -123,7 +123,7 @@
 
 ### Story 1.7: MCP Server for Conversational Knowledge Base Access
 
-**Status:** Ready
+**Status:** Done
 
 **Summary:** Build a local MCP (Model Context Protocol) server to expose the knowledge base to Claude Desktop for conversational queries, eliminating context switching and enabling natural language access to 813 semantically-searchable chunks.
 
@@ -165,7 +165,7 @@
 
 **Estimated Complexity:** Medium - AI generation and clustering algorithms with pipeline integration
 
-**Status:** Active Development (Stories 2.1-2.2 Complete, Stories 2.3-2.6 Planned)
+**Status:** Complete
 
 ---
 
@@ -193,7 +193,7 @@
 
 ### Story 2.2: Semantic Clustering with Initial Load & Delta Processing
 
-**Status:** In Progress
+**Status:** Done
 
 **Summary:** Implement semantic clustering using UMAP + HDBSCAN to automatically group related knowledge chunks into topics. Support two execution modes: initial load (local script) and delta processing (Cloud Function).
 
@@ -328,7 +328,7 @@
 
 ### Story 2.6: MCP Server Enhancements - Knowledge Cards & Clusters
 
-**Status:** Drafted
+**Status:** Done
 
 **Summary:** Extend MCP server to expose knowledge cards and cluster data to Claude Desktop, enabling cluster-based browsing, knowledge card summaries, and enhanced search results.
 
@@ -375,7 +375,7 @@
 
 ### Story 2.7: URL Link Storage & Backfill
 
-**Status:** Backlog
+**Status:** Done
 
 **Summary:** Extend Firestore data model to capture and store URL links (book readwise_url, book source_url, highlight readwise_url) from Readwise API. Update pipeline functions to extract and store URLs, extend MCP server to return URLs in results, and create backfill script for existing 825+ chunks.
 
@@ -428,13 +428,13 @@
 
 **Estimated Complexity:** High - Advanced ML operations, Firestore vector search, Cloud Run jobs, automated drift detection
 
-**Status:** Active Development (Stories 3.3-3.4 Ready, Story 3.2 Planned, Story 3.1 Backlog)
+**Status:** Active Development (Stories 3.1, 3.1.1, 3.4, 3.5 Done)
 
 ---
 
 ### Story 3.1: Remote MCP Server Deployment
 
-**Status:** Backlog
+**Status:** Done
 
 **Summary:** Deploy MCP server as a remote service (Cloud Run or Cloud Function) to eliminate local setup requirements and enable access from multiple devices. Currently MCP server runs locally requiring manual Python environment setup on each device.
 
@@ -470,7 +470,7 @@
 
 ### Story 3.1.1: OAuth 2.1 + Dynamic Client Registration for Mobile Access
 
-**Status:** Ready
+**Status:** Done
 
 **Summary:** Implement OAuth 2.1 authentication with Dynamic Client Registration (RFC 7591) to enable kx-hub MCP server access from Claude Mobile and Claude.ai Web. Claude Mobile requires DCR-compliant OAuth, which Google Cloud OAuth does not support natively. This story builds a lightweight OAuth 2.1 authorization server directly into the Cloud Run MCP server.
 
@@ -665,7 +665,7 @@
 
 ### Story 3.4: Cluster Relationship Discovery via Vector Search
 
-**Status:** Ready for Implementation
+**Status:** Done
 
 **Summary:** Enable cluster relationship discovery using Firestore native vector search on cluster centroids. Users can discover how different concept clusters relate to each other, enabling concept chaining and emergent idea discovery.
 
@@ -720,7 +720,7 @@ Emergent pattern: "AI-augmented personal knowledge systems"
 
 ### Story 3.5: AI-Powered Reading Recommendations
 
-**Status:** Backlog
+**Status:** Done
 
 **Summary:** Implement an on-demand MCP tool that generates personalized reading recommendations based on recent reads and top clusters. Uses Tavily Search API with domain whitelisting to find high-quality, recent articles related to the user's knowledge base, with LLM-based quality filtering and deduplication against existing content.
 
