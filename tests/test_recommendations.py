@@ -479,7 +479,7 @@ class TestEnhancedKBDeduplication(unittest.TestCase):
         from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         # Mock error by patching with exception
-        with patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url') as mock:
+        with patch('src.mcp_server.recommendation_filter.firestore_client.find_by_source_url') as mock:
             mock.side_effect = Exception('Database error')
 
             result = check_kb_duplicate(
