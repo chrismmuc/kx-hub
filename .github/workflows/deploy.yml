@@ -1,19 +1,7 @@
 name: Deploy KX-Hub
 
 on:
-  # Automatic deployment on push to main
-  push:
-    branches:
-      - main
-    paths:
-      - 'terraform/**'
-      - 'src/**'
-      - 'functions/**'
-      - 'Dockerfile.mcp-consolidated'
-      - 'cloudbuild.mcp-consolidated.yaml'
-      - '.github/workflows/deploy.yml'
-
-  # Manual deployment trigger with options
+  # Manual deployment trigger only
   workflow_dispatch:
     inputs:
       deploy_terraform:
@@ -34,6 +22,11 @@ on:
           - apply
           - plan
         default: apply
+      skip_change_detection:
+        description: 'Deploy even if no changes detected'
+        required: false
+        type: boolean
+        default: false
 
 env:
   PROJECT_ID: kx-hub
@@ -61,6 +54,8 @@ jobs:
         uses: dorny/paths-filter@v3
         id: filter
         with:
+          # Compare against the default branch to detect all pending changes
+          base: ${{ github.event.repository.default_branch }}
           filters: |
             terraform:
               - 'terraform/**/*.tf'
@@ -98,10 +93,10 @@ jobs:
     name: Deploy Terraform Infrastructure
     runs-on: ubuntu-latest
     needs: detect-changes
-    # Run if: manual trigger with terraform enabled, OR auto trigger with terraform/function changes
+    # Run if: terraform enabled AND (skip_change_detection OR changes detected)
     if: |
-      (github.event_name == 'workflow_dispatch' && inputs.deploy_terraform) ||
-      (github.event_name == 'push' && (needs.detect-changes.outputs.terraform == 'true' || needs.detect-changes.outputs.cloud_functions == 'true' || needs.detect-changes.outputs.workflows == 'true'))
+      inputs.deploy_terraform &&
+      (inputs.skip_change_detection || needs.detect-changes.outputs.terraform == 'true' || needs.detect-changes.outputs.cloud_functions == 'true' || needs.detect-changes.outputs.workflows == 'true')
 
     permissions:
       contents: read
@@ -148,9 +143,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Terraform Apply
-        if: |
-          (github.event_name == 'workflow_dispatch' && inputs.terraform_action == 'apply') ||
-          (github.event_name == 'push')
+        if: inputs.terraform_action == 'apply'
         run: |
           terraform apply -auto-approve tfplan
 
@@ -173,10 +166,10 @@ jobs:
     name: Deploy MCP Server to Cloud Run
     runs-on: ubuntu-latest
     needs: detect-changes
-    # Run if: manual trigger with mcp enabled, OR auto trigger with mcp_server changes
+    # Run if: mcp_server enabled AND (skip_change_detection OR changes detected)
     if: |
-      (github.event_name == 'workflow_dispatch' && inputs.deploy_mcp_server) ||
-      (github.event_name == 'push' && needs.detect-changes.outputs.mcp_server == 'true')
+      inputs.deploy_mcp_server &&
+      (inputs.skip_change_detection || needs.detect-changes.outputs.mcp_server == 'true')
 
     permissions:
       contents: read
