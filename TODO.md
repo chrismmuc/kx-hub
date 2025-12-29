@@ -1,18 +1,11 @@
-# TODO
+Epic 1: Data Collection and Aggregation
+Details: Includes functions for ingesting, cleansing, and transforming enterprise data.
 
-### Epic 4: Knowledge Graph with Entity and Relation Extraction
+Epic 2: Data Storage and Retrieval
+Details: Built on a scalable and reliable cloud infrastructure for structured and unstructured data management.
 
-This epic focuses on building a comprehensive Knowledge Graph that integrates entity recognition and relationship extraction tools. This involves multiple interdependent stages and tasks:
+Epic 3: Advanced Analytics Interfaces
+Details: Provides capabilities for real-time analytic dashboards and ad-hoc data exploration.
 
-- **Story 4.1**: Research and evaluate state-of-the-art relation extraction tools.
-  - Status: Open
-  - Owner: TBD
-- **Planned Stages**:
-  1. Implement entity recognition and ingestion pipeline.
-  2. Integrate top-performing relation extraction tools.
-    - Tools shortlisted for evaluation: SpaCy, OpenIE, [Add more].
-  3. Validate the Knowledge Graph with sample datasets.
-
-### Future Items
-- Plan for scaling Knowledge Graph for larger datasets.
-- Evaluate downstream applications like query answering.
+Epic 4: Proactive Knowledge Connections
+Details: Focuses on intelligent recommendations using proactive extraction and merging of knowledge, leveraging the PCP framework for predictive contexts and prioritized actions.
