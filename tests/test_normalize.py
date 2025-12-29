@@ -5,10 +5,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Module will be imported after we create it
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 
 class TestMarkdownTransformer(unittest.TestCase):
     """Test the JSON to Markdown transformation logic."""
@@ -27,7 +23,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_generate_frontmatter(self):
         """Test YAML frontmatter generation from book JSON."""
-        from normalize.transformer import generate_frontmatter
+        from src.normalize.transformer import generate_frontmatter
 
         frontmatter = generate_frontmatter(self.sample_book)
 
@@ -49,7 +45,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_generate_frontmatter_with_missing_fields(self):
         """Test frontmatter generation handles missing optional fields gracefully."""
-        from normalize.transformer import generate_frontmatter
+        from src.normalize.transformer import generate_frontmatter
 
         minimal_book = {
             "user_book_id": 12345,
@@ -72,7 +68,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_transform_highlights_to_markdown(self):
         """Test converting highlights array to Markdown blockquotes."""
-        from normalize.transformer import transform_highlights
+        from src.normalize.transformer import transform_highlights
 
         markdown = transform_highlights(self.sample_book["highlights"])
 
@@ -90,7 +86,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_transform_highlights_with_notes(self):
         """Test highlights with user notes are properly formatted."""
-        from normalize.transformer import transform_highlights
+        from src.normalize.transformer import transform_highlights
 
         highlights_with_notes = [
             {
@@ -111,7 +107,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_transform_highlights_empty_array(self):
         """Test handling of books with no highlights."""
-        from normalize.transformer import transform_highlights
+        from src.normalize.transformer import transform_highlights
 
         markdown = transform_highlights([])
 
@@ -120,7 +116,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_full_json_to_markdown_transformation(self):
         """Test complete transformation from JSON to Markdown."""
-        from normalize.transformer import json_to_markdown
+        from src.normalize.transformer import json_to_markdown
 
         markdown = json_to_markdown(self.sample_book)
 
@@ -141,7 +137,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_markdown_escaping_special_characters(self):
         """Test that special Markdown characters are properly handled."""
-        from normalize.transformer import json_to_markdown
+        from src.normalize.transformer import json_to_markdown
 
         book_with_special_chars = {
             "user_book_id": 999,
@@ -169,7 +165,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_unicode_and_emoji_handling(self):
         """Test proper handling of Unicode characters and emojis."""
-        from normalize.transformer import json_to_markdown
+        from src.normalize.transformer import json_to_markdown
 
         book_with_unicode = {
             "user_book_id": 888,
@@ -197,7 +193,7 @@ class TestMarkdownTransformer(unittest.TestCase):
 
     def test_large_highlight_array(self):
         """Test performance with large number of highlights (100+)."""
-        from normalize.transformer import transform_highlights
+        from src.normalize.transformer import transform_highlights
 
         # Generate 150 highlights
         large_highlights = [
@@ -228,11 +224,11 @@ class TestNormalizeCloudFunction(unittest.TestCase):
     """Test the manifest-aware normalize handler."""
 
     def setUp(self):
-        import normalize.main
-        self.module = normalize.main
+        import src.normalize.main
+        self.module = src.normalize.main
 
     def test_requires_run_id(self):
-        from normalize.main import normalize_handler
+        from src.normalize.main import normalize_handler
 
         class MockRequest:
             def get_json(self, silent=False):
@@ -244,7 +240,7 @@ class TestNormalizeCloudFunction(unittest.TestCase):
 
     @patch('normalize.main._load_manifest', side_effect=FileNotFoundError('missing'))
     def test_manifest_missing_returns_404(self, mock_manifest):
-        from normalize.main import normalize_handler
+        from src.normalize.main import normalize_handler
 
         class MockRequest:
             def get_json(self, silent=False):
@@ -260,7 +256,7 @@ class TestNormalizeCloudFunction(unittest.TestCase):
     @patch('normalize.main._get_storage_client')
     @patch('normalize.main._load_manifest')
     def test_processes_manifest_items(self, mock_manifest, mock_storage, mock_firestore):
-        from normalize.main import normalize_handler
+        from src.normalize.main import normalize_handler
 
         mock_manifest.return_value = {
             'run_id': 'run-1',
@@ -334,7 +330,7 @@ class TestNormalizeCloudFunction(unittest.TestCase):
     @patch('normalize.main._get_storage_client')
     @patch('normalize.main._load_manifest')
     def test_skips_when_checksum_matches(self, mock_manifest, mock_storage, mock_firestore):
-        from normalize.main import normalize_handler
+        from src.normalize.main import normalize_handler
 
         mock_manifest.return_value = {
             'run_id': 'run-2',

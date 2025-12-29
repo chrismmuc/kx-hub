@@ -7,13 +7,8 @@ Tests clustering algorithms, quality metrics, and helper functions.
 import unittest
 import numpy as np
 from unittest.mock import Mock, patch
-import sys
-import os
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-from clustering.clusterer import SemanticClusterer, create_cluster_mapping
+from src.clustering.clusterer import SemanticClusterer, create_cluster_mapping
 
 
 class TestSemanticClusterer(unittest.TestCase):

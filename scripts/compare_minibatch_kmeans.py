@@ -9,7 +9,6 @@ Goal: Assess if simpler approach can work for our use case.
 """
 
 import logging
-import sys
 import time
 import numpy as np
 from typing import Dict, Any
@@ -20,9 +19,6 @@ from sklearn.metrics import (
 )
 import umap
 from sklearn.cluster import HDBSCAN
-
-# Add project root to path
-sys.path.insert(0, '/Users/christian/dev/kx-hub')
 
 from google.cloud import firestore
 

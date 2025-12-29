@@ -145,14 +145,27 @@ class BaseLLMClient(ABC):
 
         # Strip markdown code blocks if present
         if text.startswith('```'):
-            # Remove opening fence
-            text = text.split('\n', 1)[1] if '\n' in text else text[3:]
+            # Remove opening fence (```json, ```JSON, ``` etc.)
+            if '\n' in text:
+                first_line, rest = text.split('\n', 1)
+                text = rest
+            else:
+                # No newline - strip ``` and any language tag directly attached
+                text = text[3:]
+                # Remove language tag without newline (e.g., "json{...}")
+                if text.lower().startswith('json'):
+                    text = text[4:]
+
+            # Remove json language tag if present after newline split
+            if text.lower().startswith('json\n'):
+                text = text[5:]
+            elif text.lower().startswith('json '):
+                text = text[5:]
+
             # Remove closing fence
             if text.endswith('```'):
-                text = text.rsplit('\n```', 1)[0]
-            # Remove json language tag if present
-            if text.startswith('json\n'):
-                text = text[5:]
+                text = text.rsplit('\n```', 1)[0] if '\n```' in text else text[:-3]
+
             text = text.strip()
 
         try:

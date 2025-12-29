@@ -9,17 +9,13 @@ Generates cluster metadata including:
 
 import logging
 import os
-import sys
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import numpy as np
 from google.cloud import firestore
 from google.cloud.firestore_v1.vector import Vector
 
-# Add parent directory to path for llm module
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from llm import get_client, BaseLLMClient, GenerationConfig
+from src.llm import get_client, BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
