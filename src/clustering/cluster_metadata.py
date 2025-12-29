@@ -15,7 +15,7 @@ import numpy as np
 from google.cloud import firestore
 from google.cloud.firestore_v1.vector import Vector
 
-from src.llm import get_client, BaseLLMClient, GenerationConfig
+from src.llm import get_client, BaseLLMClient
 
 logger = logging.getLogger(__name__)
 
