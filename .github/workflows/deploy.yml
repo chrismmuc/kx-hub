@@ -1,15 +1,182 @@
-name: Deploy to Cloud Run
+name: Deploy KX-Hub
 
 on:
+  # Automatic deployment on push to main
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - 'src/**'
+      - 'functions/**'
+      - 'Dockerfile.mcp-consolidated'
+      - 'cloudbuild.mcp-consolidated.yaml'
+      - '.github/workflows/deploy.yml'
+
+  # Manual deployment trigger with options
   workflow_dispatch:
+    inputs:
+      deploy_terraform:
+        description: 'Deploy Terraform infrastructure'
+        required: false
+        type: boolean
+        default: true
+      deploy_mcp_server:
+        description: 'Deploy MCP Server to Cloud Run'
+        required: false
+        type: boolean
+        default: true
+      terraform_action:
+        description: 'Terraform action (plan or apply)'
+        required: false
+        type: choice
+        options:
+          - apply
+          - plan
+        default: apply
 
 env:
   PROJECT_ID: kx-hub
   REGION: europe-west1
+  TF_REGION: europe-west4  # Terraform resources region
 
 jobs:
-  deploy:
+  # ============================================================================
+  # Change Detection Job
+  # Determines which components have changed and need deployment
+  # ============================================================================
+  detect-changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
+    outputs:
+      terraform: ${{ steps.filter.outputs.terraform }}
+      cloud_functions: ${{ steps.filter.outputs.cloud_functions }}
+      mcp_server: ${{ steps.filter.outputs.mcp_server }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            terraform:
+              - 'terraform/**/*.tf'
+              - 'terraform/**/*.yaml'
+            cloud_functions:
+              - 'src/ingest/**'
+              - 'src/normalize/**'
+              - 'src/embed/**'
+              - 'src/clustering/**'
+              - 'src/knowledge_cards/**'
+              - 'functions/**'
+            mcp_server:
+              - 'src/mcp_server/**'
+              - 'Dockerfile.mcp-consolidated'
+              - 'cloudbuild.mcp-consolidated.yaml'
+            workflows:
+              - 'terraform/workflows/**'
+
+      - name: Summary of detected changes
+        run: |
+          echo "## Change Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Changed |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Config | ${{ steps.filter.outputs.terraform }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cloud Functions | ${{ steps.filter.outputs.cloud_functions }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| MCP Server | ${{ steps.filter.outputs.mcp_server }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflows | ${{ steps.filter.outputs.workflows }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Terraform Deployment Job
+  # Deploys Cloud Functions, Firestore indexes, Cloud Workflows, etc.
+  # ============================================================================
+  deploy-terraform:
+    name: Deploy Terraform Infrastructure
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    # Run if: manual trigger with terraform enabled, OR auto trigger with terraform/function changes
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.deploy_terraform) ||
+      (github.event_name == 'push' && (needs.detect-changes.outputs.terraform == 'true' || needs.detect-changes.outputs.cloud_functions == 'true' || needs.detect-changes.outputs.workflows == 'true'))
+
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -var="project_id=${{ env.PROJECT_ID }}" \
+            -var="region=${{ env.TF_REGION }}" \
+            -out=tfplan \
+            -no-color 2>&1 | tee plan_output.txt
+
+          # Extract summary for GitHub
+          echo "## Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "(Plan:|No changes|to add|to change|to destroy)" plan_output.txt >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Terraform Apply
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.terraform_action == 'apply') ||
+          (github.event_name == 'push')
+        run: |
+          terraform apply -auto-approve tfplan
+
+          echo "## Terraform Apply Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure has been successfully deployed." >> $GITHUB_STEP_SUMMARY
+
+      - name: Show Terraform Outputs
+        if: success()
+        run: |
+          echo "## Terraform Outputs" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          terraform output -no-color >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No outputs defined" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # MCP Server Deployment Job
+  # Builds and deploys the MCP Server to Cloud Run via Cloud Build
+  # ============================================================================
+  deploy-mcp-server:
+    name: Deploy MCP Server to Cloud Run
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    # Run if: manual trigger with mcp enabled, OR auto trigger with mcp_server changes
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.deploy_mcp_server) ||
+      (github.event_name == 'push' && needs.detect-changes.outputs.mcp_server == 'true')
 
     permissions:
       contents: read
@@ -31,7 +198,47 @@ jobs:
             --config=cloudbuild.mcp-consolidated.yaml \
             --region=${{ env.REGION }}
 
-      - name: Show result
+      - name: Show deployment result
         run: |
-          echo "## Deployment triggered! :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "Cloud Build is building and deploying to Cloud Run." >> $GITHUB_STEP_SUMMARY
+          echo "## MCP Server Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Cloud Build has built and deployed the MCP Server to Cloud Run." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Service:** kx-hub-mcp" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Deployment Summary Job
+  # Provides final summary of what was deployed
+  # ============================================================================
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, deploy-terraform, deploy-mcp-server]
+    if: always()
+
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          # Terraform status
+          if [ "${{ needs.deploy-terraform.result }}" == "success" ]; then
+            echo "| Terraform Infrastructure | Deployed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-terraform.result }}" == "skipped" ]; then
+            echo "| Terraform Infrastructure | Skipped (no changes) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Terraform Infrastructure | ${{ needs.deploy-terraform.result }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # MCP Server status
+          if [ "${{ needs.deploy-mcp-server.result }}" == "success" ]; then
+            echo "| MCP Server (Cloud Run) | Deployed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-mcp-server.result }}" == "skipped" ]; then
+            echo "| MCP Server (Cloud Run) | Skipped (no changes) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| MCP Server (Cloud Run) | ${{ needs.deploy-mcp-server.result }} |" >> $GITHUB_STEP_SUMMARY
+          fi
