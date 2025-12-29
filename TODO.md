@@ -5,5 +5,5 @@
 - [ ] Nach Deployment: Knowledge Cards mit Claude Haiku regenerieren (`python -m src.llm.regenerate`)
 - [ ] Python Package Structure Refactoring verifizieren (sys.path.insert entfernt)
 - [ ] MCP Tools API-Dokumentation prüfen und aktualisieren
-- [ ] Context7 als MCP Server in Claude Desktop integrieren
+- [ ] Context7 als MCP Server in Claude Code integrieren
 - [ ] Dependencies auf Aktualität prüfen
