@@ -9,7 +9,6 @@ Goal: Determine if Random Projection can replace UMAP to eliminate model persist
 """
 
 import logging
-import sys
 import time
 import numpy as np
 from typing import Dict, Any
@@ -21,9 +20,6 @@ from sklearn.metrics import (
     adjusted_mutual_info_score
 )
 import umap
-
-# Add project root to path
-sys.path.insert(0, '/Users/christian/dev/kx-hub')
 
 from src.clustering.clusterer import SemanticClusterer
 from google.cloud import firestore

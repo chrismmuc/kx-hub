@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from collections import Counter
 
-import firestore_client
+from . import firestore_client
 
 logger = logging.getLogger(__name__)
 

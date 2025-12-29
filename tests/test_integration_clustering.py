@@ -7,15 +7,10 @@ Tests initial load script and Cloud Function with mocked Firestore.
 import unittest
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock, call
-import sys
-import os
 import json
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-from clustering.initial_load import InitialLoadClusterer
-from clustering.graph_generator import GraphGenerator
+from src.clustering.initial_load import InitialLoadClusterer
+from src.clustering.graph_generator import GraphGenerator
 
 
 class TestInitialLoadClusterer(unittest.TestCase):

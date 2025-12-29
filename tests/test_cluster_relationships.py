@@ -7,21 +7,15 @@ on cluster centroids to find conceptually related clusters.
 
 import unittest
 from unittest.mock import patch, MagicMock
-import sys
-import os
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/mcp_server'))
-
-from mcp_server import tools
+from src.mcp_server import tools
 
 
 class TestGetRelatedClusters(unittest.TestCase):
     """Test suite for get_related_clusters() function."""
 
-    @patch('mcp_server.tools.firestore_client.get_firestore_client')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_related_clusters_success(self, mock_get_cluster, mock_get_db):
         """Test successful cluster relationship discovery."""
         # Mock source cluster
@@ -80,7 +74,7 @@ class TestGetRelatedClusters(unittest.TestCase):
         mock_get_cluster.assert_called_once_with('cluster_12')
         mock_collection.find_nearest.assert_called_once()
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_related_clusters_not_found(self, mock_get_cluster):
         """Test error handling for non-existent cluster."""
         mock_get_cluster.return_value = None
@@ -92,7 +86,7 @@ class TestGetRelatedClusters(unittest.TestCase):
         self.assertIn('not found', result['error'])
         self.assertEqual(result['result_count'], 0)
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_related_clusters_no_centroid(self, mock_get_cluster):
         """Test error handling for cluster without centroid."""
         mock_get_cluster.return_value = {
@@ -109,8 +103,8 @@ class TestGetRelatedClusters(unittest.TestCase):
         self.assertIn('centroid', result['error'].lower())
         self.assertEqual(result['result_count'], 0)
 
-    @patch('mcp_server.tools.firestore_client.get_firestore_client')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_related_clusters_filters_noise(self, mock_get_cluster, mock_get_db):
         """Test that noise clusters are filtered from results."""
         # Mock source cluster
@@ -167,8 +161,8 @@ class TestGetRelatedClusters(unittest.TestCase):
         self.assertEqual(result['results'][0]['cluster_id'], 'cluster_5')
         self.assertEqual(result['results'][0]['name'], 'Valid Cluster')
 
-    @patch('mcp_server.tools.firestore_client.get_firestore_client')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_related_clusters_distance_measures(self, mock_get_cluster, mock_get_db):
         """Test different distance measures."""
         # Mock source cluster

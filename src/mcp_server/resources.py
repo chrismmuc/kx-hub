@@ -15,7 +15,7 @@ import logging
 from typing import List
 from urllib.parse import unquote
 from mcp.types import Resource, TextContent
-import firestore_client
+from . import firestore_client
 
 logger = logging.getLogger(__name__)
 

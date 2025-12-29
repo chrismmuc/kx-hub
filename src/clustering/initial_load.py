@@ -15,7 +15,6 @@ Environment Variables:
 """
 
 import os
-import sys
 import logging
 import argparse
 import time
@@ -27,10 +26,7 @@ import numpy as np
 from google.cloud import firestore
 from google.cloud import storage
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from clustering.clusterer import SemanticClusterer, create_cluster_mapping
+from src.clustering.clusterer import SemanticClusterer, create_cluster_mapping
 
 # Configure logging
 logging.basicConfig(

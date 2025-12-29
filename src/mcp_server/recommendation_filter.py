@@ -17,18 +17,14 @@ Provides:
 import logging
 import math
 import os
-import sys
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from collections import defaultdict
 
-# Add parent directory to path for llm module
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.llm import get_client, BaseLLMClient
 
-from llm import get_client, BaseLLMClient
-
-import firestore_client
-import embeddings
+from . import firestore_client
+from . import embeddings
 
 logger = logging.getLogger(__name__)
 

@@ -7,22 +7,18 @@ Story 2.1: Knowledge Card Generation (Epic 2)
 """
 
 import os
-import sys
 import time
 import json
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-# Add parent directory to path for llm module
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from .schema import KnowledgeCard, validate_knowledge_card_response
 from .prompt_manager import PromptManager, estimate_cost
 
 # LLM abstraction layer
 try:
-    from llm import get_client, GenerationConfig as LLMGenerationConfig, BaseLLMClient
+    from src.llm import get_client, GenerationConfig as LLMGenerationConfig, BaseLLMClient
     _HAS_LLM = True
 except ImportError:
     _HAS_LLM = False

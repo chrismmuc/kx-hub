@@ -9,7 +9,6 @@ This single FastAPI server handles:
 
 import json
 import os
-import sys
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -17,11 +16,8 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 
-# Add current directory for imports
-sys.path.insert(0, str(Path(__file__).parent))
-
-from oauth_server import OAuthServer
-import tools
+from .oauth_server import OAuthServer
+from . import tools
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

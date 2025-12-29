@@ -6,22 +6,15 @@ Mocks Firestore and Vertex AI to test tool logic without GCP dependencies.
 
 import unittest
 from unittest.mock import patch, MagicMock
-import sys
-import os
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
-# Add mcp_server to path so firestore_client and embeddings can be imported
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/mcp_server'))
-
-from mcp_server import tools
+from src.mcp_server import tools
 
 
 class TestMCPTools(unittest.TestCase):
     """Test suite for MCP search tools."""
 
-    @patch('mcp_server.tools.embeddings.generate_query_embedding')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
     def test_search_semantic_success(self, mock_find_nearest, mock_generate_embedding):
         """Test semantic search with successful query."""
         # Mock embedding generation
@@ -71,7 +64,7 @@ class TestMCPTools(unittest.TestCase):
         mock_generate_embedding.assert_called_once_with("test query")
         mock_find_nearest.assert_called_once()
 
-    @patch('mcp_server.tools.firestore_client.query_by_metadata')
+    @patch('src.mcp_server.tools.firestore_client.query_by_metadata')
     def test_search_by_metadata_with_tags(self, mock_query):
         """Test metadata search with tag filter."""
         # Mock Firestore results
@@ -104,7 +97,7 @@ class TestMCPTools(unittest.TestCase):
             limit=20
         )
 
-    @patch('mcp_server.tools.firestore_client.query_by_metadata')
+    @patch('src.mcp_server.tools.firestore_client.query_by_metadata')
     def test_search_by_metadata_no_filters(self, mock_query):
         """Test metadata search requires at least one filter."""
         result = tools.search_by_metadata(limit=20)
@@ -115,8 +108,8 @@ class TestMCPTools(unittest.TestCase):
         # Should not call Firestore
         mock_query.assert_not_called()
 
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
     def test_get_related_chunks_success(self, mock_find_nearest, mock_get_chunk):
         """Test finding related chunks."""
         # Mock source chunk
@@ -175,7 +168,7 @@ class TestMCPTools(unittest.TestCase):
         mock_get_chunk.assert_called_once_with('source-chunk')
         mock_find_nearest.assert_called_once()
 
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_related_chunks_not_found(self, mock_get_chunk):
         """Test related chunks with non-existent source chunk."""
         mock_get_chunk.return_value = None
@@ -186,7 +179,7 @@ class TestMCPTools(unittest.TestCase):
         self.assertIn('not found', result['error'])
         self.assertEqual(result['result_count'], 0)
 
-    @patch('mcp_server.tools.firestore_client.get_stats')
+    @patch('src.mcp_server.tools.firestore_client.get_stats')
     def test_get_stats_success(self, mock_get_stats):
         """Test knowledge base stats collection."""
         mock_get_stats.return_value = {
@@ -208,8 +201,8 @@ class TestMCPTools(unittest.TestCase):
 class TestSearchKBUnified(unittest.TestCase):
     """Test suite for unified search_kb tool (Story 4.1)."""
 
-    @patch('mcp_server.tools.embeddings.generate_query_embedding')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
     def test_search_kb_semantic_only(self, mock_find_nearest, mock_generate_embedding):
         """Test search_kb with query only (semantic search mode)."""
         # Mock embedding generation
@@ -256,8 +249,8 @@ class TestSearchKBUnified(unittest.TestCase):
         mock_generate_embedding.assert_called_once_with("test query")
         mock_find_nearest.assert_called_once()
 
-    @patch('mcp_server.tools.embeddings.generate_query_embedding')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
     def test_search_kb_with_metadata_filters(self, mock_find_nearest, mock_generate_embedding):
         """Test search_kb with metadata filters (tags, author, source)."""
         # Mock embedding generation
@@ -280,7 +273,7 @@ class TestSearchKBUnified(unittest.TestCase):
         self.assertEqual(call_args[1]['filters']['author'], 'Test Author')
         self.assertEqual(call_args[1]['filters']['source'], 'kindle')
 
-    @patch('mcp_server.tools.firestore_client.query_by_date_range')
+    @patch('src.mcp_server.tools.firestore_client.query_by_date_range')
     def test_search_kb_with_date_range(self, mock_query_date):
         """Test search_kb with date range filter."""
         # Mock Firestore results
@@ -318,7 +311,7 @@ class TestSearchKBUnified(unittest.TestCase):
             source=None
         )
 
-    @patch('mcp_server.tools.firestore_client.query_by_relative_time')
+    @patch('src.mcp_server.tools.firestore_client.query_by_relative_time')
     def test_search_kb_with_period(self, mock_query_time):
         """Test search_kb with relative time period filter."""
         # Mock Firestore results
@@ -340,9 +333,9 @@ class TestSearchKBUnified(unittest.TestCase):
             source=None
         )
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.embeddings.generate_query_embedding')
-    @patch('mcp_server.tools.firestore_client.search_within_cluster')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.tools.firestore_client.search_within_cluster')
     def test_search_kb_with_cluster_id(self, mock_search_cluster, mock_generate_embedding, mock_get_cluster):
         """Test search_kb with cluster_id filter (cluster scoping)."""
         # Mock cluster exists
@@ -375,8 +368,8 @@ class TestSearchKBUnified(unittest.TestCase):
         # Verify cluster name in result
         self.assertEqual(result['cluster_name'], 'Test Cluster')
 
-    @patch('mcp_server.tools.embeddings.generate_query_embedding')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
     def test_search_kb_with_search_cards_only(self, mock_find_nearest, mock_generate_embedding):
         """Test search_kb with search_cards_only filter."""
         # Mock embedding generation
@@ -414,7 +407,7 @@ class TestSearchKBUnified(unittest.TestCase):
         # Verify full_content NOT in results (cards only)
         self.assertNotIn('full_content', result['results'][0])
 
-    @patch('mcp_server.tools.firestore_client.query_by_date_range')
+    @patch('src.mcp_server.tools.firestore_client.query_by_date_range')
     def test_search_kb_combined_filters(self, mock_query_date):
         """Test search_kb with multiple filters (AND logic)."""
         # Mock Firestore results
@@ -471,7 +464,7 @@ class TestSearchKBUnified(unittest.TestCase):
         self.assertIn('error', result)
         self.assertIn('date_range requires both start and end dates', result['error'])
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_search_kb_cluster_not_found(self, mock_get_cluster):
         """Test search_kb with non-existent cluster_id."""
         # Mock cluster not found
@@ -489,8 +482,8 @@ class TestSearchKBUnified(unittest.TestCase):
         self.assertIn('Cluster not found', result['error'])
         self.assertEqual(result['result_count'], 0)
 
-    @patch('mcp_server.tools.embeddings.generate_query_embedding')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
     def test_search_kb_urls_included(self, mock_find_nearest, mock_generate_embedding):
         """Test search_kb includes all URL fields (AC 10)."""
         # Mock embedding generation
@@ -527,9 +520,9 @@ class TestSearchKBUnified(unittest.TestCase):
 class TestGetChunk(unittest.TestCase):
     """Test suite for get_chunk tool (Story 4.2)."""
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_with_all_fields(self, mock_get_chunk, mock_find_nearest, mock_get_cluster):
         """Test get_chunk returns all fields including knowledge card, related chunks, cluster, and URLs (AC 2-6)."""
         # Mock chunk data
@@ -626,7 +619,7 @@ class TestGetChunk(unittest.TestCase):
         mock_find_nearest.assert_called_once()
         mock_get_cluster.assert_called_once_with('cluster-28')
 
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_with_include_related_false(self, mock_get_chunk):
         """Test get_chunk with include_related=false disables related chunks retrieval (AC 7)."""
         # Mock chunk data without embedding
@@ -652,8 +645,8 @@ class TestGetChunk(unittest.TestCase):
         self.assertEqual(result['chunk_id'], 'chunk-123')
         self.assertEqual(result['title'], 'Test Book')
 
-    @patch('mcp_server.tools.firestore_client.find_nearest')
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_with_custom_related_limit(self, mock_get_chunk, mock_find_nearest):
         """Test get_chunk with custom related_limit parameter (AC 8)."""
         # Mock chunk data
@@ -695,7 +688,7 @@ class TestGetChunk(unittest.TestCase):
         call_args = mock_find_nearest.call_args
         self.assertEqual(call_args[1]['limit'], 4)
 
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_not_found(self, mock_get_chunk):
         """Test get_chunk returns error gracefully when chunk_id not found (AC 9)."""
         # Mock chunk not found
@@ -707,8 +700,8 @@ class TestGetChunk(unittest.TestCase):
 
         self.assertIn('Chunk not found', str(context.exception))
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_missing_knowledge_card(self, mock_get_chunk, mock_get_cluster):
         """Test get_chunk returns gracefully when knowledge_card is missing (AC 9)."""
         # Mock chunk without knowledge card
@@ -740,7 +733,7 @@ class TestGetChunk(unittest.TestCase):
         self.assertEqual(result['chunk_id'], 'chunk-123')
         self.assertIsNotNone(result['cluster'])
 
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_no_embedding_for_related(self, mock_get_chunk):
         """Test get_chunk handles missing embedding gracefully (can't retrieve related chunks)."""
         # Mock chunk without embedding
@@ -766,8 +759,8 @@ class TestGetChunk(unittest.TestCase):
         # Other data should still be present
         self.assertEqual(result['chunk_id'], 'chunk-123')
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_all_url_fields(self, mock_get_chunk, mock_get_cluster):
         """Test get_chunk includes all URL fields (AC 6)."""
         # Mock chunk with all URL fields
@@ -800,9 +793,9 @@ class TestGetChunk(unittest.TestCase):
         self.assertEqual(result['source_url'], 'https://amazon.com/book/456')
         self.assertEqual(result['highlight_url'], 'https://readwise.io/highlight/789')
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.find_nearest')
-    @patch('mcp_server.tools.firestore_client.get_chunk_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.find_nearest')
+    @patch('src.mcp_server.tools.firestore_client.get_chunk_by_id')
     def test_get_chunk_filters_out_source_chunk(self, mock_get_chunk, mock_find_nearest, mock_get_cluster):
         """Test get_chunk filters out the source chunk from related chunks results."""
         # Mock chunk data
@@ -854,9 +847,9 @@ class TestGetChunk(unittest.TestCase):
 class TestGetRecent(unittest.TestCase):
     """Test suite for get_recent tool (Story 4.3)."""
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_default_parameters(self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster):
         """Test get_recent with default parameters (AC 1)."""
         # Mock recently added chunks
@@ -913,9 +906,9 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result['cluster_distribution']['cluster-28']['count'], 1)
         self.assertEqual(result['cluster_distribution']['cluster-28']['name'], 'AI Agents & LLMs')
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_with_knowledge_cards(self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster):
         """Test get_recent includes knowledge cards for chunks (AC 6)."""
         # Mock chunk with knowledge card
@@ -950,9 +943,9 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result['recent_chunks'][0]['knowledge_card']['summary'], 'AI-generated summary')
         self.assertEqual(len(result['recent_chunks'][0]['knowledge_card']['takeaways']), 2)
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_with_custom_period(self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster):
         """Test get_recent with different period values (AC 5)."""
         # Mock empty results
@@ -969,9 +962,9 @@ class TestGetRecent(unittest.TestCase):
         mock_get_recently_added.assert_called_once_with(limit=10, days=3)
         self.assertEqual(result['period'], 'last_3_days')
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_with_custom_limit(self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster):
         """Test get_recent with custom limit parameter (AC 7)."""
         # Mock 5 chunks
@@ -1002,8 +995,8 @@ class TestGetRecent(unittest.TestCase):
         mock_get_recently_added.assert_called_once_with(limit=5, days=7)
         self.assertEqual(len(result['recent_chunks']), 5)
 
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_empty_results(self, mock_get_recently_added, mock_get_activity_summary):
         """Test get_recent with no recent chunks (AC 8)."""
         # Mock empty results
@@ -1024,9 +1017,9 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result['activity_summary']['total_chunks_added'], 0)
         self.assertEqual(result['cluster_distribution'], {})
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_url_fields_included(self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster):
         """Test get_recent includes all URL fields (AC 9)."""
         # Mock chunk with all URL fields
@@ -1067,9 +1060,9 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(chunk['source_url'], 'https://amazon.com/book/456')
         self.assertEqual(chunk['highlight_url'], 'https://readwise.io/highlight/789')
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_cluster_distribution_calculation(self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster):
         """Test get_recent calculates cluster distribution correctly (AC 4)."""
         # Mock 3 chunks: 2 in cluster-1, 1 in cluster-2
@@ -1137,9 +1130,9 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result['cluster_distribution']['cluster-2']['count'], 1)
         self.assertEqual(result['cluster_distribution']['cluster-2']['name'], 'Cluster Two')
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_top_sources_and_authors(self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster):
         """Test get_recent includes top sources and authors in activity summary (AC 10)."""
         # Mock chunks
@@ -1175,8 +1168,8 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result['activity_summary']['top_authors'][0]['author'], 'Author One')
         self.assertEqual(result['activity_summary']['top_authors'][0]['count'], 10)
 
-    @patch('mcp_server.tools.firestore_client.get_activity_summary')
-    @patch('mcp_server.tools.firestore_client.get_recently_added')
+    @patch('src.mcp_server.tools.firestore_client.get_activity_summary')
+    @patch('src.mcp_server.tools.firestore_client.get_recently_added')
     def test_get_recent_period_mapping(self, mock_get_recently_added, mock_get_activity_summary):
         """Test get_recent maps all period values to correct days (AC 5)."""
         # Mock empty results
@@ -1209,9 +1202,9 @@ class TestGetRecent(unittest.TestCase):
 class TestGetClusterEnhanced(unittest.TestCase):
     """Test suite for enhanced get_cluster tool (Story 4.4)."""
 
-    @patch('mcp_server.tools.firestore_client.get_firestore_client')
-    @patch('mcp_server.tools.firestore_client.get_chunks_by_cluster')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.tools.firestore_client.get_chunks_by_cluster')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_with_members_and_related(self, mock_get_cluster, mock_get_chunks, mock_get_db):
         """Test get_cluster with both members and related clusters (AC 1, 2, 3)."""
         # Mock cluster data
@@ -1290,8 +1283,8 @@ class TestGetClusterEnhanced(unittest.TestCase):
         self.assertEqual(result['related_clusters'][0]['cluster_id'], 'cluster-2')
         self.assertIn('similarity_score', result['related_clusters'][0])
 
-    @patch('mcp_server.tools.firestore_client.get_chunks_by_cluster')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_chunks_by_cluster')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_with_include_members_false(self, mock_get_cluster, mock_get_chunks):
         """Test get_cluster with include_members=False (AC 4)."""
         # Mock cluster data
@@ -1316,7 +1309,7 @@ class TestGetClusterEnhanced(unittest.TestCase):
         # Verify get_chunks_by_cluster was NOT called
         mock_get_chunks.assert_not_called()
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_with_include_related_false(self, mock_get_cluster):
         """Test get_cluster with include_related=False (AC 5)."""
         # Mock cluster data with centroid
@@ -1339,8 +1332,8 @@ class TestGetClusterEnhanced(unittest.TestCase):
         self.assertNotIn('related_clusters', result)
         self.assertNotIn('related_count', result)
 
-    @patch('mcp_server.tools.firestore_client.get_firestore_client')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_custom_limits(self, mock_get_cluster, mock_get_db):
         """Test get_cluster with custom member_limit and related_limit (AC 6, 7)."""
         # Mock cluster data
@@ -1373,7 +1366,7 @@ class TestGetClusterEnhanced(unittest.TestCase):
         call_kwargs = mock_collection.find_nearest.call_args[1]
         self.assertEqual(call_kwargs['limit'], 4)  # related_limit + 1
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_no_centroid(self, mock_get_cluster):
         """Test get_cluster when cluster has no centroid (AC 8)."""
         # Mock cluster without centroid
@@ -1394,7 +1387,7 @@ class TestGetClusterEnhanced(unittest.TestCase):
         self.assertEqual(result['related_count'], 0)
         self.assertEqual(result['related_clusters'], [])
 
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_not_found(self, mock_get_cluster):
         """Test get_cluster with non-existent cluster_id (AC 9)."""
         # Mock cluster not found
@@ -1408,8 +1401,8 @@ class TestGetClusterEnhanced(unittest.TestCase):
         self.assertIn('not found', result['error'])
         self.assertEqual(result['cluster_id'], 'nonexistent')
 
-    @patch('mcp_server.tools.firestore_client.get_firestore_client')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_filters_source_cluster(self, mock_get_cluster, mock_get_db):
         """Test get_cluster filters out source cluster from related results (AC 10)."""
         # Mock cluster data
@@ -1457,8 +1450,8 @@ class TestGetClusterEnhanced(unittest.TestCase):
         self.assertEqual(len(result['related_clusters']), 1)
         self.assertEqual(result['related_clusters'][0]['cluster_id'], 'cluster-related')
 
-    @patch('mcp_server.tools.firestore_client.get_firestore_client')
-    @patch('mcp_server.tools.firestore_client.get_cluster_by_id')
+    @patch('src.mcp_server.tools.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.tools.firestore_client.get_cluster_by_id')
     def test_get_cluster_filters_noise_clusters(self, mock_get_cluster, mock_get_db):
         """Test get_cluster filters out noise clusters from related results."""
         # Mock cluster data
@@ -1510,9 +1503,9 @@ class TestGetClusterEnhanced(unittest.TestCase):
 class TestConfigureKB(unittest.TestCase):
     """Test suite for configure_kb unified configuration tool (Story 4.5)."""
 
-    @patch('mcp_server.tools.get_hot_sites_config')
-    @patch('mcp_server.tools.get_recommendation_config')
-    @patch('mcp_server.tools.get_ranking_config')
+    @patch('src.mcp_server.tools.get_hot_sites_config')
+    @patch('src.mcp_server.tools.get_recommendation_config')
+    @patch('src.mcp_server.tools.get_ranking_config')
     def test_show_all_action(self, mock_ranking, mock_domains, mock_hot_sites):
         """Test show_all action returns all configuration (AC 1, 2)."""
         # Mock configuration data
@@ -1539,7 +1532,7 @@ class TestConfigureKB(unittest.TestCase):
         self.assertEqual(result['domains']['domain_count'], 2)
         self.assertEqual(result['hot_sites']['total_domains'], 2)
 
-    @patch('mcp_server.tools.get_ranking_config')
+    @patch('src.mcp_server.tools.get_ranking_config')
     def test_show_ranking_action(self, mock_get_ranking):
         """Test show_ranking action (AC 3)."""
         mock_get_ranking.return_value = {
@@ -1554,7 +1547,7 @@ class TestConfigureKB(unittest.TestCase):
         self.assertIn('settings', result)
         self.assertEqual(result['weights']['relevance'], 0.5)
 
-    @patch('mcp_server.tools.get_recommendation_config')
+    @patch('src.mcp_server.tools.get_recommendation_config')
     def test_show_domains_action(self, mock_get_domains):
         """Test show_domains action (AC 4)."""
         mock_get_domains.return_value = {
@@ -1570,7 +1563,7 @@ class TestConfigureKB(unittest.TestCase):
         self.assertEqual(result['domain_count'], 2)
         self.assertEqual(len(result['quality_domains']), 2)
 
-    @patch('mcp_server.tools.get_hot_sites_config')
+    @patch('src.mcp_server.tools.get_hot_sites_config')
     def test_show_hot_sites_action(self, mock_get_hot_sites):
         """Test show_hot_sites action (AC 5)."""
         mock_get_hot_sites.return_value = {
@@ -1592,7 +1585,7 @@ class TestConfigureKB(unittest.TestCase):
         self.assertIn('category_summary', result)
         self.assertEqual(result['total_domains'], 3)
 
-    @patch('mcp_server.tools.update_ranking_config')
+    @patch('src.mcp_server.tools.update_ranking_config')
     def test_update_ranking_action(self, mock_update_ranking):
         """Test update_ranking action with weights (AC 6)."""
         mock_update_ranking.return_value = {
@@ -1614,7 +1607,7 @@ class TestConfigureKB(unittest.TestCase):
             settings=None
         )
 
-    @patch('mcp_server.tools.update_recommendation_domains')
+    @patch('src.mcp_server.tools.update_recommendation_domains')
     def test_update_domains_action(self, mock_update_domains):
         """Test update_domains action (AC 7)."""
         mock_update_domains.return_value = {
@@ -1634,7 +1627,7 @@ class TestConfigureKB(unittest.TestCase):
             remove_domains=['oldsite.com']
         )
 
-    @patch('mcp_server.tools.update_hot_sites_config')
+    @patch('src.mcp_server.tools.update_hot_sites_config')
     def test_update_hot_sites_action(self, mock_update_hot_sites):
         """Test update_hot_sites action (AC 8)."""
         mock_update_hot_sites.return_value = {

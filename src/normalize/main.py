@@ -42,14 +42,7 @@ except ImportError:
 try:
     from ..common.chunker import DocumentChunker, ChunkConfig
 except ImportError:
-    try:
-        from common.chunker import DocumentChunker, ChunkConfig
-    except ImportError:
-        # Fallback for tests
-        import sys
-        import os
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-        from common.chunker import DocumentChunker, ChunkConfig
+    from src.common.chunker import DocumentChunker, ChunkConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

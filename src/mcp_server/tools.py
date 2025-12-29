@@ -24,8 +24,8 @@ import logging
 import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-import firestore_client
-import embeddings
+from . import firestore_client
+from . import embeddings
 
 logger = logging.getLogger(__name__)
 

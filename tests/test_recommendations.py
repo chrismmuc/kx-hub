@@ -11,22 +11,16 @@ Tests the recommendation system including:
 
 import unittest
 from unittest.mock import patch, MagicMock
-import sys
-import os
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/mcp_server'))
 
 
 class TestTavilyClient(unittest.TestCase):
     """Test suite for Tavily API client."""
 
-    @patch('mcp_server.tavily_client.get_tavily_api_key')
+    @patch('src.mcp_server.tavily_client.get_tavily_api_key')
     @patch('tavily.TavilyClient')
     def test_search_success(self, mock_tavily_class, mock_get_key):
         """Test successful Tavily search."""
-        from mcp_server import tavily_client
+        from src.mcp_server import tavily_client
 
         # Reset global client
         tavily_client._tavily_client = None
@@ -65,11 +59,11 @@ class TestTavilyClient(unittest.TestCase):
         # Cleanup
         tavily_client._tavily_client = None
 
-    @patch('mcp_server.tavily_client.get_tavily_api_key')
+    @patch('src.mcp_server.tavily_client.get_tavily_api_key')
     @patch('tavily.TavilyClient')
     def test_search_with_exclude_domains(self, mock_tavily_class, mock_get_key):
         """Test Tavily search with excluded domains."""
-        from mcp_server import tavily_client
+        from src.mcp_server import tavily_client
 
         tavily_client._tavily_client = None
         mock_get_key.return_value = 'test-api-key'
@@ -93,7 +87,7 @@ class TestTavilyClient(unittest.TestCase):
 
     def test_extract_domain(self):
         """Test domain extraction from URLs."""
-        from mcp_server.tavily_client import _extract_domain
+        from src.mcp_server.tavily_client import _extract_domain
 
         self.assertEqual(_extract_domain('https://example.com/path'), 'example.com')
         self.assertEqual(_extract_domain('https://www.example.com/path'), 'example.com')
@@ -104,10 +98,10 @@ class TestTavilyClient(unittest.TestCase):
 class TestRecommendationQueries(unittest.TestCase):
     """Test suite for smart query generation."""
 
-    @patch('mcp_server.recommendation_queries.firestore_client.get_recent_chunks_with_cards')
+    @patch('src.mcp_server.recommendation_queries.firestore_client.get_recent_chunks_with_cards')
     def test_get_recent_read_themes(self, mock_get_chunks):
         """Test theme extraction from recent reads."""
-        from mcp_server import recommendation_queries
+        from src.mcp_server import recommendation_queries
 
         mock_get_chunks.return_value = [
             {
@@ -135,10 +129,10 @@ class TestRecommendationQueries(unittest.TestCase):
         self.assertEqual(result['authors'], ['Martin Fowler'])
         self.assertEqual(len(result['takeaways']), 3)
 
-    @patch('mcp_server.recommendation_queries.firestore_client.get_top_clusters')
+    @patch('src.mcp_server.recommendation_queries.firestore_client.get_top_clusters')
     def test_get_top_cluster_themes(self, mock_get_clusters):
         """Test cluster theme extraction."""
-        from mcp_server import recommendation_queries
+        from src.mcp_server import recommendation_queries
 
         mock_get_clusters.return_value = [
             {
@@ -161,12 +155,12 @@ class TestRecommendationQueries(unittest.TestCase):
         self.assertEqual(result[0]['name'], 'Platform Engineering')
         self.assertEqual(result[1]['cluster_id'], 'cluster_2')
 
-    @patch('mcp_server.recommendation_queries.get_top_cluster_themes')
-    @patch('mcp_server.recommendation_queries.get_recent_read_themes')
-    @patch('mcp_server.recommendation_queries.get_stale_cluster_themes')
+    @patch('src.mcp_server.recommendation_queries.get_top_cluster_themes')
+    @patch('src.mcp_server.recommendation_queries.get_recent_read_themes')
+    @patch('src.mcp_server.recommendation_queries.get_stale_cluster_themes')
     def test_generate_search_queries(self, mock_stale, mock_recent, mock_clusters):
         """Test smart query generation."""
-        from mcp_server import recommendation_queries
+        from src.mcp_server import recommendation_queries
 
         mock_clusters.return_value = [
             {'cluster_id': 'c1', 'name': 'Platform Engineering', 'description': '', 'size': 50}
@@ -191,10 +185,10 @@ class TestRecommendationQueries(unittest.TestCase):
 class TestRecommendationFilter(unittest.TestCase):
     """Test suite for quality filtering and deduplication."""
 
-    @patch('mcp_server.recommendation_filter.get_gemini_model')
+    @patch('src.mcp_server.recommendation_filter.get_gemini_model')
     def test_score_content_depth(self, mock_get_model):
         """Test Gemini content depth scoring."""
-        from mcp_server import recommendation_filter
+        from src.mcp_server import recommendation_filter
 
         mock_model = MagicMock()
         mock_model.generate_content.return_value = MagicMock(
@@ -211,10 +205,10 @@ class TestRecommendationFilter(unittest.TestCase):
         self.assertEqual(result['depth_score'], 4)
         self.assertIn('reasoning', result)
 
-    @patch('mcp_server.recommendation_filter.get_gemini_model')
+    @patch('src.mcp_server.recommendation_filter.get_gemini_model')
     def test_score_content_depth_error_handling(self, mock_get_model):
         """Test error handling in depth scoring."""
-        from mcp_server import recommendation_filter
+        from src.mcp_server import recommendation_filter
 
         mock_model = MagicMock()
         mock_model.generate_content.side_effect = Exception('API error')
@@ -232,7 +226,7 @@ class TestRecommendationFilter(unittest.TestCase):
 
     def test_generate_why_recommended_cluster(self):
         """Test why_recommended for cluster-based recommendations."""
-        from mcp_server.recommendation_filter import generate_why_recommended
+        from src.mcp_server.recommendation_filter import generate_why_recommended
 
         rec = {'title': 'Test', 'url': 'https://example.com'}
         context = {
@@ -247,7 +241,7 @@ class TestRecommendationFilter(unittest.TestCase):
 
     def test_generate_why_recommended_theme(self):
         """Test why_recommended for theme-based recommendations."""
-        from mcp_server.recommendation_filter import generate_why_recommended
+        from src.mcp_server.recommendation_filter import generate_why_recommended
 
         rec = {'title': 'Test', 'url': 'https://example.com'}
         context = {
@@ -259,11 +253,11 @@ class TestRecommendationFilter(unittest.TestCase):
 
         self.assertIn('microservices', result.lower())
 
-    @patch('mcp_server.recommendation_filter.firestore_client.find_nearest')
-    @patch('mcp_server.recommendation_filter.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_nearest')
+    @patch('src.mcp_server.recommendation_filter.embeddings.generate_query_embedding')
     def test_check_kb_duplicate(self, mock_embed, mock_find):
         """Test KB deduplication check."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         mock_embed.return_value = [0.1] * 768
         mock_find.return_value = [
@@ -285,10 +279,10 @@ class TestRecommendationFilter(unittest.TestCase):
         # Title similarity check may flag this
         self.assertIn('similarity_score', result)
 
-    @patch('mcp_server.recommendation_filter.score_content_depth')
+    @patch('src.mcp_server.recommendation_filter.score_content_depth')
     def test_trusted_source_boosts_credibility(self, mock_depth):
         """Trusted sources should boost credibility even if not in KB."""
-        from mcp_server import recommendation_filter
+        from src.mcp_server import recommendation_filter
 
         # Mock depth scoring to return passing score
         mock_depth.return_value = {'depth_score': 4, 'reasoning': 'Good content'}
@@ -323,10 +317,10 @@ class TestRecommendationFilter(unittest.TestCase):
 class TestEnhancedKBDeduplication(unittest.TestCase):
     """Test suite for enhanced KB deduplication (Story 3.10)."""
 
-    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_by_source_url')
     def test_url_based_deduplication(self, mock_find_url):
         """Test URL-based duplicate detection (AC #1)."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         # Setup: URL exists in KB
         mock_find_url.return_value = {
@@ -345,11 +339,11 @@ class TestEnhancedKBDeduplication(unittest.TestCase):
         self.assertEqual(result['similarity_score'], 1.0)
         self.assertEqual(result['similar_chunk_id'], 'existing-chunk-1')
 
-    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
-    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
     def test_title_containment_vibe_coding(self, mock_title_search, mock_find_url):
         """Test title containment: 'Vibe Coding' vs 'Beyond Vibe Coding' (AC #2)."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         mock_find_url.return_value = None  # URL not found
 
@@ -373,11 +367,11 @@ class TestEnhancedKBDeduplication(unittest.TestCase):
         self.assertEqual(result['match_type'], 'title_containment')
         self.assertGreaterEqual(result['similarity_score'], 0.9)
 
-    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
-    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
     def test_title_containment_reverse(self, mock_title_search, mock_find_url):
         """Test reverse title containment: KB has long title, rec has short."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         mock_find_url.return_value = None
 
@@ -399,11 +393,11 @@ class TestEnhancedKBDeduplication(unittest.TestCase):
         self.assertTrue(result['is_duplicate'])
         self.assertEqual(result['match_type'], 'title_containment')
 
-    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
-    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
     def test_title_prefix_stripping(self, mock_title_search, mock_find_url):
         """Test that common prefixes are stripped: 'The DevOps Handbook' vs 'DevOps Handbook'."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         mock_find_url.return_value = None
 
@@ -423,13 +417,13 @@ class TestEnhancedKBDeduplication(unittest.TestCase):
         self.assertTrue(result['is_duplicate'])
         self.assertEqual(result['match_type'], 'title_containment')
 
-    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
-    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
-    @patch('mcp_server.recommendation_filter.firestore_client.find_nearest')
-    @patch('mcp_server.recommendation_filter.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_nearest')
+    @patch('src.mcp_server.recommendation_filter.embeddings.generate_query_embedding')
     def test_no_false_positives(self, mock_embed, mock_find_nearest, mock_title_search, mock_find_url):
         """Test that unrelated content is NOT flagged as duplicate."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         mock_find_url.return_value = None
         mock_title_search.return_value = []
@@ -450,13 +444,13 @@ class TestEnhancedKBDeduplication(unittest.TestCase):
         self.assertFalse(result['is_duplicate'])
         self.assertIsNone(result['match_type'])
 
-    @patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url')
-    @patch('mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
-    @patch('mcp_server.recommendation_filter.firestore_client.find_nearest')
-    @patch('mcp_server.recommendation_filter.embeddings.generate_query_embedding')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_by_source_url')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_chunks_by_title_prefix')
+    @patch('src.mcp_server.recommendation_filter.firestore_client.find_nearest')
+    @patch('src.mcp_server.recommendation_filter.embeddings.generate_query_embedding')
     def test_embedding_similarity_fallback(self, mock_embed, mock_find_nearest, mock_title_search, mock_find_url):
         """Test embedding similarity when other methods don't match (AC #4)."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         mock_find_url.return_value = None
         mock_title_search.return_value = []  # No title match
@@ -482,7 +476,7 @@ class TestEnhancedKBDeduplication(unittest.TestCase):
 
     def test_error_handling(self):
         """Test graceful error handling."""
-        from mcp_server.recommendation_filter import check_kb_duplicate
+        from src.mcp_server.recommendation_filter import check_kb_duplicate
 
         # Mock error by patching with exception
         with patch('mcp_server.recommendation_filter.firestore_client.find_by_source_url') as mock:
@@ -504,42 +498,42 @@ class TestURLNormalization(unittest.TestCase):
 
     def test_normalize_removes_www(self):
         """Test www prefix is removed."""
-        from mcp_server.firestore_client import normalize_url
+        from src.mcp_server.firestore_client import normalize_url
 
         result = normalize_url('https://www.example.com/article')
         self.assertEqual(result, 'https://example.com/article')
 
     def test_normalize_removes_trailing_slash(self):
         """Test trailing slash is removed."""
-        from mcp_server.firestore_client import normalize_url
+        from src.mcp_server.firestore_client import normalize_url
 
         result = normalize_url('https://example.com/article/')
         self.assertEqual(result, 'https://example.com/article')
 
     def test_normalize_removes_query_params(self):
         """Test query parameters are removed."""
-        from mcp_server.firestore_client import normalize_url
+        from src.mcp_server.firestore_client import normalize_url
 
         result = normalize_url('https://example.com/article?utm_source=twitter&ref=123')
         self.assertEqual(result, 'https://example.com/article')
 
     def test_normalize_lowercase(self):
         """Test URL is lowercased."""
-        from mcp_server.firestore_client import normalize_url
+        from src.mcp_server.firestore_client import normalize_url
 
         result = normalize_url('HTTPS://EXAMPLE.COM/Article')
         self.assertEqual(result, 'https://example.com/article')
 
     def test_normalize_empty_string(self):
         """Test empty string handling."""
-        from mcp_server.firestore_client import normalize_url
+        from src.mcp_server.firestore_client import normalize_url
 
         result = normalize_url('')
         self.assertEqual(result, '')
 
     def test_normalize_none(self):
         """Test None handling."""
-        from mcp_server.firestore_client import normalize_url
+        from src.mcp_server.firestore_client import normalize_url
 
         result = normalize_url(None)
         self.assertEqual(result, '')
@@ -548,10 +542,10 @@ class TestURLNormalization(unittest.TestCase):
 class TestFindBySourceURL(unittest.TestCase):
     """Test suite for find_by_source_url (Story 3.10 AC #1)."""
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_find_exact_match(self, mock_get_db):
         """Test finding chunk by exact URL match."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_doc = MagicMock()
         mock_doc.id = 'chunk-123'
@@ -577,10 +571,10 @@ class TestFindBySourceURL(unittest.TestCase):
         self.assertEqual(result['id'], 'chunk-123')
         self.assertEqual(result['title'], 'Test Article')
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_find_no_match(self, mock_get_db):
         """Test URL not found returns None."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_query = MagicMock()
         mock_query.stream.return_value = []
@@ -599,7 +593,7 @@ class TestFindBySourceURL(unittest.TestCase):
 
     def test_find_empty_url(self):
         """Test empty URL returns None."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         result = firestore_client.find_by_source_url('')
         self.assertIsNone(result)
@@ -611,10 +605,10 @@ class TestFindBySourceURL(unittest.TestCase):
 class TestGetReadingRecommendations(unittest.TestCase):
     """Test suite for the main get_reading_recommendations() tool."""
 
-    @patch('mcp_server.tools.firestore_client.get_recommendation_config')
+    @patch('src.mcp_server.tools.firestore_client.get_recommendation_config')
     def test_invalid_scope(self, mock_config):
         """Test error handling for invalid scope."""
-        from mcp_server import tools
+        from src.mcp_server import tools
 
         result = tools.get_reading_recommendations(scope='invalid')
 
@@ -625,7 +619,7 @@ class TestGetReadingRecommendations(unittest.TestCase):
     @patch('firestore_client.get_recommendation_config')
     def test_no_queries_generated(self, mock_config, mock_queries):
         """Test handling when no queries are generated."""
-        from mcp_server import tools
+        from src.mcp_server import tools
 
         mock_config.return_value = {'quality_domains': [], 'excluded_domains': []}
         mock_queries.return_value = []
@@ -656,7 +650,7 @@ class TestGetReadingRecommendations(unittest.TestCase):
                        mock_queries, mock_format, mock_tavily, mock_filter,
                        mock_combined, mock_sample, mock_slots):
         """Test full recommendation flow with Story 3.9 parameters."""
-        from mcp_server import tools
+        from src.mcp_server import tools
 
         mock_config.return_value = {
             'quality_domains': ['example.com'],
@@ -748,10 +742,10 @@ class TestGetReadingRecommendations(unittest.TestCase):
 class TestUpdateRecommendationDomains(unittest.TestCase):
     """Test suite for update_recommendation_domains() tool."""
 
-    @patch('mcp_server.tools.firestore_client.update_recommendation_config')
+    @patch('src.mcp_server.tools.firestore_client.update_recommendation_config')
     def test_add_domains(self, mock_update):
         """Test adding domains to whitelist."""
-        from mcp_server import tools
+        from src.mcp_server import tools
 
         mock_update.return_value = {
             'success': True,
@@ -768,10 +762,10 @@ class TestUpdateRecommendationDomains(unittest.TestCase):
         self.assertIn('newsite.com', result['quality_domains'])
         self.assertEqual(result['changes']['domains_added'], ['newsite.com'])
 
-    @patch('mcp_server.tools.firestore_client.update_recommendation_config')
+    @patch('src.mcp_server.tools.firestore_client.update_recommendation_config')
     def test_remove_domains(self, mock_update):
         """Test removing domains from whitelist."""
-        from mcp_server import tools
+        from src.mcp_server import tools
 
         mock_update.return_value = {
             'success': True,
@@ -787,10 +781,10 @@ class TestUpdateRecommendationDomains(unittest.TestCase):
         self.assertTrue(result['success'])
         self.assertNotIn('oldsite.com', result['quality_domains'])
 
-    @patch('mcp_server.tools.firestore_client.update_recommendation_config')
+    @patch('src.mcp_server.tools.firestore_client.update_recommendation_config')
     def test_update_error(self, mock_update):
         """Test error handling in domain update."""
-        from mcp_server import tools
+        from src.mcp_server import tools
 
         mock_update.return_value = {
             'success': False,
@@ -806,10 +800,10 @@ class TestUpdateRecommendationDomains(unittest.TestCase):
 class TestFirestoreConfigMethods(unittest.TestCase):
     """Test suite for Firestore config methods."""
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_get_recommendation_config_creates_default(self, mock_get_db):
         """Test that default config is created if not exists."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_doc = MagicMock()
         mock_doc.exists = False
@@ -831,10 +825,10 @@ class TestFirestoreConfigMethods(unittest.TestCase):
         self.assertIn('martinfowler.com', result['quality_domains'])
         mock_doc_ref.set.assert_called_once()
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_get_recommendation_config_returns_existing(self, mock_get_db):
         """Test retrieval of existing config."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_doc = MagicMock()
         mock_doc.exists = True
@@ -868,7 +862,7 @@ class TestRecencyScoring(unittest.TestCase):
 
     def test_recency_score_today(self):
         """Articles published today should score 1.0."""
-        from mcp_server.recommendation_filter import calculate_recency_score
+        from src.mcp_server.recommendation_filter import calculate_recency_score
         from datetime import datetime
 
         today = datetime.utcnow()
@@ -877,7 +871,7 @@ class TestRecencyScoring(unittest.TestCase):
 
     def test_recency_score_half_life(self):
         """Score should be ~0.5 at half_life_days."""
-        from mcp_server.recommendation_filter import calculate_recency_score
+        from src.mcp_server.recommendation_filter import calculate_recency_score
         from datetime import datetime, timedelta
 
         half_life = 90
@@ -887,7 +881,7 @@ class TestRecencyScoring(unittest.TestCase):
 
     def test_recency_score_double_half_life(self):
         """Score should be ~0.25 at 2x half_life_days."""
-        from mcp_server.recommendation_filter import calculate_recency_score
+        from src.mcp_server.recommendation_filter import calculate_recency_score
         from datetime import datetime, timedelta
 
         half_life = 90
@@ -897,7 +891,7 @@ class TestRecencyScoring(unittest.TestCase):
 
     def test_recency_score_max_age_filter(self):
         """Articles older than max_age_days should score 0."""
-        from mcp_server.recommendation_filter import calculate_recency_score
+        from src.mcp_server.recommendation_filter import calculate_recency_score
         from datetime import datetime, timedelta
 
         max_age = 365
@@ -907,7 +901,7 @@ class TestRecencyScoring(unittest.TestCase):
 
     def test_recency_score_none_date(self):
         """Missing date should return neutral score 0.5."""
-        from mcp_server.recommendation_filter import calculate_recency_score
+        from src.mcp_server.recommendation_filter import calculate_recency_score
 
         score = calculate_recency_score(None)
         self.assertEqual(score, 0.5)
@@ -918,7 +912,7 @@ class TestCombinedScoring(unittest.TestCase):
 
     def test_combined_score_default_weights(self):
         """Test combined score with default weights."""
-        from mcp_server.recommendation_filter import calculate_combined_score
+        from src.mcp_server.recommendation_filter import calculate_combined_score
 
         result_dict = {
             'relevance_score': 0.8,
@@ -937,7 +931,7 @@ class TestCombinedScoring(unittest.TestCase):
 
     def test_combined_score_custom_weights(self):
         """Test combined score with custom weights."""
-        from mcp_server.recommendation_filter import calculate_combined_score
+        from src.mcp_server.recommendation_filter import calculate_combined_score
 
         result_dict = {
             'relevance_score': 1.0,
@@ -954,7 +948,7 @@ class TestCombinedScoring(unittest.TestCase):
 
     def test_combined_score_with_adjustments(self):
         """Test novelty bonus and domain penalty."""
-        from mcp_server.recommendation_filter import calculate_combined_score
+        from src.mcp_server.recommendation_filter import calculate_combined_score
 
         result_dict = {
             'relevance_score': 0.5,
@@ -979,7 +973,7 @@ class TestStochasticSampling(unittest.TestCase):
 
     def test_deterministic_sampling_temp_zero(self):
         """Temperature 0 should return top-N by score."""
-        from mcp_server.recommendation_filter import diversified_sample
+        from src.mcp_server.recommendation_filter import diversified_sample
 
         results = [
             {'combined_score': 0.9, 'url': 'a'},
@@ -996,7 +990,7 @@ class TestStochasticSampling(unittest.TestCase):
 
     def test_sampling_returns_correct_count(self):
         """Sampling should return requested number of items."""
-        from mcp_server.recommendation_filter import diversified_sample
+        from src.mcp_server.recommendation_filter import diversified_sample
 
         results = [{'combined_score': i/10, 'url': str(i)} for i in range(10)]
 
@@ -1006,7 +1000,7 @@ class TestStochasticSampling(unittest.TestCase):
 
     def test_sampling_handles_small_input(self):
         """Sampling should handle input smaller than n."""
-        from mcp_server.recommendation_filter import diversified_sample
+        from src.mcp_server.recommendation_filter import diversified_sample
 
         results = [
             {'combined_score': 0.9, 'url': 'a'},
@@ -1023,7 +1017,7 @@ class TestSlotBasedRotation(unittest.TestCase):
 
     def test_assign_slots_basic(self):
         """Test slot assignment with default config."""
-        from mcp_server.recommendation_filter import assign_slots, SlotType
+        from src.mcp_server.recommendation_filter import assign_slots, SlotType
 
         recommendations = [
             {'url': 'a', 'final_score': 0.9, 'recency_score': 0.7, 'depth_score': 4},
@@ -1045,7 +1039,7 @@ class TestSlotBasedRotation(unittest.TestCase):
 
     def test_assign_slots_with_custom_config(self):
         """Test slot assignment with custom slot config."""
-        from mcp_server.recommendation_filter import assign_slots, SlotType
+        from src.mcp_server.recommendation_filter import assign_slots, SlotType
 
         recommendations = [
             {'url': f'{i}', 'final_score': 0.9 - i*0.1, 'recency_score': 0.5, 'depth_score': 3}
@@ -1071,7 +1065,7 @@ class TestQueryVariation(unittest.TestCase):
 
     def test_session_seed_consistency(self):
         """Same hour should produce same seed."""
-        from mcp_server.recommendation_queries import get_session_seed
+        from src.mcp_server.recommendation_queries import get_session_seed
 
         seed1 = get_session_seed()
         seed2 = get_session_seed()
@@ -1080,7 +1074,7 @@ class TestQueryVariation(unittest.TestCase):
 
     def test_expand_with_synonyms(self):
         """Test synonym expansion."""
-        from mcp_server.recommendation_queries import expand_with_synonyms
+        from src.mcp_server.recommendation_queries import expand_with_synonyms
 
         expanded = expand_with_synonyms('microservices architecture')
 
@@ -1089,7 +1083,7 @@ class TestQueryVariation(unittest.TestCase):
 
     def test_vary_query_perspective(self):
         """Test query perspective variation."""
-        from mcp_server.recommendation_queries import vary_query_perspective
+        from src.mcp_server.recommendation_queries import vary_query_perspective
 
         query1 = vary_query_perspective('platform engineering', session_seed=123)
         query2 = vary_query_perspective('platform engineering', session_seed=123)
@@ -1104,7 +1098,7 @@ class TestQueryVariation(unittest.TestCase):
 
     def test_rotate_clusters(self):
         """Test cluster rotation."""
-        from mcp_server.recommendation_queries import rotate_clusters
+        from src.mcp_server.recommendation_queries import rotate_clusters
 
         clusters = [
             {'name': 'A'},
@@ -1127,7 +1121,7 @@ class TestDateParsing(unittest.TestCase):
 
     def test_parse_iso_date(self):
         """Test parsing ISO date format."""
-        from mcp_server.recommendation_filter import parse_published_date
+        from src.mcp_server.recommendation_filter import parse_published_date
 
         result = parse_published_date('2025-12-01')
         self.assertIsNotNone(result)
@@ -1137,7 +1131,7 @@ class TestDateParsing(unittest.TestCase):
 
     def test_parse_iso_datetime(self):
         """Test parsing ISO datetime format."""
-        from mcp_server.recommendation_filter import parse_published_date
+        from src.mcp_server.recommendation_filter import parse_published_date
 
         result = parse_published_date('2025-12-01T10:30:00Z')
         self.assertIsNotNone(result)
@@ -1145,14 +1139,14 @@ class TestDateParsing(unittest.TestCase):
 
     def test_parse_none_date(self):
         """Test parsing None returns None."""
-        from mcp_server.recommendation_filter import parse_published_date
+        from src.mcp_server.recommendation_filter import parse_published_date
 
         result = parse_published_date(None)
         self.assertIsNone(result)
 
     def test_parse_invalid_date(self):
         """Test parsing invalid date returns None."""
-        from mcp_server.recommendation_filter import parse_published_date
+        from src.mcp_server.recommendation_filter import parse_published_date
 
         result = parse_published_date('not-a-date')
         self.assertIsNone(result)
@@ -1161,10 +1155,10 @@ class TestDateParsing(unittest.TestCase):
 class TestShownRecommendationsTracking(unittest.TestCase):
     """Test suite for shown recommendations tracking (Story 3.8 AC#6)."""
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_record_shown_recommendations(self, mock_get_db):
         """Test recording shown recommendations."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_db = MagicMock()
         mock_batch = MagicMock()
@@ -1185,10 +1179,10 @@ class TestShownRecommendationsTracking(unittest.TestCase):
         self.assertEqual(result['recorded_count'], 2)
         mock_batch.commit.assert_called_once()
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_get_shown_urls(self, mock_get_db):
         """Test retrieving shown URLs."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_doc1 = MagicMock()
         mock_doc1.to_dict.return_value = {'url': 'https://example.com/1'}
@@ -1218,10 +1212,10 @@ class TestShownRecommendationsTracking(unittest.TestCase):
 class TestRankingConfig(unittest.TestCase):
     """Test suite for ranking configuration (Story 3.8 AC#7)."""
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_get_ranking_config_creates_defaults(self, mock_get_db):
         """Test that default config is created if not exists."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_doc = MagicMock()
         mock_doc.exists = False
@@ -1243,10 +1237,10 @@ class TestRankingConfig(unittest.TestCase):
         self.assertIn('relevance', result['weights'])
         self.assertEqual(result['weights']['relevance'], 0.5)
 
-    @patch('mcp_server.firestore_client.get_firestore_client')
+    @patch('src.mcp_server.firestore_client.get_firestore_client')
     def test_update_ranking_config_validates_weights(self, mock_get_db):
         """Test that invalid weights are rejected."""
-        from mcp_server import firestore_client
+        from src.mcp_server import firestore_client
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db

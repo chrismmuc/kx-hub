@@ -25,17 +25,13 @@ Usage:
 import argparse
 import logging
 import os
-import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import time
 
 from google.cloud import firestore
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from llm import get_client, list_models, get_model_info, BaseLLMClient
+from src.llm import get_client, list_models, get_model_info, BaseLLMClient
 
 logging.basicConfig(
     level=logging.INFO,
