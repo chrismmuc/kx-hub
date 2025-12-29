@@ -5,7 +5,7 @@ Story 3.5: AI-Powered Reading Recommendations
 Story 3.8: Enhanced Recommendation Ranking
 
 Provides:
-- Gemini-based content depth scoring (1-5 scale)
+- LLM-based content depth scoring (1-5 scale) - supports Gemini, Claude
 - "Why recommended" explanation generation
 - Source diversity cap (max 2 per domain)
 - KB deduplication via embedding similarity
@@ -17,12 +17,15 @@ Provides:
 import logging
 import math
 import os
+import sys
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from collections import defaultdict
 
-import vertexai
-from vertexai.generative_models import GenerativeModel
+# Add parent directory to path for llm module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from llm import get_client, BaseLLMClient
 
 import firestore_client
 import embeddings
@@ -38,8 +41,8 @@ MAX_PER_DOMAIN = 2
 # Minimum depth score required
 MIN_DEPTH_SCORE = 3
 
-# Global model cache
-_gemini_model = None
+# Global LLM client cache
+_llm_client: Optional[BaseLLMClient] = None
 
 # ============================================================================
 # Story 3.8: Enhanced Ranking Functions
@@ -491,27 +494,24 @@ def assign_slots(
     return result
 
 
-def get_gemini_model() -> GenerativeModel:
+def get_llm_client() -> BaseLLMClient:
     """
-    Get or create Gemini model instance (cached).
+    Get or create cached LLM client instance.
+
+    Model selection via environment variables:
+        LLM_MODEL: Model name (e.g., "gemini-2.5-flash", "claude-haiku")
+        LLM_PROVIDER: Provider preference ("gemini" or "claude")
 
     Returns:
-        Initialized GenerativeModel
+        Initialized LLM client
     """
-    global _gemini_model
+    global _llm_client
 
-    if _gemini_model is None:
-        project = os.getenv('GCP_PROJECT')
-        region = os.getenv('GCP_REGION')
+    if _llm_client is None:
+        _llm_client = get_client()  # Uses LLM_MODEL env var or default
+        logger.info(f"Initialized LLM client: {_llm_client}")
 
-        logger.info(f"Initializing Gemini model in project={project}, region={region}")
-        vertexai.init(project=project, location=region)
-
-        # Use Gemini 2.0 Flash for cost efficiency
-        _gemini_model = GenerativeModel("gemini-2.0-flash-001")
-        logger.info("Gemini model initialized")
-
-    return _gemini_model
+    return _llm_client
 
 
 def score_content_depth(
@@ -520,7 +520,7 @@ def score_content_depth(
     url: str
 ) -> Dict[str, Any]:
     """
-    Score article depth using Gemini.
+    Score article depth using configured LLM.
 
     Args:
         title: Article title
@@ -533,7 +533,7 @@ def score_content_depth(
         - reasoning: Brief explanation of score
     """
     try:
-        model = get_gemini_model()
+        client = get_llm_client()
 
         prompt = f"""Rate the depth and quality of this article on a scale of 1-5:
 
@@ -551,19 +551,7 @@ Scoring criteria:
 Respond with ONLY a JSON object:
 {{"score": <1-5>, "reasoning": "<brief 1-sentence explanation>"}}"""
 
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
-
-        # Parse JSON response
-        import json
-        # Handle potential markdown code blocks
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
+        result = client.generate_json(prompt)
 
         score = int(result.get('score', 3))
         score = max(1, min(5, score))  # Clamp to 1-5
@@ -994,7 +982,7 @@ def batch_score_content(
     batch_size: int = 5
 ) -> List[Dict[str, Any]]:
     """
-    Score multiple items efficiently using batched Gemini calls.
+    Score multiple items efficiently using batched LLM calls.
 
     Args:
         items: List of items with title, content, url
@@ -1004,7 +992,7 @@ def batch_score_content(
         List of items with depth_score added
     """
     try:
-        model = get_gemini_model()
+        client = get_llm_client()
         results = []
 
         for i in range(0, len(items), batch_size):
@@ -1033,17 +1021,11 @@ Respond with a JSON array of scores:
 [{"article": 1, "score": <1-5>}, {"article": 2, "score": <1-5>}, ...]"""
 
             try:
-                response = model.generate_content(batch_prompt)
-                response_text = response.text.strip()
+                scores = client.generate_json(batch_prompt)
 
-                import json
-                if response_text.startswith("```"):
-                    response_text = response_text.split("```")[1]
-                    if response_text.startswith("json"):
-                        response_text = response_text[4:]
-                    response_text = response_text.strip()
-
-                scores = json.loads(response_text)
+                # Handle both array and object responses
+                if isinstance(scores, dict):
+                    scores = scores.get('scores', [scores])
 
                 # Apply scores to items
                 for score_item in scores:

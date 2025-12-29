@@ -1,29 +1,32 @@
 """
 Knowledge Card Generator
 
-Batch processes chunks to generate AI-powered knowledge cards using Gemini 2.5 Flash-Lite.
+Batch processes chunks to generate AI-powered knowledge cards.
+Supports multiple LLM providers (Gemini, Claude) via abstraction layer.
 Story 2.1: Knowledge Card Generation (Epic 2)
 """
 
 import os
+import sys
 import time
 import json
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-# Vertex AI imports
-try:
-    from google.cloud import aiplatform
-    from vertexai.generative_models import GenerativeModel, GenerationConfig
-    _HAS_VERTEX_AI = True
-except ImportError:
-    _HAS_VERTEX_AI = False
-    GenerativeModel = None
-    GenerationConfig = None
+# Add parent directory to path for llm module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from .schema import KnowledgeCard, validate_knowledge_card_response
 from .prompt_manager import PromptManager, estimate_cost
+
+# LLM abstraction layer
+try:
+    from llm import get_client, GenerationConfig as LLMGenerationConfig, BaseLLMClient
+    _HAS_LLM = True
+except ImportError:
+    _HAS_LLM = False
+    BaseLLMClient = None
 
 # Configure logging
 logging.basicConfig(
@@ -33,50 +36,51 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration (from environment or defaults)
-GCP_PROJECT = os.environ.get('GCP_PROJECT', 'kx-hub')
-GCP_REGION = os.environ.get('GCP_REGION', 'europe-west4')
-
-# Gemini Flash model configuration (January 2025 - latest stable GA model)
-GEMINI_MODEL_NAME = "gemini-2.5-flash"  # Gemini 2.5 Flash (GA) - available in europe-west4
 DEFAULT_BATCH_SIZE = 100  # Process 100 chunks at a time (Firestore batch limit)
 
-# Retry configuration (from context: follow src/embed/main.py pattern)
-MAX_RETRIES = 3
-INITIAL_BACKOFF = 1.0  # seconds
-MAX_BACKOFF = 30.0  # seconds
-
-# Global model instance (lazy initialization)
-_gemini_model = None
+# Global LLM client instance (lazy initialization)
+_llm_client: Optional[BaseLLMClient] = None
 
 
-def get_gemini_model() -> GenerativeModel:
+def get_llm_client() -> BaseLLMClient:
     """
-    Get or create Gemini 2.5 Flash-Lite model instance (cached).
+    Get or create LLM client instance (cached).
+
+    Model selection via environment variables:
+        LLM_MODEL: Model name (e.g., "gemini-2.5-flash", "claude-haiku")
+        LLM_PROVIDER: Provider preference ("gemini" or "claude")
 
     Returns:
-        Initialized GenerativeModel for Gemini 2.5 Flash-Lite
+        Initialized LLM client
 
     Raises:
-        ImportError: If Vertex AI SDK not available
+        ImportError: If LLM libraries not available
     """
-    global _gemini_model
+    global _llm_client
 
-    if not _HAS_VERTEX_AI:
+    if not _HAS_LLM:
         raise ImportError(
-            "google-cloud-aiplatform and vertexai libraries are required. "
-            "Install with: pip install google-cloud-aiplatform"
+            "LLM abstraction layer not available. "
+            "Ensure src/llm package is installed."
         )
 
-    if _gemini_model is None:
-        # Initialize Vertex AI
-        aiplatform.init(project=GCP_PROJECT, location=GCP_REGION)
+    if _llm_client is None:
+        _llm_client = get_client()  # Uses LLM_MODEL env var or default
+        logger.info(f"Initialized LLM client: {_llm_client}")
 
-        # Create Gemini model
-        _gemini_model = GenerativeModel(GEMINI_MODEL_NAME)
+    return _llm_client
 
-        logger.info(f"Initialized Gemini model: {GEMINI_MODEL_NAME}")
 
-    return _gemini_model
+def set_llm_client(client: BaseLLMClient) -> None:
+    """
+    Set a custom LLM client (useful for testing or explicit model selection).
+
+    Args:
+        client: Pre-configured LLM client
+    """
+    global _llm_client
+    _llm_client = client
+    logger.info(f"LLM client set to: {client}")
 
 
 def generate_knowledge_card(
@@ -87,9 +91,12 @@ def generate_knowledge_card(
     prompt_manager: Optional[PromptManager] = None
 ) -> KnowledgeCard:
     """
-    Generate knowledge card for a single chunk using Gemini 2.5 Flash-Lite.
+    Generate knowledge card for a single chunk using configured LLM.
 
-    Implements retry logic with exponential backoff for rate limiting.
+    Uses the LLM abstraction layer which handles:
+    - Model selection (via LLM_MODEL env var)
+    - Retry logic with exponential backoff
+    - Provider-specific configuration
 
     Args:
         chunk_id: Chunk document ID (for logging)
@@ -110,105 +117,42 @@ def generate_knowledge_card(
     # Format prompt with chunk data
     prompt = prompt_manager.format_prompt(title, author, content)
 
-    # Get Gemini model
-    model = get_gemini_model()
+    # Get LLM client (model selected via env var or default)
+    client = get_llm_client()
 
     # Generation config for JSON output
-    generation_config = GenerationConfig(
+    config = LLMGenerationConfig(
         temperature=0.7,  # Balanced creativity for summarization
         top_p=0.95,
         top_k=40,
-        max_output_tokens=2048,  # Increased to ensure complete output
-        candidate_count=1
+        max_output_tokens=2048  # Ensure complete output
     )
 
-    # Safety settings - block none to avoid truncation
-    from vertexai.generative_models import HarmCategory, HarmBlockThreshold
-    safety_settings = {
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-    }
+    logger.debug(f"Generating knowledge card for chunk {chunk_id} using {client.model_id}")
 
-    backoff = INITIAL_BACKOFF
+    try:
+        # Use generate_json for automatic JSON parsing and markdown stripping
+        response_data = client.generate_json(prompt, config)
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            # Call Gemini API
-            logger.debug(f"Generating knowledge card for chunk {chunk_id} (attempt {attempt + 1}/{MAX_RETRIES})")
+        # Validate and create KnowledgeCard
+        knowledge_card = validate_knowledge_card_response(response_data)
 
-            response = model.generate_content(
-                prompt,
-                generation_config=generation_config,
-                safety_settings=safety_settings
-            )
+        logger.info(
+            f"Generated knowledge card for chunk {chunk_id}: "
+            f"{len(knowledge_card.summary)} chars, {len(knowledge_card.takeaways)} takeaways "
+            f"[model={client.model_id}]"
+        )
 
-            # Extract response text (handle candidates properly)
-            if not response.candidates or len(response.candidates) == 0:
-                raise ValueError(f"No response candidates from Gemini API. Response: {response}")
+        return knowledge_card
 
-            candidate = response.candidates[0]
+    except ValueError as e:
+        # JSON parsing error - log and re-raise
+        logger.error(f"Failed to parse JSON response for chunk {chunk_id}: {e}")
+        raise
 
-            # Check finish reason for issues
-            finish_reason = getattr(candidate, 'finish_reason', None)
-            if finish_reason and finish_reason not in [1, 'STOP']:  # 1 = STOP in enum
-                logger.warning(f"Unusual finish reason for chunk {chunk_id}: {finish_reason}")
-
-            if not candidate.content or not candidate.content.parts:
-                raise ValueError(f"Empty response from Gemini API. Finish reason: {finish_reason}")
-
-            # Concatenate all parts (in case response is multipart)
-            response_text = ''.join([part.text for part in candidate.content.parts if hasattr(part, 'text')])
-
-            if not response_text or len(response_text.strip()) == 0:
-                raise ValueError(f"Empty text from Gemini API. Candidate: {candidate}, Finish reason: {finish_reason}")
-
-            # Debug: Log full response for troubleshooting
-            logger.debug(f"Full response text ({len(response_text)} chars): {response_text[:1000]}")
-
-            # Parse JSON response (handle markdown code blocks if present)
-            try:
-                # Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
-                cleaned_text = response_text.strip()
-                if cleaned_text.startswith('```'):
-                    # Remove opening code fence
-                    cleaned_text = cleaned_text.split('\n', 1)[1] if '\n' in cleaned_text else cleaned_text[3:]
-                    # Remove closing code fence
-                    if cleaned_text.endswith('```'):
-                        cleaned_text = cleaned_text.rsplit('\n```', 1)[0]
-                    cleaned_text = cleaned_text.strip()
-
-                response_data = json.loads(cleaned_text)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON response for chunk {chunk_id}: {e}")
-                logger.error(f"Response text: {response_text[:500]}")
-                raise ValueError(f"Invalid JSON response from Gemini: {response_text[:200]}")
-
-            # Validate and create KnowledgeCard
-            knowledge_card = validate_knowledge_card_response(response_data)
-
-            logger.info(f"Generated knowledge card for chunk {chunk_id}: {len(knowledge_card.summary)} chars, {len(knowledge_card.takeaways)} takeaways")
-
-            return knowledge_card
-
-        except Exception as e:
-            error_msg = str(e).lower()
-
-            # Check if rate limit or server error (retriable)
-            is_rate_limit = 'rate' in error_msg or 'quota' in error_msg or '429' in error_msg
-            is_server_error = 'internal' in error_msg or '500' in error_msg or '503' in error_msg
-
-            if (is_rate_limit or is_server_error) and attempt < MAX_RETRIES - 1:
-                logger.warning(
-                    f"Retriable error for chunk {chunk_id} (attempt {attempt + 1}/{MAX_RETRIES}): {e}. "
-                    f"Retrying after {backoff}s"
-                )
-                time.sleep(backoff)
-                backoff = min(backoff * 2, MAX_BACKOFF)
-            else:
-                logger.error(f"Failed to generate knowledge card for chunk {chunk_id} after {attempt + 1} attempts: {e}")
-                raise
+    except Exception as e:
+        logger.error(f"Failed to generate knowledge card for chunk {chunk_id}: {e}")
+        raise
 
 
 def process_chunks_batch(
