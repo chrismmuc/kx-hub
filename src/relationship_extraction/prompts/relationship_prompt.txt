@@ -1,0 +1,33 @@
+Analyze the relationship between these two knowledge chunks from my personal knowledge base.
+
+## Chunk A: {source_title}
+{source_summary}
+
+## Chunk B: {target_title}
+{target_summary}
+
+## Task
+Determine if there is a meaningful semantic relationship between these chunks.
+
+## Relationship Types
+Choose ONE of these relationship types:
+- **relates_to**: General thematic connection (similar topics, concepts, or domains)
+- **extends**: Chunk B builds upon, develops, or evolves the ideas in Chunk A
+- **supports**: Chunk B provides evidence, examples, or confirmation for Chunk A
+- **contradicts**: Chunk B conflicts with, challenges, or presents an opposing view to Chunk A
+- **applies_to**: Chunk B describes a practical application or implementation of concepts from Chunk A
+- **none**: No meaningful relationship exists between these chunks
+
+## Response Format
+Return ONLY a JSON object with these fields:
+- "type": One of the relationship types above
+- "confidence": Your confidence in this relationship (0.0 to 1.0)
+- "explanation": Brief explanation (1-2 sentences) of why this relationship exists
+
+Example response:
+{"type": "extends", "confidence": 0.85, "explanation": "Chunk B elaborates on the productivity framework introduced in Chunk A with specific implementation strategies."}
+
+Important:
+- Only identify relationships with confidence >= 0.5
+- If no clear relationship exists, return type "none"
+- Focus on conceptual/semantic relationships, not surface-level keyword matches
