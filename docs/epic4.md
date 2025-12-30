@@ -1,186 +1,294 @@
-# Epic 4: Knowledge Graph with Entity & Relation Extraction
+# Epic 4: Cross-Chunk Relationships & Knowledge Connections
 
-**Goal:** Build an AI-powered Knowledge Graph that automatically extracts entities and relationships from knowledge chunks, enabling multi-hop queries, contradiction detection, and proactive knowledge connections beyond simple vector similarity.
+**Goal:** Build automated relationship extraction between knowledge chunks to enable connection queries, timeline evolution, and contradiction detection - without manual ontology or predefined entity types.
 
-**Business Value:** Transforms the knowledge base from a semantic search tool into a true "Wisdom Engine" that discovers hidden connections, surfaces contradictions, and proactively connects past knowledge with current work - aligned with Building a Second Brain's CODE framework (especially Distill and Express phases).
+**Business Value:** Transforms the knowledge base from isolated chunks into a connected knowledge network. Enables queries like "How are these concepts connected?", "How has my understanding evolved?", and "Are there contradictions in my knowledge?"
 
-**Dependencies:** Epic 2 (Knowledge Cards, Clustering must be complete)
-
-**Estimated Complexity:** Medium - Extends existing AI generation pipeline with entity/relation extraction
-
-**Status:** In Progress
-
----
-
-## Story 4.1: Entity Extraction from Knowledge Chunks
+**Dependencies:** Epic 2 (Knowledge Cards, Clustering complete), Epic 3 (MCP Server)
 
 **Status:** Planned
 
-**Summary:** Extend the Knowledge Card generation pipeline to also extract named entities (concepts, technologies, people, frameworks, practices) from each chunk. Store entities in a dedicated Firestore collection with references back to source chunks.
+---
 
-**Key Features:**
-- **Entity Types:** concept, technology, person, framework, practice, methodology
-- **Extraction Method:** Gemini-based extraction during Knowledge Card generation
-- **Entity Normalization:** Deduplicate similar entities (e.g., "K8s" → "Kubernetes")
-- **Source Tracking:** Link each entity to source chunks for provenance
-- **Embedding Storage:** Generate embeddings for entity names for similarity search
+## Research Background
 
-**Dependencies:** Story 2.1 (Knowledge Cards) - extends existing generation pipeline
+### Why Relationships, Not Entity Types?
 
-**Technical Approach:**
-- Extend `KnowledgeCardGenerator` with entity extraction prompt
-- New Firestore collection `kg_nodes` with schema:
-  ```json
-  {
-    "uid": "entity-uuid",
-    "label": "Platform Engineering",
-    "type": "concept",
-    "source_chunks": ["chunk_1", "chunk_2"],
-    "embedding": [...],
-    "created_at": "2025-12-28T...",
-    "mention_count": 5
-  }
-  ```
-- Entity deduplication via embedding similarity (>0.95 = same entity)
-- Batch processing for existing chunks, incremental for new chunks
+Based on research into knowledge graph best practices (Dec 2025):
 
-**Success Metrics:**
-- Entities extracted from 100% of chunks
-- <5% duplicate entities after normalization
-- Entity extraction adds <2 seconds to Knowledge Card generation
-- Cost impact: <$0.05/month additional
+1. **Personal Knowledge ≠ Enterprise Ontology**
+   - Tools like Zettelkasten, Obsidian, Roam emphasize *connections over categories*
+   - Fixed entity types (PERSON, CONCEPT, TECHNOLOGY) are rigid and require maintenance
+   - Your knowledge spans multiple domains (Tech, Parenting, Leadership, Travel)
+
+2. **State of the Art: Schema-Free Extraction**
+   - EDC Framework (Zhang & Soh, EMNLP 2024): Extract → Define → Canonicalize
+   - LLM-based extraction achieves 89.7% precision, 92.3% recall
+   - No predefined schema needed - relationships emerge from content
+
+3. **Your Query Use Cases**
+   | Query Type | What You Need |
+   |------------|---------------|
+   | Verbindungen | Cross-chunk links between related ideas |
+   | Timeline | `extends` relationships showing concept evolution |
+   | Widersprüche | `contradicts` relationships between chunks |
+   | Empfehlungen | Already working via clusters + embeddings |
+
+### Pragmatic Approach for kx-hub
+
+Instead of full EDC or Neo4j, we use:
+- **Existing Embeddings** for similarity-based canonicalization
+- **Existing Clusters** for scoping relationship extraction
+- **Firestore** as graph store (no new infrastructure)
+- **LLM Relationship Extraction** similar to LangChain LLMGraphTransformer
 
 ---
 
-## Story 4.2: Relation Extraction Between Entities
+## Story 4.1: Chunk-to-Chunk Relationship Extraction
 
 **Status:** Planned
 
-**Summary:** Extract semantic relationships between entities found in the same chunk or across related chunks. Store relationships in a dedicated edges collection with relation types and source provenance.
+**Summary:** Extract semantic relationships between chunks within the same cluster or with high embedding similarity. Store relationships in Firestore with type, confidence, and source provenance.
 
-**Key Features:**
-- **Relation Types:**
-  - `enables` - X enables/supports Y
-  - `extends` - X builds upon/extends Y
-  - `contradicts` - X contradicts/conflicts with Y
-  - `influences` - X influences/affects Y
-  - `depends_on` - X requires/depends on Y
-  - `part_of` - X is a component of Y
-  - `example_of` - X is an example/instance of Y
-- **Extraction Method:** Gemini-based extraction with structured output
-- **Confidence Scoring:** Weight relationships by mention frequency and context
-- **Bidirectional Handling:** Store relationships with direction awareness
-
-**Dependencies:** Story 4.1 (Entity Extraction) - requires entities to exist
+**Key Design Decisions:**
+- **No Entity Extraction** - relationships are between *chunks*, not extracted entities
+- **Relationship Types** (small, fixed set for queryability):
+  - `relates_to` - General semantic connection
+  - `extends` - Builds upon, evolves, is next step
+  - `supports` - Provides evidence, confirms, reinforces
+  - `contradicts` - Conflicts with, disagrees, challenges
+  - `applies_to` - Practical application of concept
+- **Scoped Extraction** - Only compare chunks within same cluster or similarity > 0.8
+- **Fully Automated** - No manual review required
 
 **Technical Approach:**
-- New extraction prompt for relationship detection
-- New Firestore collection `kg_edges` with schema:
-  ```json
-  {
-    "uid": "edge-uuid",
-    "source": "entity-uuid-1",
-    "target": "entity-uuid-2",
-    "relation": "enables",
-    "weight": 0.85,
-    "source_chunks": ["chunk_1"],
-    "created_at": "2025-12-28T..."
-  }
-  ```
-- Process chunks in context windows for cross-chunk relationships
-- Aggregate duplicate relationships with weight accumulation
+
+```
+Pipeline:
+1. For each cluster:
+   - Get all chunk pairs (n*(n-1)/2 comparisons)
+   - Filter by embedding similarity > 0.8
+2. For each pair:
+   - LLM prompt: "What is the relationship between these two texts?"
+   - Output: {type, confidence, explanation}
+3. Store in Firestore
+4. Canonicalize: Merge bidirectional duplicates
+```
+
+**Firestore Schema:**
+```
+relationships/
+  {relationship_id}:
+    source_chunk_id: "chunk-001"
+    target_chunk_id: "chunk-002" 
+    type: "extends"              # from fixed set
+    confidence: 0.85
+    explanation: "Platform Engineering builds on DevOps practices"
+    cluster_id: "cluster-42"
+    created_at: timestamp
+```
+
+**LLM Prompt (Gemini Flash):**
+```
+Compare these two knowledge chunks and determine their relationship.
+
+Chunk A: {title_a}
+{summary_a}
+
+Chunk B: {title_b}
+{summary_b}
+
+What is the relationship from A to B?
+Options:
+- relates_to: General thematic connection
+- extends: B builds upon or evolves A
+- supports: B provides evidence or confirms A
+- contradicts: B conflicts with or challenges A
+- applies_to: B is practical application of A
+- none: No meaningful relationship
+
+Return JSON: {"type": "...", "confidence": 0.0-1.0, "explanation": "..."}
+```
 
 **Success Metrics:**
-- Average 3-5 relationships extracted per chunk
-- Relationship types distributed across all 7 categories
-- <10% false positive rate (manual spot-check)
-- Cost impact: <$0.05/month additional
+- Relationships extracted for all clusters
+- Average 2-5 relationships per chunk
+- <5% false positives (spot-check validation)
+- Processing time: <1 hour for full KB (~900 chunks)
+- Cost: <$1 for initial extraction, <$0.10/month incremental
 
 ---
 
-## Story 4.3: MCP Tools for Knowledge Graph Queries
+## Story 4.2: MCP Tools for Relationship Queries
 
 **Status:** Planned
 
-**Summary:** Expose the Knowledge Graph via new MCP tools enabling users to query entity relationships, find contradictions, trace influence chains, and discover concept connections through Claude.
+**Summary:** Expose relationships via MCP tools to answer connection, timeline, and contradiction queries.
 
-**Key Features:**
-- **Entity Query Tools:**
-  - `get_entity(name)` - Get entity details with related chunks
-  - `search_entities(query, type?)` - Semantic search for entities
-  - `list_entity_types()` - Browse entities by type
-- **Relationship Query Tools:**
-  - `get_influences(entity)` - What influences this entity?
-  - `get_influenced_by(entity)` - What does this entity influence?
-  - `get_contradictions(entity?)` - Find conflicting information
-  - `get_dependencies(entity)` - What does this depend on?
-  - `find_path(entity_a, entity_b)` - How are two concepts connected?
-- **Discovery Tools:**
-  - `get_knowledge_gaps()` - Entities with few connections
-  - `get_emerging_themes()` - Recently connected entity clusters
+**MCP Tools:**
 
-**Dependencies:** Stories 4.1, 4.2 (Entity and Relation Extraction)
+### `get_connections`
+Find all relationships for a chunk or concept.
+```
+Input: {chunk_id: string} or {query: string, limit: int}
+Output: {
+  connections: [
+    {related_chunk, type, explanation, confidence}
+  ]
+}
+```
 
-**Technical Approach:**
-- Implement tools using Firestore queries on kg_nodes and kg_edges
-- Multi-hop traversal for `find_path` (max 3 hops)
-- Aggregate results with source chunk references
-- Response includes "why" explanations with source links
+**Use Case:** "What is connected to my notes on DevOps?"
+
+### `find_path`
+Find how two concepts/chunks are connected (multi-hop).
+```
+Input: {from_query: string, to_query: string, max_hops: int}
+Output: {
+  path: [chunk_a, --(extends)--> chunk_b, --(relates_to)--> chunk_c],
+  explanation: "DevOps → Platform Engineering → Internal Developer Platform"
+}
+```
+
+**Use Case:** "How are Parenting and Leadership connected in my knowledge?"
+
+### `get_evolution`
+Trace how a concept has evolved over time (timeline query).
+```
+Input: {concept: string}
+Output: {
+  timeline: [
+    {chunk, date, summary},  # ordered by created_at
+  ],
+  evolution: "Your understanding evolved from X to Y to Z"
+}
+```
+
+**Use Case:** "How has my understanding of AI evolved?"
+
+### `get_contradictions`
+Find conflicting information in the knowledge base.
+```
+Input: {topic?: string, limit: int}
+Output: {
+  contradictions: [
+    {chunk_a, chunk_b, explanation}
+  ]
+}
+```
+
+**Use Case:** "Are there contradictions in my notes on Remote Work?"
 
 **Success Metrics:**
-- All tools respond in <2 seconds (P95)
-- Multi-hop queries find paths in <5 seconds
-- Tools return actionable, source-linked results
-- Zero additional infrastructure cost
+- All tools respond in <3 seconds (P95)
+- Multi-hop paths found in <5 seconds
+- Results include source chunk links for verification
 
 ---
 
-## Story 4.4: Proactive Knowledge Connections
+## Story 4.3: Incremental Relationship Updates
 
 **Status:** Planned
 
-**Summary:** When new chunks are added to the knowledge base, automatically identify and surface connections to existing knowledge. Alert users to contradictions, supporting evidence, and knowledge gaps.
+**Summary:** When new chunks are added, automatically extract relationships to existing chunks and surface notable connections.
 
-**Key Features:**
-- **New Chunk Analysis:** On chunk import, analyze entity overlap with existing KB
-- **Connection Types:**
-  - "This new article **supports** your existing notes on X"
-  - "This new article **contradicts** something you read before"
-  - "This fills a **knowledge gap** in your understanding of X"
-  - "This connects previously **unrelated** concepts X and Y"
-- **Surfacing Method:** Include in Knowledge Card or separate "connections" field
-- **MCP Tool:** `get_new_connections(days?)` - What connected recently?
+**Trigger:** After Knowledge Card generation in daily pipeline
 
-**Dependencies:** Stories 4.1-4.3 (Full Knowledge Graph infrastructure)
+**Process:**
+1. New chunk embedded and assigned to cluster
+2. Find similar chunks (same cluster OR embedding similarity > 0.85)
+3. Extract relationships to top 10 similar chunks
+4. Store relationships
+5. Flag notable connections:
+   - `contradicts` → High priority alert
+   - `extends` recent chunk → "Continuing thread"
+   - Connects two previously unconnected clusters → "Bridge discovery"
 
-**Technical Approach:**
-- Hook into daily pipeline after Knowledge Card generation
-- Compare new entity set against existing graph
-- Detect contradictions via `contradicts` relation type
-- Store connections in chunk metadata for retrieval
-- Optional: Push notifications for high-value connections
+**Notable Connections Field:**
+Add to chunk document:
+```json
+{
+  "notable_connections": [
+    {
+      "type": "contradicts",
+      "related_chunk_id": "...",
+      "explanation": "This article challenges your earlier notes on X"
+    }
+  ]
+}
+```
+
+**MCP Tool Addition:**
+```
+get_recent_connections(days: int)
+→ Returns notable connections from recently added chunks
+```
 
 **Success Metrics:**
-- 80% of new chunks have at least one connection identified
-- Contradictions surfaced within 24 hours of import
-- Connection quality rated "useful" by user (manual validation)
-- No additional latency to daily pipeline (<30 seconds total)
+- New chunks processed within daily pipeline (no separate run)
+- Contradictions surfaced within 24 hours
+- <30 seconds added to per-chunk processing time
+
+---
+
+## Story 4.4: Relationship Visualization Data
+
+**Status:** Planned (Optional)
+
+**Summary:** Provide graph data export for visualization tools (Obsidian, Gephi, or custom UI).
+
+**Export Format:**
+```json
+{
+  "nodes": [
+    {"id": "chunk-001", "label": "DevOps Handbook", "cluster": "devops"}
+  ],
+  "edges": [
+    {"source": "chunk-001", "target": "chunk-002", "type": "extends"}
+  ]
+}
+```
+
+**MCP Tool:**
+```
+export_knowledge_graph(cluster_id?: string, format: "json" | "graphml")
+```
+
+**Use Case:** Visualize your knowledge network in external tools
 
 ---
 
 ## Summary
 
-| Story | Description | Status |
-|-------|-------------|--------|
-| 4.1 | Entity Extraction from Knowledge Chunks | Planned |
-| 4.2 | Relation Extraction Between Entities | Planned |
-| 4.3 | MCP Tools for Knowledge Graph Queries | Planned |
-| 4.4 | Proactive Knowledge Connections | Planned |
+| Story | Description | Priority |
+|-------|-------------|----------|
+| 4.1 | Chunk-to-Chunk Relationship Extraction | High |
+| 4.2 | MCP Tools for Relationship Queries | High |
+| 4.3 | Incremental Relationship Updates | Medium |
+| 4.4 | Relationship Visualization Data | Low |
 
-**Recommended Implementation Order:**
-1. Story 4.1 (Entity Extraction) - foundation for graph
-2. Story 4.2 (Relation Extraction) - builds on entities
-3. Story 4.3 (MCP Tools) - expose graph to users
-4. Story 4.4 (Proactive Connections) - "Wisdom Engine" capability
+**Key Differences from Original Epic 4:**
 
-**Estimated Cost Impact:** <$0.20/month total (Gemini API for extraction)
+| Original | Revised |
+|----------|---------|
+| Entity Extraction (PERSON, CONCEPT...) | No entities - relationships between chunks |
+| Manual entity type definitions | Fully automated, schema-free |
+| `kg_nodes` + `kg_edges` collections | Single `relationships` collection |
+| Complex ontology | 5 simple relationship types |
+| Neo4j-style graph queries | Firestore queries with embedding similarity |
+
+**Implementation Order:**
+1. Story 4.1 - Extract relationships (batch for existing, foundation)
+2. Story 4.2 - MCP tools (immediate value for queries)
+3. Story 4.3 - Incremental updates (integrate into pipeline)
+4. Story 4.4 - Visualization (nice-to-have)
+
+**Estimated Cost:** 
+- Initial extraction: ~$1-2 (one-time)
+- Incremental: <$0.10/month
+- No new infrastructure (Firestore only)
+
+**Risk Mitigation:**
+- Start with one cluster, validate quality before full rollout
+- Log all LLM extractions for debugging
+- Confidence threshold (>0.7) for storing relationships
