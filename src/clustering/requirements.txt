@@ -1,8 +1,8 @@
 google-cloud-firestore>=2.22.0
-google-cloud-storage>=2.14.0
+google-cloud-storage>=3.0.0
 google-cloud-aiplatform>=1.130.0
 scikit-learn>=1.6.0
-numpy>=1.24.0
+numpy>=2.0.0
 umap-learn>=0.5.5
 hdbscan>=0.8.40
 # LLM abstraction layer - supports Claude via Vertex AI
