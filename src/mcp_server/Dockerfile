@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the consolidated MCP server (OAuth + Tools + Streamable HTTP)
 COPY src/mcp_server/ ./src/mcp_server/
 
+# Copy LLM abstraction layer (used by recommendation_filter.py)
+COPY src/llm/ ./src/llm/
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080

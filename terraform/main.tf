@@ -465,26 +465,7 @@ resource "google_firestore_index" "kb_items_vector_index" {
   depends_on = [google_firestore_database.kb_database]
 }
 
-# Composite index for cluster-filtered queries (Story 2.6)
-# Note: Firestore doesn't support combining array_config with vector_config
-# in the same composite index. Vector search within cluster uses post-filtering.
-resource "google_firestore_index" "kb_items_cluster_vector_index" {
-  project    = var.project_id
-  database   = google_firestore_database.kb_database.name
-  collection = "kb_items"
-
-  fields {
-    field_path   = "cluster_id"
-    array_config = "CONTAINS"
-  }
-
-  fields {
-    field_path = "__name__"
-    order      = "ASCENDING"
-  }
-
-  depends_on = [google_firestore_database.kb_database]
-}
+# Note: kb_items_cluster_vector_index removed - Firestore auto-creates single-field indexes
 
 # IAM Service Account for the Embed Cloud Function
 resource "google_service_account" "embed_function_sa" {
