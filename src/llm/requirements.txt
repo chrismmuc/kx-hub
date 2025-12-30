@@ -1,8 +1,8 @@
 # LLM Abstraction Layer Dependencies
-# Supports multiple providers: Gemini, Claude (via Vertex AI)
+# Supports multiple providers: Gemini, Claude (via Vertex AI or direct API)
 
 # Gemini via Vertex AI
 google-cloud-aiplatform>=1.130.0
 
-# Claude via Vertex AI (optional - install with: pip install anthropic[vertex])
+# Claude via Vertex AI or direct Anthropic API
 anthropic[vertex]>=0.75.0

@@ -1,5 +1,5 @@
-google-cloud-storage==2.10.0
-google-cloud-firestore==2.14.0
-pyyaml==6.0.1
-functions-framework==3.5.0
-tiktoken==0.5.2
+google-cloud-storage>=2.14.0
+google-cloud-firestore>=2.22.0
+pyyaml>=6.0.1
+functions-framework>=3.8.0
+tiktoken>=0.10.0
