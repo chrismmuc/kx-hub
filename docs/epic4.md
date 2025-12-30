@@ -1,294 +1,279 @@
-# Epic 4: Cross-Chunk Relationships & Knowledge Connections
+# Epic 4: Source-Based Knowledge Graph
 
-**Goal:** Build automated relationship extraction between knowledge chunks to enable connection queries, timeline evolution, and contradiction detection - without manual ontology or predefined entity types.
+**Goal:** Build a connected knowledge network based on Sources (books/articles) and their Chunks, with explicit relationships at both levels. Remove cluster dependency.
 
-**Business Value:** Transforms the knowledge base from isolated chunks into a connected knowledge network. Enables queries like "How are these concepts connected?", "How has my understanding evolved?", and "Are there contradictions in my knowledge?"
+**Business Value:** Transforms isolated chunks into a queryable knowledge graph. Enables "How are these sources connected?", "What contradicts what?", and "How has my understanding evolved?"
 
-**Dependencies:** Epic 2 (Knowledge Cards, Clustering complete), Epic 3 (MCP Server)
+**Dependencies:** Epic 2 (Knowledge Cards), Epic 3 (MCP Server)
 
-**Status:** Planned
-
----
-
-## Research Background
-
-### Why Relationships, Not Entity Types?
-
-Based on research into knowledge graph best practices (Dec 2025):
-
-1. **Personal Knowledge ≠ Enterprise Ontology**
-   - Tools like Zettelkasten, Obsidian, Roam emphasize *connections over categories*
-   - Fixed entity types (PERSON, CONCEPT, TECHNOLOGY) are rigid and require maintenance
-   - Your knowledge spans multiple domains (Tech, Parenting, Leadership, Travel)
-
-2. **State of the Art: Schema-Free Extraction**
-   - EDC Framework (Zhang & Soh, EMNLP 2024): Extract → Define → Canonicalize
-   - LLM-based extraction achieves 89.7% precision, 92.3% recall
-   - No predefined schema needed - relationships emerge from content
-
-3. **Your Query Use Cases**
-   | Query Type | What You Need |
-   |------------|---------------|
-   | Verbindungen | Cross-chunk links between related ideas |
-   | Timeline | `extends` relationships showing concept evolution |
-   | Widersprüche | `contradicts` relationships between chunks |
-   | Empfehlungen | Already working via clusters + embeddings |
-
-### Pragmatic Approach for kx-hub
-
-Instead of full EDC or Neo4j, we use:
-- **Existing Embeddings** for similarity-based canonicalization
-- **Existing Clusters** for scoping relationship extraction
-- **Firestore** as graph store (no new infrastructure)
-- **LLM Relationship Extraction** similar to LangChain LLMGraphTransformer
+**Status:** In Progress
 
 ---
 
-## Story 4.1: Chunk-to-Chunk Relationship Extraction
+## Architecture Decision: Sources over Clusters
 
-**Status:** Planned
+### Why Remove Clusters?
 
-**Summary:** Extract semantic relationships between chunks within the same cluster or with high embedding similarity. Store relationships in Firestore with type, confidence, and source provenance.
+| Clusters | Relationships |
+|----------|---------------|
+| Implicit grouping by embedding similarity | Explicit typed connections |
+| No semantic meaning | `extends`, `supports`, `contradicts` |
+| Redundant with embedding search | Enables multi-hop reasoning |
+| Same-source chunks cluster together (trivial) | Cross-source connections (valuable) |
 
-**Key Design Decisions:**
-- **No Entity Extraction** - relationships are between *chunks*, not extracted entities
-- **Relationship Types** (small, fixed set for queryability):
-  - `relates_to` - General semantic connection
-  - `extends` - Builds upon, evolves, is next step
-  - `supports` - Provides evidence, confirms, reinforces
-  - `contradicts` - Conflicts with, disagrees, challenges
-  - `applies_to` - Practical application of concept
-- **Scoped Extraction** - Only compare chunks within same cluster or similarity > 0.8
-- **Fully Automated** - No manual review required
+**Key Insight:** High-similarity pairs (0.92+) are mostly same-source chunks. The interesting connections are **cross-source** - when Author A's idea relates to Author B's.
 
-**Technical Approach:**
+### New Data Model
 
 ```
-Pipeline:
-1. For each cluster:
-   - Get all chunk pairs (n*(n-1)/2 comparisons)
-   - Filter by embedding similarity > 0.8
-2. For each pair:
-   - LLM prompt: "What is the relationship between these two texts?"
-   - Output: {type, confidence, explanation}
-3. Store in Firestore
-4. Canonicalize: Merge bidirectional duplicates
+Sources (books, articles)
+  └── Chunks (passages with embeddings)
+  
+Relationships:
+  - Source → Source (high-level connections)
+  - Chunk → Chunk (cross-source only, detailed connections)
 ```
 
-**Firestore Schema:**
+**What Clusters Provided (and Replacements):**
+| Cluster Feature | Replacement |
+|----------------|-------------|
+| "Similar content" grouping | Embedding similarity search |
+| Topic browsing | Source-level tags/categories |
+| Scoping for extraction | Source-based grouping |
+
+---
+
+## Data Schema
+
+### Sources Collection (new)
+```
+sources/
+  {source_id}:  # e.g., "building-a-second-brain"
+    title: "Building a Second Brain"
+    author: "Tiago Forte"
+    type: "book" | "article" | "podcast" | "video"
+    chunk_ids: ["chunk-001", "chunk-002", ...]
+    chunk_count: 15
+    created_at: timestamp
+    tags: ["productivity", "pkm"]  # optional, for browsing
+```
+
+### Relationships Collection (revised)
 ```
 relationships/
-  {relationship_id}:
-    source_chunk_id: "chunk-001"
-    target_chunk_id: "chunk-002" 
-    type: "extends"              # from fixed set
+  {auto-id}:
+    # Source-to-Source OR Chunk-to-Chunk
+    source_id: "building-a-second-brain"      # if source-level
+    target_id: "the-para-method"
+    # OR
+    source_chunk_id: "chunk-001"              # if chunk-level
+    target_chunk_id: "chunk-042"
+    
+    level: "source" | "chunk"
+    type: "relates_to" | "extends" | "supports" | "contradicts" | "applies_to"
     confidence: 0.85
-    explanation: "Platform Engineering builds on DevOps practices"
-    cluster_id: "cluster-42"
+    explanation: "Both discuss progressive summarization"
     created_at: timestamp
 ```
 
-**LLM Prompt (Gemini Flash):**
-```
-Compare these two knowledge chunks and determine their relationship.
-
-Chunk A: {title_a}
-{summary_a}
-
-Chunk B: {title_b}
-{summary_b}
-
-What is the relationship from A to B?
-Options:
-- relates_to: General thematic connection
-- extends: B builds upon or evolves A
-- supports: B provides evidence or confirms A
-- contradicts: B conflicts with or challenges A
-- applies_to: B is practical application of A
-- none: No meaningful relationship
-
-Return JSON: {"type": "...", "confidence": 0.0-1.0, "explanation": "..."}
-```
-
-**Success Metrics:**
-- Relationships extracted for all clusters
-- Average 2-5 relationships per chunk
-- <5% false positives (spot-check validation)
-- Processing time: <1 hour for full KB (~900 chunks)
-- Cost: <$1 for initial extraction, <$0.10/month incremental
+### Relationship Types (unchanged)
+- `relates_to` - General thematic connection
+- `extends` - Builds upon, develops further
+- `supports` - Provides evidence, confirms
+- `contradicts` - Conflicts with, challenges
+- `applies_to` - Practical application of
 
 ---
 
-## Story 4.2: MCP Tools for Relationship Queries
+## Story 4.1: Source Extraction & Migration
 
 **Status:** Planned
 
-**Summary:** Expose relationships via MCP tools to answer connection, timeline, and contradiction queries.
+**Summary:** Extract unique sources from existing chunks and create sources collection.
 
-**MCP Tools:**
+**Tasks:**
+1. Parse `title` field from chunks to identify unique sources
+2. Create `sources/` collection with aggregated metadata
+3. Add `source_id` field to each chunk
+4. Remove `cluster_id` from chunks (or deprecate)
 
-### `get_connections`
-Find all relationships for a chunk or concept.
+**Migration Script:**
+```python
+# Group chunks by title (= source)
+sources = {}
+for chunk in chunks:
+    source_key = normalize(chunk.title)
+    if source_key not in sources:
+        sources[source_key] = {
+            'title': chunk.title,
+            'author': chunk.author,
+            'chunk_ids': []
+        }
+    sources[source_key]['chunk_ids'].append(chunk.id)
+
+# Write to Firestore
+for source_id, data in sources.items():
+    db.collection('sources').document(source_id).set(data)
 ```
-Input: {chunk_id: string} or {query: string, limit: int}
-Output: {
-  connections: [
-    {related_chunk, type, explanation, confidence}
-  ]
+
+**Success Metrics:**
+- All chunks linked to a source
+- ~50-100 unique sources expected
+- No orphan chunks
+
+---
+
+## Story 4.2: Cross-Source Relationship Extraction
+
+**Status:** In Progress (code exists, needs refactoring)
+
+**Summary:** Extract relationships between chunks from **different** sources only.
+
+**Key Changes from Current Implementation:**
+1. Skip same-source pairs (currently wasting LLM calls on trivial connections)
+2. Use source-level pre-filtering instead of cluster-based
+3. Add parallel LLM calls for performance
+
+**Algorithm:**
+```
+1. For each source pair (A, B):
+   - Get all chunks from A and B
+   - Compute pairwise embedding similarity
+   - Keep pairs with similarity > 0.80
+   
+2. For each cross-source pair:
+   - LLM: Determine relationship type
+   - Store if confidence > 0.7
+   
+3. Aggregate to source level:
+   - If 3+ chunk relationships between A and B → create source-level relationship
+```
+
+**Performance Target:**
+- ~50-100 sources = 1,225-4,950 source pairs
+- Filter to ~500 pairs with high cross-source similarity
+- ~10 min with parallel LLM calls (10 concurrent)
+- Cost: ~$0.10
+
+**Success Metrics:**
+- Only cross-source relationships stored
+- Average 1-3 relationships per source
+- <10% noise (validated by spot-check)
+
+---
+
+## Story 4.3: MCP Tools for Relationship Queries
+
+**Status:** Planned
+
+**Summary:** Expose relationships via MCP tools.
+
+### `get_source_connections`
+```python
+get_source_connections(source_id: str) -> {
+    "source": {"title": "...", "author": "..."},
+    "connections": [
+        {"target": {...}, "type": "extends", "explanation": "..."}
+    ]
 }
 ```
-
-**Use Case:** "What is connected to my notes on DevOps?"
 
 ### `find_path`
-Find how two concepts/chunks are connected (multi-hop).
-```
-Input: {from_query: string, to_query: string, max_hops: int}
-Output: {
-  path: [chunk_a, --(extends)--> chunk_b, --(relates_to)--> chunk_c],
-  explanation: "DevOps → Platform Engineering → Internal Developer Platform"
+```python
+find_path(from_query: str, to_query: str, max_hops: int = 3) -> {
+    "path": ["Source A", "--(extends)-->", "Source B", "--(supports)-->", "Source C"],
+    "explanation": "..."
 }
 ```
-
-**Use Case:** "How are Parenting and Leadership connected in my knowledge?"
-
-### `get_evolution`
-Trace how a concept has evolved over time (timeline query).
-```
-Input: {concept: string}
-Output: {
-  timeline: [
-    {chunk, date, summary},  # ordered by created_at
-  ],
-  evolution: "Your understanding evolved from X to Y to Z"
-}
-```
-
-**Use Case:** "How has my understanding of AI evolved?"
 
 ### `get_contradictions`
-Find conflicting information in the knowledge base.
-```
-Input: {topic?: string, limit: int}
-Output: {
-  contradictions: [
-    {chunk_a, chunk_b, explanation}
-  ]
+```python
+get_contradictions(topic: str = None, limit: int = 10) -> {
+    "contradictions": [
+        {"source_a": {...}, "source_b": {...}, "explanation": "..."}
+    ]
 }
 ```
 
-**Use Case:** "Are there contradictions in my notes on Remote Work?"
-
-**Success Metrics:**
-- All tools respond in <3 seconds (P95)
-- Multi-hop paths found in <5 seconds
-- Results include source chunk links for verification
+### `get_evolution`
+```python
+get_evolution(concept: str) -> {
+    "timeline": [
+        {"source": {...}, "date": "...", "chunk": {...}}
+    ],
+    "summary": "Your understanding evolved from X to Y"
+}
+```
 
 ---
 
-## Story 4.3: Incremental Relationship Updates
+## Story 4.4: Cluster Deprecation
 
 **Status:** Planned
 
-**Summary:** When new chunks are added, automatically extract relationships to existing chunks and surface notable connections.
+**Summary:** Remove cluster-related code and data after relationship migration.
 
-**Trigger:** After Knowledge Card generation in daily pipeline
+**Tasks:**
+1. Remove `cluster_id` field from chunks
+2. Delete `clusters/` collection
+3. Remove clustering code from pipeline
+4. Update MCP tools to use source-based queries instead of cluster-based
+5. Archive clustering code (don't delete, might be useful later)
 
-**Process:**
-1. New chunk embedded and assigned to cluster
-2. Find similar chunks (same cluster OR embedding similarity > 0.85)
-3. Extract relationships to top 10 similar chunks
-4. Store relationships
-5. Flag notable connections:
-   - `contradicts` → High priority alert
-   - `extends` recent chunk → "Continuing thread"
-   - Connects two previously unconnected clusters → "Bridge discovery"
-
-**Notable Connections Field:**
-Add to chunk document:
-```json
-{
-  "notable_connections": [
-    {
-      "type": "contradicts",
-      "related_chunk_id": "...",
-      "explanation": "This article challenges your earlier notes on X"
-    }
-  ]
-}
-```
-
-**MCP Tool Addition:**
-```
-get_recent_connections(days: int)
-→ Returns notable connections from recently added chunks
-```
-
-**Success Metrics:**
-- New chunks processed within daily pipeline (no separate run)
-- Contradictions surfaced within 24 hours
-- <30 seconds added to per-chunk processing time
+**MCP Tool Changes:**
+| Old | New |
+|-----|-----|
+| `list_clusters` | `list_sources` |
+| `get_cluster` | `get_source` |
+| `search_within_cluster` | `search_within_source` |
 
 ---
 
-## Story 4.4: Relationship Visualization Data
+## Story 4.5: Incremental Relationship Updates
 
-**Status:** Planned (Optional)
+**Status:** Planned
 
-**Summary:** Provide graph data export for visualization tools (Obsidian, Gephi, or custom UI).
+**Summary:** When new chunks are ingested, automatically find cross-source relationships.
 
-**Export Format:**
-```json
-{
-  "nodes": [
-    {"id": "chunk-001", "label": "DevOps Handbook", "cluster": "devops"}
-  ],
-  "edges": [
-    {"source": "chunk-001", "target": "chunk-002", "type": "extends"}
-  ]
-}
-```
+**Trigger:** After chunk embedding in daily pipeline
 
-**MCP Tool:**
-```
-export_knowledge_graph(cluster_id?: string, format: "json" | "graphml")
-```
+**Process:**
+1. Identify source for new chunk
+2. Find top 10 similar chunks from OTHER sources (embedding search)
+3. Extract relationships via LLM
+4. Flag notable connections (especially `contradicts`)
 
-**Use Case:** Visualize your knowledge network in external tools
+---
+
+## Migration Plan
+
+1. **Phase 1:** Create sources collection (Story 4.1)
+2. **Phase 2:** Refactor relationship extraction for cross-source (Story 4.2)
+3. **Phase 3:** Update MCP tools (Story 4.3)
+4. **Phase 4:** Deprecate clusters (Story 4.4)
+5. **Phase 5:** Integrate into pipeline (Story 4.5)
 
 ---
 
 ## Summary
 
-| Story | Description | Priority |
-|-------|-------------|----------|
-| 4.1 | Chunk-to-Chunk Relationship Extraction | High |
-| 4.2 | MCP Tools for Relationship Queries | High |
-| 4.3 | Incremental Relationship Updates | Medium |
-| 4.4 | Relationship Visualization Data | Low |
+| Story | Description | Priority | Status |
+|-------|-------------|----------|--------|
+| 4.1 | Source Extraction & Migration | High | Planned |
+| 4.2 | Cross-Source Relationship Extraction | High | In Progress |
+| 4.3 | MCP Tools for Relationships | High | Planned |
+| 4.4 | Cluster Deprecation | Medium | Planned |
+| 4.5 | Incremental Updates | Medium | Planned |
 
-**Key Differences from Original Epic 4:**
+**Key Simplifications:**
+- No more cluster maintenance
+- Only meaningful cross-source relationships
+- Source as first-class entity for navigation
+- Cleaner data model
 
-| Original | Revised |
-|----------|---------|
-| Entity Extraction (PERSON, CONCEPT...) | No entities - relationships between chunks |
-| Manual entity type definitions | Fully automated, schema-free |
-| `kg_nodes` + `kg_edges` collections | Single `relationships` collection |
-| Complex ontology | 5 simple relationship types |
-| Neo4j-style graph queries | Firestore queries with embedding similarity |
-
-**Implementation Order:**
-1. Story 4.1 - Extract relationships (batch for existing, foundation)
-2. Story 4.2 - MCP tools (immediate value for queries)
-3. Story 4.3 - Incremental updates (integrate into pipeline)
-4. Story 4.4 - Visualization (nice-to-have)
-
-**Estimated Cost:** 
-- Initial extraction: ~$1-2 (one-time)
-- Incremental: <$0.10/month
-- No new infrastructure (Firestore only)
-
-**Risk Mitigation:**
-- Start with one cluster, validate quality before full rollout
-- Log all LLM extractions for debugging
-- Confidence threshold (>0.7) for storing relationships
+**Estimated Effort:**
+- Story 4.1: 2-3 hours (migration script)
+- Story 4.2: 4-6 hours (refactor extraction)
+- Story 4.3: 4-6 hours (MCP tools)
+- Story 4.4: 2-3 hours (cleanup)
+- Story 4.5: 2-3 hours (pipeline integration)

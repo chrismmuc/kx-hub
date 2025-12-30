@@ -236,7 +236,10 @@ class RelationshipExtractor:
 
         relationships = []
 
-        for chunk_a, chunk_b, similarity in candidates:
+        for i, (chunk_a, chunk_b, similarity) in enumerate(candidates):
+            if (i + 1) % 10 == 0 or i == 0:
+                logger.info(f"  Processing pair {i + 1}/{len(candidates)}...")
+
             relationship = self.extract_relationship(chunk_a, chunk_b, cluster_id)
             if relationship:
                 relationships.append(relationship)

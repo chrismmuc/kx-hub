@@ -62,57 +62,64 @@ def get_firestore_client():
     return _firestore_client
 
 
-def load_clusters() -> List[Dict[str, Any]]:
+def load_chunks_grouped_by_cluster() -> Dict[str, List[Dict[str, Any]]]:
     """
-    Load all clusters from Firestore.
+    Load all chunks from Firestore and group by cluster_id.
 
     Returns:
-        List of cluster dictionaries with id and member_chunk_ids
+        Dictionary mapping cluster_id -> list of chunks
     """
     db = get_firestore_client()
-    clusters_ref = db.collection(CLUSTERS_COLLECTION)
+    collection_ref = db.collection(FIRESTORE_COLLECTION)
 
-    clusters = []
-    for doc in clusters_ref.stream():
-        cluster_data = doc.to_dict()
-        cluster_data["id"] = doc.id
-        clusters.append(cluster_data)
+    # Group chunks by cluster
+    clusters: Dict[str, List[Dict[str, Any]]] = {}
 
-    logger.info(f"Loaded {len(clusters)} clusters from Firestore")
+    for doc in collection_ref.stream():
+        chunk_data = doc.to_dict()
+        chunk_data["id"] = doc.id
+
+        # cluster_id is stored as a list in chunks
+        cluster_ids = chunk_data.get("cluster_id", [])
+        if isinstance(cluster_ids, str):
+            cluster_ids = [cluster_ids]
+
+        for cluster_id in cluster_ids:
+            if cluster_id not in clusters:
+                clusters[cluster_id] = []
+            clusters[cluster_id].append(chunk_data)
+
+    logger.info(
+        f"Loaded chunks into {len(clusters)} clusters "
+        f"(total chunks with cluster: {sum(len(c) for c in clusters.values())})"
+    )
     return clusters
 
 
-def load_chunks_for_cluster(chunk_ids: List[str]) -> List[Dict[str, Any]]:
+def load_chunks_for_cluster(cluster_id: str) -> List[Dict[str, Any]]:
     """
-    Load chunks by IDs from Firestore.
+    Load chunks for a specific cluster from Firestore.
 
     Args:
-        chunk_ids: List of chunk document IDs
+        cluster_id: Cluster ID to filter by
 
     Returns:
         List of chunk dictionaries with embeddings
     """
-    if not chunk_ids:
-        return []
-
     db = get_firestore_client()
     collection_ref = db.collection(FIRESTORE_COLLECTION)
 
     chunks = []
 
-    # Firestore limits 'in' queries to 30 items, batch if needed
-    for i in range(0, len(chunk_ids), 30):
-        batch_ids = chunk_ids[i : i + 30]
+    # Query chunks where cluster_id array contains the cluster
+    query = collection_ref.where("cluster_id", "array_contains", cluster_id)
 
-        # Get documents by ID
-        for chunk_id in batch_ids:
-            doc = collection_ref.document(chunk_id).get()
-            if doc.exists:
-                chunk_data = doc.to_dict()
-                chunk_data["id"] = doc.id
-                chunks.append(chunk_data)
+    for doc in query.stream():
+        chunk_data = doc.to_dict()
+        chunk_data["id"] = doc.id
+        chunks.append(chunk_data)
 
-    logger.debug(f"Loaded {len(chunks)} chunks for cluster")
+    logger.debug(f"Loaded {len(chunks)} chunks for cluster {cluster_id}")
     return chunks
 
 
@@ -187,23 +194,12 @@ def process_single_cluster(
     Returns:
         Processing statistics
     """
-    db = get_firestore_client()
+    # Load chunks for this cluster
+    chunks = load_chunks_for_cluster(cluster_id)
 
-    # Load cluster
-    cluster_doc = db.collection(CLUSTERS_COLLECTION).document(cluster_id).get()
-    if not cluster_doc.exists:
-        logger.error(f"Cluster not found: {cluster_id}")
-        return {"error": "Cluster not found"}
-
-    cluster_data = cluster_doc.to_dict()
-    chunk_ids = cluster_data.get("member_chunk_ids", [])
-
-    if len(chunk_ids) < 2:
+    if len(chunks) < 2:
         logger.info(f"Cluster {cluster_id} has < 2 chunks, skipping")
-        return {"chunks": len(chunk_ids), "relationships": 0}
-
-    # Load chunks
-    chunks = load_chunks_for_cluster(chunk_ids)
+        return {"chunks": len(chunks), "relationships": 0}
 
     # Extract relationships
     relationships = extractor.process_cluster(cluster_id, chunks)
@@ -254,11 +250,16 @@ def process_all_clusters(
         confidence_threshold=confidence_threshold,
     )
 
-    # Load clusters
-    clusters = load_clusters()
+    # Load all chunks grouped by cluster
+    cluster_chunks = load_chunks_grouped_by_cluster()
+
+    # Sort clusters by size (largest first) for better progress visibility
+    cluster_ids = sorted(
+        cluster_chunks.keys(), key=lambda c: len(cluster_chunks[c]), reverse=True
+    )
 
     if limit:
-        clusters = clusters[:limit]
+        cluster_ids = cluster_ids[:limit]
         logger.info(f"Limited to {limit} clusters")
 
     # Process each cluster
@@ -267,28 +268,35 @@ def process_all_clusters(
     total_relationships = 0
     total_saved = 0
     total_failed = 0
+    clusters_with_relationships = 0
 
-    for i, cluster in enumerate(clusters):
-        cluster_id = cluster["id"]
-        chunk_ids = cluster.get("member_chunk_ids", [])
+    for i, cluster_id in enumerate(cluster_ids):
+        chunks = cluster_chunks[cluster_id]
 
-        logger.info(f"\n[{i + 1}/{len(clusters)}] Processing cluster: {cluster_id}")
+        logger.info(
+            f"\n[{i + 1}/{len(cluster_ids)}] Processing cluster: {cluster_id} ({len(chunks)} chunks)"
+        )
 
-        if len(chunk_ids) < 2:
+        if len(chunks) < 2:
             logger.info(f"  Skipping: < 2 chunks")
             continue
 
-        # Load chunks
-        chunks = load_chunks_for_cluster(chunk_ids)
         total_chunks += len(chunks)
 
         # Get candidates
         candidates = extractor.get_candidate_pairs(chunks)
         total_candidates += len(candidates)
 
+        if not candidates:
+            logger.info(f"  No candidate pairs above similarity threshold")
+            continue
+
         # Extract relationships
         relationships = extractor.process_cluster(cluster_id, chunks)
         total_relationships += len(relationships)
+
+        if relationships:
+            clusters_with_relationships += 1
 
         # Save
         save_result = save_relationships(relationships, dry_run)
@@ -296,8 +304,7 @@ def process_all_clusters(
         total_failed += save_result["failed"]
 
         logger.info(
-            f"  Chunks: {len(chunks)}, Candidates: {len(candidates)}, "
-            f"Relationships: {len(relationships)}"
+            f"  Candidates: {len(candidates)}, Relationships: {len(relationships)}"
         )
 
     duration = (datetime.now() - start_time).total_seconds()
@@ -305,7 +312,8 @@ def process_all_clusters(
     # Summary
     logger.info("\n" + "=" * 80)
     logger.info("Relationship Extraction Pipeline - Complete")
-    logger.info(f"Clusters processed: {len(clusters)}")
+    logger.info(f"Clusters processed: {len(cluster_ids)}")
+    logger.info(f"Clusters with relationships: {clusters_with_relationships}")
     logger.info(f"Total chunks: {total_chunks}")
     logger.info(f"Total candidates: {total_candidates}")
     logger.info(f"Total relationships: {total_relationships}")
@@ -315,7 +323,8 @@ def process_all_clusters(
     logger.info("=" * 80)
 
     return {
-        "clusters_processed": len(clusters),
+        "clusters_processed": len(cluster_ids),
+        "clusters_with_relationships": clusters_with_relationships,
         "total_chunks": total_chunks,
         "total_candidates": total_candidates,
         "total_relationships": total_relationships,
