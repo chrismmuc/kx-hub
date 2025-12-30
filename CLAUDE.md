@@ -8,11 +8,11 @@ Personal knowledge hub: Readwise highlights → AI knowledge cards → semantic 
 # Tests (run before every commit)
 python3 -m pytest tests/ -v
 
-# Deploy MCP server
+# Deploy MCP server (Cloud Run)
 gcloud builds submit --config=src/mcp_server/cloudbuild.yaml
 
-# Deploy Cloud Function
-gcloud functions deploy <function> --gen2 --region=europe-west1
+# Deploy Cloud Functions (via Terraform)
+cd terraform && terraform apply
 
 # Check dependency versions
 pip3 index versions <package>
