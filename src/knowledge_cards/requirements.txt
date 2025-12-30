@@ -1,5 +1,5 @@
 google-cloud-firestore>=2.22.0
 google-cloud-aiplatform>=1.130.0
-functions-framework>=3.8.0
+functions-framework>=3.10.0
 # LLM abstraction layer - supports Claude via Vertex AI
 anthropic[vertex]>=0.75.0
