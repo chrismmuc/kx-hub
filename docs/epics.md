@@ -12,13 +12,13 @@
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 1.1 | Daily Readwise API ingest → GCS | ✅ Done |
-| 1.2 | JSON → Markdown normalization | ✅ Done |
-| 1.3 | Vertex AI embeddings → Firestore | ✅ Done |
-| 1.4 | Delta manifests & resume controls | ✅ Done |
-| 1.5 | Migrate to Firestore vector search (99% cost reduction) | ✅ Done |
-| 1.6 | Intelligent chunking (273 docs → 813 chunks) | ✅ Done |
-| 1.7 | MCP Server for Claude Desktop | ✅ Done |
+| 1.1 | **Daily Readwise Ingest** - Cloud Function pulls new highlights via Readwise API, stores raw JSON in GCS | ✅ Done |
+| 1.2 | **Markdown Normalization** - Transform raw JSON into structured markdown with metadata (author, tags, highlights) | ✅ Done |
+| 1.3 | **Embedding & Storage** - Generate 768-dim embeddings via Vertex AI, store in Firestore with vector index | ✅ Done |
+| 1.4 | **Delta Processing** - Manifest tracking for incremental updates, skip already-processed docs, resume on failure | ✅ Done |
+| 1.5 | **Firestore Vector Search** - Migrate from Vertex AI Vector Search to native Firestore (99% cost reduction) | ✅ Done |
+| 1.6 | **Smart Chunking** - Split long documents into semantic chunks (273 docs → 813 chunks), preserve context | ✅ Done |
+| 1.7 | **MCP Server** - Local Model Context Protocol server for Claude Desktop integration | ✅ Done |
 
 ---
 
@@ -30,10 +30,10 @@
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 2.1 | Knowledge card generation (Gemini Flash) | ✅ Done |
-| 2.2 | UMAP + HDBSCAN clustering (38 clusters) | ✅ Done |
-| 2.6 | MCP tools for cards & clusters | ✅ Done |
-| 2.7 | URL link storage & backfill | ✅ Done |
+| 2.1 | **Knowledge Cards** - Gemini Flash generates summaries, key takeaways, related topics per chunk | ✅ Done |
+| 2.2 | **Semantic Clustering** - UMAP dimensionality reduction + HDBSCAN clustering (38 auto-discovered topics) | ✅ Done |
+| 2.6 | **MCP Card Tools** - `get_cluster`, `list_clusters`, `search_within_cluster` tools for Claude | ✅ Done |
+| 2.7 | **URL Backfill** - Extract and store source URLs from highlights, backfill existing 800+ chunks | ✅ Done |
 
 ---
 
@@ -45,10 +45,10 @@
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 3.1 | Cloud Run MCP deployment | ✅ Done |
-| 3.1.1 | OAuth 2.1 for Claude Mobile/Web | ✅ Done |
-| 3.4 | Cluster relationship discovery | ✅ Done |
-| 3.5 | AI reading recommendations (Tavily) | ✅ Done |
+| 3.1 | **Cloud Run Deployment** - Deploy MCP server to Cloud Run with SSE transport for remote access | ✅ Done |
+| 3.1.1 | **OAuth 2.1 Authentication** - Secure authentication for Claude Mobile/Web with token refresh | ✅ Done |
+| 3.4 | **Cluster Relationships** - Discover and store relationships between topic clusters (cosine similarity) | ✅ Done |
+| 3.5 | **Reading Recommendations** - AI-powered article recommendations via Tavily search based on interests | ✅ Done |
 
 ---
 
@@ -60,10 +60,10 @@
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 4.1 | Entity extraction from chunks | 📋 Planned |
-| 4.2 | Relation extraction between entities | 📋 Planned |
-| 4.3 | MCP tools for graph queries | 📋 Planned |
-| 4.4 | Proactive knowledge connections | 📋 Planned |
+| 4.1 | **Entity Extraction** - Extract named entities (people, concepts, technologies) from chunks via LLM | 📋 Planned |
+| 4.2 | **Relation Extraction** - Identify relationships between entities (influences, contradicts, related_to) | 📋 Planned |
+| 4.3 | **Graph Query Tools** - MCP tools for entity lookup, path finding, neighborhood exploration | 📋 Planned |
+| 4.4 | **Proactive Connections** - Surface unexpected connections and contradictions during search | 📋 Planned |
 
 **Next Step:** Story 4.1 - Run entity type discovery on sample chunks
 
