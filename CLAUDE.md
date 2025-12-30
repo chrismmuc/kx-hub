@@ -74,13 +74,53 @@ kx-hub/
 
 ## Documentation (BMAD-Lite)
 
-Keep documentation lightweight and actionable:
+Only 4 docs files - keep them current:
 - **prd.md**: What we're building and why (high-level)
 - **architecture.md**: System design, key decisions
-- **epics.md**: Current work, acceptance criteria
+- **epics.md**: Current work status, simple table format
 - **backlog.md**: Future ideas, prioritized
 
-Avoid: Excessive detail, duplicated information, outdated specs.
+### Update Workflow
+
+**After every code change, update docs:**
+1. New feature completed → Update `epics.md` status (📋→✅)
+2. Architecture decision → Update `architecture.md`
+3. New idea/feature request → Add to `backlog.md`
+4. Epic completed → Move to "Complete" section in `epics.md`
+
+**Avoid:**
+- Separate story files per feature
+- User story format ("Als User möchte ich...")
+- Detailed task breakdowns in docs
+- Story points / time estimates
+
+**Instead:** Create implementation plans on-demand when starting work. They're always current and relevant.
+
+**Archive:** Old detailed stories are in `docs/archive/` for reference.
+
+## QA Workflow
+
+**Before every commit:**
+1. Run tests: `python3 -m pytest tests/ -v`
+2. Check for test failures or skipped tests that should pass
+3. Verify no credentials or secrets in code
+
+**Before requesting push:**
+1. All tests must pass (262+ tests expected)
+2. No new security vulnerabilities introduced
+3. Dependencies reviewed if changed
+4. Docs updated if behavior changed
+
+**Code Quality Checks:**
+- Functions should be focused and testable
+- External services must be mockable
+- Error handling for external API calls
+- No hardcoded values that should be configurable
+
+**After deployment:**
+1. Verify Cloud Function logs show no errors
+2. Test MCP server tools manually if changed
+3. Monitor costs for unexpected spikes
 
 ## Key Commands
 
@@ -111,4 +151,4 @@ cd src/mcp_server && python3 server.py
 
 ## Current Focus
 
-Check `docs/epics.md` and `docs/sprint-status.yaml` for active work.
+Check `docs/epics.md` for active work.
