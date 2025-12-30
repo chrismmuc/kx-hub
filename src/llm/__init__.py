@@ -26,22 +26,22 @@ Environment Variables:
     LLM_PROVIDER: Provider preference ("gemini" or "claude")
     GCP_PROJECT: GCP project ID
     GCP_REGION: GCP region for Gemini
-    CLAUDE_REGION: GCP region for Claude (default: us-east5)
+    CLAUDE_REGION: GCP region for Claude (default: europe-west1)
 """
 
 import logging
-from typing import Optional, Dict
+from typing import Dict, Optional
 
-from .base import BaseLLMClient, LLMProvider, GenerationConfig, LLMResponse
+from .base import BaseLLMClient, GenerationConfig, LLMProvider, LLMResponse
 from .config import (
-    get_default_model,
-    get_model_info,
-    resolve_model_name,
-    list_available_models,
-    get_gcp_config,
-    ModelInfo,
+    MODEL_ALIASES,
     MODEL_REGISTRY,
-    MODEL_ALIASES
+    ModelInfo,
+    get_default_model,
+    get_gcp_config,
+    get_model_info,
+    list_available_models,
+    resolve_model_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ def get_client(
     model: Optional[str] = None,
     project_id: Optional[str] = None,
     region: Optional[str] = None,
-    cache: bool = True
+    cache: bool = True,
 ) -> BaseLLMClient:
     """
     Get an LLM client for the specified model.
@@ -99,21 +99,20 @@ def get_client(
     # Create appropriate client
     if model_info.provider == LLMProvider.GEMINI:
         from .gemini import GeminiClient
+
         region = region or default_region
         client = GeminiClient(
-            model_id=model_info.model_id,
-            project_id=project_id,
-            region=region
+            model_id=model_info.model_id, project_id=project_id, region=region
         )
     elif model_info.provider == LLMProvider.CLAUDE:
-        from .claude import ClaudeClient
         # Claude has different region requirements
         import os
-        region = region or os.environ.get('CLAUDE_REGION', 'us-east5')
+
+        from .claude import ClaudeClient
+
+        region = region or os.environ.get("CLAUDE_REGION", "europe-west1")
         client = ClaudeClient(
-            model_id=model_info.model_id,
-            project_id=project_id,
-            region=region
+            model_id=model_info.model_id, project_id=project_id, region=region
         )
     else:
         raise ValueError(f"Unsupported provider: {model_info.provider}")
@@ -146,18 +145,16 @@ def clear_cache() -> None:
 # Convenience exports
 __all__ = [
     # Main factory
-    'get_client',
-
+    "get_client",
     # Types
-    'BaseLLMClient',
-    'LLMProvider',
-    'GenerationConfig',
-    'LLMResponse',
-    'ModelInfo',
-
+    "BaseLLMClient",
+    "LLMProvider",
+    "GenerationConfig",
+    "LLMResponse",
+    "ModelInfo",
     # Config utilities
-    'list_models',
-    'get_model_info',
-    'get_default_model',
-    'clear_cache',
+    "list_models",
+    "get_model_info",
+    "get_default_model",
+    "clear_cache",
 ]

@@ -7,12 +7,13 @@ to enable easy model switching and A/B testing.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class LLMProvider(str, Enum):
     """Supported LLM providers."""
+
     GEMINI = "gemini"
     CLAUDE = "claude"
 
@@ -24,6 +25,7 @@ class GenerationConfig:
 
     Maps to provider-specific configs internally.
     """
+
     temperature: float = 0.7
     max_output_tokens: int = 2048
     top_p: float = 0.95
@@ -38,6 +40,7 @@ class LLMResponse:
     """
     Unified response from any LLM provider.
     """
+
     text: str
     model: str
     provider: LLMProvider
@@ -60,12 +63,7 @@ class BaseLLMClient(ABC):
     All provider implementations must inherit from this class.
     """
 
-    def __init__(
-        self,
-        model_id: str,
-        project_id: str,
-        region: str = "europe-west4"
-    ):
+    def __init__(self, model_id: str, project_id: str, region: str = "europe-west4"):
         """
         Initialize LLM client.
 
@@ -101,7 +99,7 @@ class BaseLLMClient(ABC):
         self,
         prompt: str,
         config: Optional[GenerationConfig] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
     ) -> LLMResponse:
         """
         Generate text from a prompt.
@@ -120,7 +118,7 @@ class BaseLLMClient(ABC):
         self,
         prompt: str,
         config: Optional[GenerationConfig] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate and parse JSON response.
@@ -144,21 +142,39 @@ class BaseLLMClient(ABC):
         text = response.text.strip()
 
         # Strip markdown code blocks if present
-        if text.startswith('```'):
+        if text.startswith("```"):
             # Remove opening fence
-            text = text.split('\n', 1)[1] if '\n' in text else text[3:]
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
             # Remove closing fence
-            if text.endswith('```'):
-                text = text.rsplit('\n```', 1)[0]
+            if text.endswith("```"):
+                text = text.rsplit("\n```", 1)[0]
             # Remove json language tag if present
-            if text.startswith('json\n'):
+            if text.startswith("json\n"):
                 text = text[5:]
             text = text.strip()
 
+        # Try to extract JSON object if there's extra text after it
         try:
             return json.loads(text)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON response from {self.provider.value}: {text[:200]}") from e
+        except json.JSONDecodeError:
+            # Try to find JSON object boundaries
+            start = text.find("{")
+            if start != -1:
+                # Find matching closing brace
+                depth = 0
+                for i, char in enumerate(text[start:], start):
+                    if char == "{":
+                        depth += 1
+                    elif char == "}":
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                return json.loads(text[start : i + 1])
+                            except json.JSONDecodeError:
+                                break
+            raise ValueError(
+                f"Invalid JSON response from {self.provider.value}: {text[:200]}"
+            )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(model={self.model_id}, region={self.region})"

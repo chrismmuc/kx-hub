@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Optional
 
-from .base import BaseLLMClient, LLMProvider, GenerationConfig, LLMResponse
+from .base import BaseLLMClient, GenerationConfig, LLMProvider, LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +18,26 @@ INITIAL_BACKOFF = 1.0
 MAX_BACKOFF = 30.0
 
 
+# Models that require global endpoint (preview models)
+GLOBAL_ONLY_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-3-pro-preview",
+]
+
+
 class GeminiClient(BaseLLMClient):
     """
     Gemini client using Vertex AI SDK.
 
     Supports all Gemini models available on Vertex AI.
+    Note: Preview models (gemini-3-*) require global endpoint.
     """
 
     def __init__(
         self,
         model_id: str = "gemini-2.5-flash",
         project_id: str = None,
-        region: str = "europe-west4"
+        region: str = "europe-west4",
     ):
         """
         Initialize Gemini client.
@@ -37,11 +45,16 @@ class GeminiClient(BaseLLMClient):
         Args:
             model_id: Gemini model ID (e.g., "gemini-2.5-flash", "gemini-3-flash-preview")
             project_id: GCP project ID (uses GCP_PROJECT env var if None)
-            region: GCP region (uses GCP_REGION env var if None)
+            region: GCP region (uses GCP_REGION env var if None, or "global" for preview models)
         """
         import os
-        project_id = project_id or os.environ.get('GCP_PROJECT', 'kx-hub')
-        region = region or os.environ.get('GCP_REGION', 'europe-west4')
+
+        project_id = project_id or os.environ.get("GCP_PROJECT", "kx-hub")
+        region = region or os.environ.get("GCP_REGION", "europe-west4")
+
+        # Force global region for preview models
+        if model_id in GLOBAL_ONLY_MODELS:
+            region = "global"
 
         super().__init__(model_id, project_id, region)
         self._model = None
@@ -55,7 +68,9 @@ class GeminiClient(BaseLLMClient):
         from google.cloud import aiplatform
         from vertexai.generative_models import GenerativeModel
 
-        logger.info(f"Initializing Gemini: model={self.model_id}, project={self.project_id}, region={self.region}")
+        logger.info(
+            f"Initializing Gemini: model={self.model_id}, project={self.project_id}, region={self.region}"
+        )
 
         aiplatform.init(project=self.project_id, location=self.region)
         self._model = GenerativeModel(self.model_id)
@@ -66,7 +81,7 @@ class GeminiClient(BaseLLMClient):
         self,
         prompt: str,
         config: Optional[GenerationConfig] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
     ) -> LLMResponse:
         """
         Generate text using Gemini.
@@ -82,7 +97,7 @@ class GeminiClient(BaseLLMClient):
         self._ensure_initialized()
 
         from vertexai.generative_models import GenerationConfig as GeminiGenConfig
-        from vertexai.generative_models import HarmCategory, HarmBlockThreshold
+        from vertexai.generative_models import HarmBlockThreshold, HarmCategory
 
         config = config or GenerationConfig()
 
@@ -92,7 +107,7 @@ class GeminiClient(BaseLLMClient):
             max_output_tokens=config.max_output_tokens,
             top_p=config.top_p,
             top_k=config.top_k,
-            candidate_count=1
+            candidate_count=1,
         )
 
         # Safety settings - permissive for content generation
@@ -118,7 +133,7 @@ class GeminiClient(BaseLLMClient):
                 response = self._model.generate_content(
                     full_prompt,
                     generation_config=gemini_config,
-                    safety_settings=safety_settings
+                    safety_settings=safety_settings,
                 )
 
                 # Extract text from response
@@ -126,23 +141,36 @@ class GeminiClient(BaseLLMClient):
                     raise ValueError("No response candidates from Gemini API")
 
                 candidate = response.candidates[0]
-                finish_reason = getattr(candidate, 'finish_reason', None)
+                finish_reason = getattr(candidate, "finish_reason", None)
 
                 if not candidate.content or not candidate.content.parts:
-                    raise ValueError(f"Empty response from Gemini. Finish reason: {finish_reason}")
+                    raise ValueError(
+                        f"Empty response from Gemini. Finish reason: {finish_reason}"
+                    )
 
-                text = ''.join([
-                    part.text for part in candidate.content.parts
-                    if hasattr(part, 'text')
-                ])
+                text = "".join(
+                    [
+                        part.text
+                        for part in candidate.content.parts
+                        if hasattr(part, "text")
+                    ]
+                )
 
                 if not text.strip():
                     raise ValueError("Empty text from Gemini API")
 
                 # Extract usage if available
-                usage_metadata = getattr(response, 'usage_metadata', None)
-                input_tokens = getattr(usage_metadata, 'prompt_token_count', None) if usage_metadata else None
-                output_tokens = getattr(usage_metadata, 'candidates_token_count', None) if usage_metadata else None
+                usage_metadata = getattr(response, "usage_metadata", None)
+                input_tokens = (
+                    getattr(usage_metadata, "prompt_token_count", None)
+                    if usage_metadata
+                    else None
+                )
+                output_tokens = (
+                    getattr(usage_metadata, "candidates_token_count", None)
+                    if usage_metadata
+                    else None
+                )
 
                 return LLMResponse(
                     text=text,
@@ -151,17 +179,24 @@ class GeminiClient(BaseLLMClient):
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     finish_reason=str(finish_reason) if finish_reason else None,
-                    raw_response=response
+                    raw_response=response,
                 )
 
             except Exception as e:
                 error_msg = str(e).lower()
-                is_retriable = any(x in error_msg for x in ['rate', 'quota', '429', 'internal', '500', '503'])
+                is_retriable = any(
+                    x in error_msg
+                    for x in ["rate", "quota", "429", "internal", "500", "503"]
+                )
 
                 if is_retriable and attempt < MAX_RETRIES - 1:
-                    logger.warning(f"Retriable error (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying after {backoff}s")
+                    logger.warning(
+                        f"Retriable error (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying after {backoff}s"
+                    )
                     time.sleep(backoff)
                     backoff = min(backoff * 2, MAX_BACKOFF)
                 else:
-                    logger.error(f"Gemini generation failed after {attempt + 1} attempts: {e}")
+                    logger.error(
+                        f"Gemini generation failed after {attempt + 1} attempts: {e}"
+                    )
                     raise
