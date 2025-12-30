@@ -134,7 +134,7 @@ main:
             url: ${"https://europe-west4-" + project_id + ".cloudfunctions.net/knowledge-cards-function"}
             auth:
               type: OIDC
-            timeout: 3600  # 60 minutes for 818 chunks
+            timeout: 1800 # 30 minutes (max allowed for workflow HTTP calls)
             headers:
               Content-Type: application/json
             body:
@@ -178,7 +178,7 @@ main:
             url: ${"https://europe-west4-" + project_id + ".cloudfunctions.net/clustering-function"}
             auth:
               type: OIDC
-            timeout: 300  # 5 minutes for delta processing
+            timeout: 300 # 5 minutes for delta processing
             headers:
               Content-Type: application/json
             body:
