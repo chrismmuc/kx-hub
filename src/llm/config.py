@@ -29,8 +29,9 @@ logger = logging.getLogger(__name__)
 # Can be overridden by LLM_MODEL environment variable.
 # =============================================================================
 # DEFAULT_MODEL = "gemini-3-flash-preview"  # Neuestes Gemini
-DEFAULT_MODEL = "claude-haiku-4-5"  # Claude Haiku
+# DEFAULT_MODEL = "gemini-2.5-flash"  # Cost-effective default
 # DEFAULT_MODEL = "sonnet"                   # Alias für claude-sonnet-4-5
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 @dataclass
