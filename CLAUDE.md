@@ -74,11 +74,12 @@ kx-hub/
 
 ## Documentation (BMAD-Lite)
 
-Only 4 docs files - keep them current:
+Only 5 docs files - keep them current:
 - **prd.md**: What we're building and why (high-level)
 - **architecture.md**: System design, key decisions
 - **epics.md**: Current work status, simple table format
 - **backlog.md**: Future ideas, prioritized
+- **TODO.md**: Immediate action items, short-term tasks
 
 ### Update Workflow
 
