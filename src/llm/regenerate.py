@@ -25,17 +25,13 @@ Usage:
 import argparse
 import logging
 import os
-import sys
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from google.cloud import firestore
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from llm import BaseLLMClient, get_client, get_model_info, list_models
+from . import BaseLLMClient, get_client, get_model_info, list_models
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -136,9 +132,10 @@ def regenerate_knowledge_cards(
     Returns:
         RegenerationStats with results
     """
-    from knowledge_cards.prompt_manager import PromptManager
-    from knowledge_cards.schema import validate_knowledge_card_response
-    from llm import GenerationConfig
+    from src.knowledge_cards.prompt_manager import PromptManager
+    from src.knowledge_cards.schema import validate_knowledge_card_response
+
+    from . import GenerationConfig
 
     stats = RegenerationStats()
     prompt_manager = PromptManager()
@@ -247,7 +244,7 @@ def regenerate_clusters(
     Returns:
         RegenerationStats with results
     """
-    from clustering.cluster_metadata import ClusterMetadataGenerator
+    from src.clustering.cluster_metadata import ClusterMetadataGenerator
 
     stats = RegenerationStats()
 
@@ -295,8 +292,9 @@ def compare_models(
     Returns:
         Comparison results
     """
-    from knowledge_cards.prompt_manager import PromptManager
-    from llm import GenerationConfig
+    from src.knowledge_cards.prompt_manager import PromptManager
+
+    from . import GenerationConfig
 
     prompt_manager = PromptManager()
     config = GenerationConfig(temperature=0.7, max_output_tokens=4096)

@@ -37,6 +37,8 @@ Query your knowledge base conversationally through Claude:
 
 ## Project Structure
 
+Lean structure, refactored from earlier iterations. See `git checkout archive-snapshot-2025-12 -- archive/` for legacy code.
+
 ```
 kx-hub/
 ├── src/
@@ -50,8 +52,7 @@ kx-hub/
 ├── functions/           # Cloud Function deployments
 ├── tests/               # Unit and integration tests
 ├── docs/                # Documentation
-├── terraform/           # Infrastructure as Code
-└── scripts/             # Utility scripts
+└── terraform/           # Infrastructure as Code
 ```
 
 ## Tech Stack
