@@ -189,6 +189,39 @@ This document contains planned but not-yet-implemented stories and epics.
 
 ---
 
+### Story 3.9: Optimize Reading Recommendations Performance
+
+**Status:** Backlog
+
+**Summary:** Reduce reading recommendations response time from ~5 minutes to <30 seconds by implementing batch LLM calls for depth scoring instead of sequential per-candidate calls.
+
+**Problem:**
+- Current implementation calls LLM sequentially for each candidate (~37 candidates)
+- Each depth-scoring call takes 5-8 seconds
+- Total time: 37 × ~8s = ~300s (5 minutes)
+- `batch_score_content_depth()` function exists but is not used
+
+**Key Features:**
+- **Batch LLM Calls:** Score all candidates in single/few LLM calls
+- **Parallel Processing:** Use asyncio for concurrent embedding generation
+- **Result Caching:** Cache depth scores for URLs (TTL: 7 days)
+- **Pre-filtering:** Reduce candidates before LLM scoring (domain blocklist, length filter)
+
+**Technical Approach:**
+1. Replace sequential `score_content_depth()` calls with batch version
+2. Send multiple items per LLM call (Gemini supports this)
+3. Cache results in Firestore `recommendation_cache` collection
+4. Add asyncio for parallel embedding generation
+
+**Success Metrics:**
+- Response time: <30 seconds (10x improvement)
+- Cache hit rate: >50% for recurring domains
+- No degradation in recommendation quality
+
+**Estimated Effort:** 4-6 hours
+
+---
+
 ### Story 3.6: Email Digest for Reading Recommendations
 
 **Status:** Backlog
