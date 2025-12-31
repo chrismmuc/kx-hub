@@ -8,17 +8,19 @@ Provides read-only access to kb_items collection with support for:
 - Vector similarity search (FIND_NEAREST)
 """
 
-import os
 import logging
-from typing import List, Dict, Any, Optional
+import os
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+
 from google.cloud import firestore
 
 # Try to import Vector types (might not be available in all versions)
 try:
-    from google.cloud.firestore_v1.vector import Vector
     from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+    from google.cloud.firestore_v1.vector import Vector
+
     HAS_VECTOR_SUPPORT = True
 except ImportError:
     Vector = None  # type: ignore
@@ -41,7 +43,7 @@ def get_firestore_client() -> firestore.Client:
     global _firestore_client
 
     if _firestore_client is None:
-        project = os.getenv('GCP_PROJECT')
+        project = os.getenv("GCP_PROJECT")
         logger.info(f"Initializing Firestore client for project: {project}")
         _firestore_client = firestore.Client(project=project)
 
@@ -60,7 +62,7 @@ def list_all_chunks(limit: int = 100) -> List[Dict[str, Any]]:
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         logger.info(f"Listing chunks from {collection} (limit: {limit})")
 
@@ -70,7 +72,7 @@ def list_all_chunks(limit: int = 100) -> List[Dict[str, Any]]:
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id  # Add document ID
+            chunk_data["id"] = doc.id  # Add document ID
             chunks.append(chunk_data)
 
         logger.info(f"Retrieved {len(chunks)} chunks")
@@ -93,7 +95,7 @@ def get_chunk_by_id(chunk_id: str) -> Optional[Dict[str, Any]]:
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         logger.info(f"Fetching chunk {chunk_id} from {collection}")
 
@@ -105,7 +107,7 @@ def get_chunk_by_id(chunk_id: str) -> Optional[Dict[str, Any]]:
             return None
 
         chunk_data = doc.to_dict()
-        chunk_data['id'] = doc.id
+        chunk_data["id"] = doc.id
 
         logger.info(f"Retrieved chunk {chunk_id}")
         return chunk_data
@@ -119,7 +121,7 @@ def query_by_metadata(
     tags: Optional[List[str]] = None,
     author: Optional[str] = None,
     source: Optional[str] = None,
-    limit: int = 20
+    limit: int = 20,
 ) -> List[Dict[str, Any]]:
     """
     Query chunks by metadata filters.
@@ -135,22 +137,24 @@ def query_by_metadata(
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
-        logger.info(f"Querying {collection} with filters: tags={tags}, author={author}, source={source}")
+        logger.info(
+            f"Querying {collection} with filters: tags={tags}, author={author}, source={source}"
+        )
 
         query = db.collection(collection)
 
         # Apply filters
         if tags:
-            query = query.where('tags', 'array_contains_any', tags)
+            query = query.where("tags", "array_contains_any", tags)
         if author:
-            query = query.where('author', '==', author)
+            query = query.where("author", "==", author)
         if source:
-            query = query.where('source', '==', source)
+            query = query.where("source", "==", source)
 
         # Sort by created_at descending (most recent first)
-        query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
         query = query.limit(limit)
 
         docs = query.stream()
@@ -158,7 +162,7 @@ def query_by_metadata(
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id
+            chunk_data["id"] = doc.id
             chunks.append(chunk_data)
 
         logger.info(f"Found {len(chunks)} chunks matching filters")
@@ -187,9 +191,9 @@ def normalize_url(url: str) -> str:
     try:
         parsed = urlparse(url.lower())
         # Remove www prefix
-        host = parsed.netloc.replace('www.', '')
+        host = parsed.netloc.replace("www.", "")
         # Remove trailing slash from path
-        path = parsed.path.rstrip('/')
+        path = parsed.path.rstrip("/")
         # Rebuild without query params and fragment
         return f"{parsed.scheme}://{host}{path}"
     except Exception:
@@ -213,27 +217,29 @@ def find_by_source_url(url: str) -> Optional[Dict[str, Any]]:
 
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         # Try exact match first
-        query = db.collection(collection).where('source_url', '==', url).limit(1)
+        query = db.collection(collection).where("source_url", "==", url).limit(1)
         docs = list(query.stream())
 
         if docs:
             chunk_data = docs[0].to_dict()
-            chunk_data['id'] = docs[0].id
+            chunk_data["id"] = docs[0].id
             logger.debug(f"Found chunk by exact URL match: {docs[0].id}")
             return chunk_data
 
         # Try normalized URL match
         normalized = normalize_url(url)
         if normalized != url:
-            query = db.collection(collection).where('source_url', '==', normalized).limit(1)
+            query = (
+                db.collection(collection).where("source_url", "==", normalized).limit(1)
+            )
             docs = list(query.stream())
 
             if docs:
                 chunk_data = docs[0].to_dict()
-                chunk_data['id'] = docs[0].id
+                chunk_data["id"] = docs[0].id
                 logger.debug(f"Found chunk by normalized URL match: {docs[0].id}")
                 return chunk_data
 
@@ -244,7 +250,9 @@ def find_by_source_url(url: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def find_chunks_by_title_prefix(title_prefix: str, limit: int = 10) -> List[Dict[str, Any]]:
+def find_chunks_by_title_prefix(
+    title_prefix: str, limit: int = 10
+) -> List[Dict[str, Any]]:
     """
     Find chunks whose title starts with the given prefix.
 
@@ -262,7 +270,7 @@ def find_chunks_by_title_prefix(title_prefix: str, limit: int = 10) -> List[Dict
 
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         # Firestore doesn't support case-insensitive queries directly
         # We'll fetch more results and filter client-side
@@ -278,17 +286,19 @@ def find_chunks_by_title_prefix(title_prefix: str, limit: int = 10) -> List[Dict
 
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_title = chunk_data.get('title', '').lower()
+            chunk_title = chunk_data.get("title", "").lower()
 
             # Check if title contains the prefix or vice versa
             if prefix_lower in chunk_title or chunk_title in prefix_lower:
-                chunk_data['id'] = doc.id
+                chunk_data["id"] = doc.id
                 chunks.append(chunk_data)
 
                 if len(chunks) >= limit:
                     break
 
-        logger.debug(f"Found {len(chunks)} chunks with title matching '{title_prefix[:20]}...'")
+        logger.debug(
+            f"Found {len(chunks)} chunks with title matching '{title_prefix[:20]}...'"
+        )
         return chunks
 
     except Exception as e:
@@ -299,7 +309,7 @@ def find_chunks_by_title_prefix(title_prefix: str, limit: int = 10) -> List[Dict
 def find_nearest(
     embedding_vector: List[float],
     limit: int = 10,
-    filters: Optional[Dict[str, Any]] = None
+    filters: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Execute vector similarity search using Firestore FIND_NEAREST.
@@ -318,16 +328,16 @@ def find_nearest(
 
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         logger.info(f"Executing vector search in {collection} (limit: {limit})")
 
         # Create vector query
         vector_query = db.collection(collection).find_nearest(
-            vector_field='embedding',
+            vector_field="embedding",
             query_vector=Vector(embedding_vector),
             distance_measure=DistanceMeasure.COSINE,
-            limit=limit
+            limit=limit,
         )
 
         # TODO: Apply filters if provided (Firestore vector search filter support)
@@ -338,7 +348,7 @@ def find_nearest(
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id
+            chunk_data["id"] = doc.id
             chunks.append(chunk_data)
 
         logger.info(f"Found {len(chunks)} similar chunks")
@@ -358,7 +368,7 @@ def get_stats() -> Dict[str, Any]:
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         logger.info(f"Collecting stats from {collection}")
 
@@ -376,45 +386,49 @@ def get_stats() -> Dict[str, Any]:
             data = doc.to_dict()
 
             # Only add non-None values to sets
-            if 'source' in data and data['source'] is not None:
-                unique_sources.add(data['source'])
-            if 'author' in data and data['author'] is not None:
-                unique_authors.add(data['author'])
-            if 'tags' in data and data['tags'] is not None:
+            if "source" in data and data["source"] is not None:
+                unique_sources.add(data["source"])
+            if "author" in data and data["author"] is not None:
+                unique_authors.add(data["author"])
+            if "tags" in data and data["tags"] is not None:
                 # Filter out None values from tags list
-                valid_tags = [tag for tag in data['tags'] if tag is not None]
+                valid_tags = [tag for tag in data["tags"] if tag is not None]
                 unique_tags.update(valid_tags)
-            if 'parent_doc_id' in data and data['parent_doc_id'] is not None:
-                unique_parent_docs.add(data['parent_doc_id'])
+            if "parent_doc_id" in data and data["parent_doc_id"] is not None:
+                unique_parent_docs.add(data["parent_doc_id"])
 
         stats = {
-            'total_chunks': total_chunks,
-            'total_documents': len(unique_parent_docs),
-            'sources': sorted(list(unique_sources)),
-            'source_count': len(unique_sources),
-            'authors': sorted(list(unique_authors)),
-            'author_count': len(unique_authors),
-            'tags': sorted(list(unique_tags)),
-            'tag_count': len(unique_tags),
-            'avg_chunks_per_doc': round(total_chunks / len(unique_parent_docs), 1) if unique_parent_docs else 0
+            "total_chunks": total_chunks,
+            "total_documents": len(unique_parent_docs),
+            "sources": sorted(list(unique_sources)),
+            "source_count": len(unique_sources),
+            "authors": sorted(list(unique_authors)),
+            "author_count": len(unique_authors),
+            "tags": sorted(list(unique_tags)),
+            "tag_count": len(unique_tags),
+            "avg_chunks_per_doc": round(total_chunks / len(unique_parent_docs), 1)
+            if unique_parent_docs
+            else 0,
         }
 
-        logger.info(f"Stats: {total_chunks} chunks, {len(unique_parent_docs)} documents")
+        logger.info(
+            f"Stats: {total_chunks} chunks, {len(unique_parent_docs)} documents"
+        )
         return stats
 
     except Exception as e:
         logger.error(f"Failed to collect stats: {e}")
         return {
-            'total_chunks': 0,
-            'total_documents': 0,
-            'sources': [],
-            'source_count': 0,
-            'authors': [],
-            'author_count': 0,
-            'tags': [],
-            'tag_count': 0,
-            'avg_chunks_per_doc': 0,
-            'error': str(e)
+            "total_chunks": 0,
+            "total_documents": 0,
+            "sources": [],
+            "source_count": 0,
+            "authors": [],
+            "author_count": 0,
+            "tags": [],
+            "tag_count": 0,
+            "avg_chunks_per_doc": 0,
+            "error": str(e),
         }
 
 
@@ -424,7 +438,7 @@ def query_by_date_range(
     limit: int = 20,
     tags: Optional[List[str]] = None,
     author: Optional[str] = None,
-    source: Optional[str] = None
+    source: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Query chunks by date range (created_at timestamp).
@@ -442,31 +456,37 @@ def query_by_date_range(
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         # Parse dates
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         # End date is inclusive, so add 1 day and subtract microsecond
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1) - timedelta(microseconds=1)
+        end_dt = (
+            datetime.strptime(end_date, "%Y-%m-%d")
+            + timedelta(days=1)
+            - timedelta(microseconds=1)
+        )
 
-        logger.info(f"Querying {collection} by date range: {start_date} to {end_date} (limit: {limit})")
+        logger.info(
+            f"Querying {collection} by date range: {start_date} to {end_date} (limit: {limit})"
+        )
 
         query = db.collection(collection)
 
         # Apply date range filter
-        query = query.where('created_at', '>=', start_dt)
-        query = query.where('created_at', '<=', end_dt)
+        query = query.where("created_at", ">=", start_dt)
+        query = query.where("created_at", "<=", end_dt)
 
         # Apply optional metadata filters
         if tags:
-            query = query.where('tags', 'array_contains_any', tags)
+            query = query.where("tags", "array_contains_any", tags)
         if author:
-            query = query.where('author', '==', author)
+            query = query.where("author", "==", author)
         if source:
-            query = query.where('source', '==', source)
+            query = query.where("source", "==", source)
 
         # Sort by created_at descending (most recent first)
-        query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
         query = query.limit(limit)
 
         docs = query.stream()
@@ -474,10 +494,12 @@ def query_by_date_range(
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id
+            chunk_data["id"] = doc.id
             chunks.append(chunk_data)
 
-        logger.info(f"Found {len(chunks)} chunks in date range {start_date} to {end_date}")
+        logger.info(
+            f"Found {len(chunks)} chunks in date range {start_date} to {end_date}"
+        )
         return chunks
 
     except ValueError as e:
@@ -493,7 +515,7 @@ def query_by_relative_time(
     limit: int = 20,
     tags: Optional[List[str]] = None,
     author: Optional[str] = None,
-    source: Optional[str] = None
+    source: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Query chunks using relative time periods.
@@ -513,16 +535,26 @@ def query_by_relative_time(
 
         # Map period to date range
         if period == "yesterday":
-            start_dt = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(microseconds=1)
+            start_dt = (now - timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+                microseconds=1
+            )
         elif period == "last_3_days":
-            start_dt = (now - timedelta(days=3)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = (now - timedelta(days=3)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             end_dt = now
         elif period == "last_week" or period == "last_7_days":
-            start_dt = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = (now - timedelta(days=7)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             end_dt = now
         elif period == "last_month" or period == "last_30_days":
-            start_dt = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = (now - timedelta(days=30)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             end_dt = now
         else:
             logger.error(f"Unknown period: {period}")
@@ -531,24 +563,24 @@ def query_by_relative_time(
         logger.info(f"Querying {period}: {start_dt} to {end_dt}")
 
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         query = db.collection(collection)
 
         # Apply date range filter
-        query = query.where('created_at', '>=', start_dt)
-        query = query.where('created_at', '<=', end_dt)
+        query = query.where("created_at", ">=", start_dt)
+        query = query.where("created_at", "<=", end_dt)
 
         # Apply optional metadata filters
         if tags:
-            query = query.where('tags', 'array_contains_any', tags)
+            query = query.where("tags", "array_contains_any", tags)
         if author:
-            query = query.where('author', '==', author)
+            query = query.where("author", "==", author)
         if source:
-            query = query.where('source', '==', source)
+            query = query.where("source", "==", source)
 
         # Sort by created_at descending (most recent first)
-        query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
         query = query.limit(limit)
 
         docs = query.stream()
@@ -556,7 +588,7 @@ def query_by_relative_time(
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id
+            chunk_data["id"] = doc.id
             chunks.append(chunk_data)
 
         logger.info(f"Found {len(chunks)} chunks for period '{period}'")
@@ -584,28 +616,36 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
         if period == "today":
             start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
         elif period == "yesterday":
-            start_dt = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = (now - timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             now = now.replace(hour=0, minute=0, second=0, microsecond=0)
         elif period == "last_3_days":
-            start_dt = (now - timedelta(days=3)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = (now - timedelta(days=3)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
         elif period == "last_7_days" or period == "last_week":
-            start_dt = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = (now - timedelta(days=7)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
         elif period == "last_30_days" or period == "last_month":
-            start_dt = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = (now - timedelta(days=30)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
         else:
             logger.error(f"Unknown period: {period}")
-            return {'error': f'Unknown period: {period}'}
+            return {"error": f"Unknown period: {period}"}
 
         logger.info(f"Collecting activity summary for {period}")
 
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         # Query all chunks in period (no limit)
         query = db.collection(collection)
-        query = query.where('created_at', '>=', start_dt)
-        query = query.where('created_at', '<=', now)
-        query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+        query = query.where("created_at", ">=", start_dt)
+        query = query.where("created_at", "<=", now)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
 
         docs = query.stream()
 
@@ -619,47 +659,53 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
             total_chunks += 1
 
             # Group by day
-            created_at = data.get('created_at')
+            created_at = data.get("created_at")
             if created_at:
-                day_key = created_at.strftime('%Y-%m-%d')
+                day_key = created_at.strftime("%Y-%m-%d")
                 chunks_by_day[day_key] = chunks_by_day.get(day_key, 0) + 1
 
             # Track sources
-            source = data.get('source')
+            source = data.get("source")
             if source:
                 top_sources[source] = top_sources.get(source, 0) + 1
 
             # Track authors
-            author = data.get('author')
+            author = data.get("author")
             if author:
                 top_authors[author] = top_authors.get(author, 0) + 1
 
         # Sort by count descending
-        top_sources_sorted = sorted(top_sources.items(), key=lambda x: x[1], reverse=True)[:5]
-        top_authors_sorted = sorted(top_authors.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_sources_sorted = sorted(
+            top_sources.items(), key=lambda x: x[1], reverse=True
+        )[:5]
+        top_authors_sorted = sorted(
+            top_authors.items(), key=lambda x: x[1], reverse=True
+        )[:5]
 
         activity = {
-            'period': period,
-            'total_chunks_added': total_chunks,
-            'days_with_activity': len(chunks_by_day),
-            'chunks_by_day': dict(sorted(chunks_by_day.items())),  # Sort by date
-            'top_sources': [{'source': s, 'count': c} for s, c in top_sources_sorted],
-            'top_authors': [{'author': a, 'count': c} for a, c in top_authors_sorted]
+            "period": period,
+            "total_chunks_added": total_chunks,
+            "days_with_activity": len(chunks_by_day),
+            "chunks_by_day": dict(sorted(chunks_by_day.items())),  # Sort by date
+            "top_sources": [{"source": s, "count": c} for s, c in top_sources_sorted],
+            "top_authors": [{"author": a, "count": c} for a, c in top_authors_sorted],
         }
 
-        logger.info(f"Activity summary: {total_chunks} chunks added in {len(chunks_by_day)} days")
+        logger.info(
+            f"Activity summary: {total_chunks} chunks added in {len(chunks_by_day)} days"
+        )
         return activity
 
     except Exception as e:
         logger.error(f"Failed to collect activity summary: {e}")
         return {
-            'error': str(e),
-            'period': period,
-            'total_chunks_added': 0,
-            'days_with_activity': 0,
-            'chunks_by_day': {},
-            'top_sources': [],
-            'top_authors': []
+            "error": str(e),
+            "period": period,
+            "total_chunks_added": 0,
+            "days_with_activity": 0,
+            "chunks_by_day": {},
+            "top_sources": [],
+            "top_authors": [],
         }
 
 
@@ -676,16 +722,18 @@ def get_recently_added(limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         now = datetime.utcnow()
-        start_dt = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_dt = (now - timedelta(days=days)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
 
         logger.info(f"Getting {limit} recently added chunks from last {days} days")
 
         query = db.collection(collection)
-        query = query.where('created_at', '>=', start_dt)
-        query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+        query = query.where("created_at", ">=", start_dt)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
         query = query.limit(limit)
 
         docs = query.stream()
@@ -693,7 +741,7 @@ def get_recently_added(limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id
+            chunk_data["id"] = doc.id
             chunks.append(chunk_data)
 
         logger.info(f"Retrieved {len(chunks)} recently added chunks")
@@ -717,14 +765,16 @@ def get_all_clusters() -> List[Dict[str, Any]]:
         logger.info("Fetching all clusters from clusters collection")
 
         # Query clusters collection, order by size descending
-        query = db.collection('clusters').order_by('size', direction=firestore.Query.DESCENDING)
+        query = db.collection("clusters").order_by(
+            "size", direction=firestore.Query.DESCENDING
+        )
 
         docs = query.stream()
 
         clusters = []
         for doc in docs:
             cluster_data = doc.to_dict()
-            cluster_data['id'] = doc.id  # Add document ID
+            cluster_data["id"] = doc.id  # Add document ID
             clusters.append(cluster_data)
 
         logger.info(f"Retrieved {len(clusters)} clusters")
@@ -750,7 +800,7 @@ def get_cluster_by_id(cluster_id: str) -> Optional[Dict[str, Any]]:
 
         logger.info(f"Fetching cluster {cluster_id} from clusters collection")
 
-        doc_ref = db.collection('clusters').document(cluster_id)
+        doc_ref = db.collection("clusters").document(cluster_id)
         doc = doc_ref.get()
 
         if not doc.exists:
@@ -758,7 +808,7 @@ def get_cluster_by_id(cluster_id: str) -> Optional[Dict[str, Any]]:
             return None
 
         cluster_data = doc.to_dict()
-        cluster_data['id'] = doc.id
+        cluster_data["id"] = doc.id
 
         logger.info(f"Retrieved cluster {cluster_id}")
         return cluster_data
@@ -781,19 +831,23 @@ def get_chunks_by_cluster(cluster_id: str, limit: int = 20) -> List[Dict[str, An
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         logger.info(f"Fetching chunks for cluster {cluster_id} (limit: {limit})")
 
         # Query kb_items where cluster_id array contains cluster_id
-        query = db.collection(collection).where('cluster_id', 'array_contains', cluster_id).limit(limit)
+        query = (
+            db.collection(collection)
+            .where("cluster_id", "array_contains", cluster_id)
+            .limit(limit)
+        )
 
         docs = query.stream()
 
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id
+            chunk_data["id"] = doc.id
             chunks.append(chunk_data)
 
         logger.info(f"Found {len(chunks)} chunks in cluster {cluster_id}")
@@ -805,9 +859,7 @@ def get_chunks_by_cluster(cluster_id: str, limit: int = 20) -> List[Dict[str, An
 
 
 def search_within_cluster(
-    cluster_id: str,
-    embedding_vector: List[float],
-    limit: int = 10
+    cluster_id: str, embedding_vector: List[float], limit: int = 10
 ) -> List[Dict[str, Any]]:
     """
     Execute vector similarity search filtered to a specific cluster.
@@ -826,19 +878,23 @@ def search_within_cluster(
 
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
-        logger.info(f"Executing vector search within cluster {cluster_id} (limit: {limit})")
+        logger.info(
+            f"Executing vector search within cluster {cluster_id} (limit: {limit})"
+        )
 
         # Create vector query with cluster filter
         # NOTE: Filter must be applied BEFORE find_nearest() in Firestore
-        vector_query = db.collection(collection).where(
-            'cluster_id', 'array_contains', cluster_id
-        ).find_nearest(
-            vector_field='embedding',
-            query_vector=Vector(embedding_vector),
-            distance_measure=DistanceMeasure.COSINE,
-            limit=limit
+        vector_query = (
+            db.collection(collection)
+            .where("cluster_id", "array_contains", cluster_id)
+            .find_nearest(
+                vector_field="embedding",
+                query_vector=Vector(embedding_vector),
+                distance_measure=DistanceMeasure.COSINE,
+                limit=limit,
+            )
         )
 
         docs = vector_query.stream()
@@ -846,7 +902,7 @@ def search_within_cluster(
         chunks = []
         for doc in docs:
             chunk_data = doc.to_dict()
-            chunk_data['id'] = doc.id
+            chunk_data["id"] = doc.id
             chunks.append(chunk_data)
             if len(chunks) >= limit:
                 break
@@ -855,7 +911,9 @@ def search_within_cluster(
         return chunks
 
     except Exception as e:
-        logger.error(f"Failed to execute vector search within cluster {cluster_id}: {e}")
+        logger.error(
+            f"Failed to execute vector search within cluster {cluster_id}: {e}"
+        )
         return []
 
 
@@ -878,7 +936,7 @@ DEFAULT_QUALITY_DOMAINS = [
     "mckinsey.com",
     "heise.de",
     "golem.de",
-    "arxiv.org"
+    "arxiv.org",
 ]
 
 # ============================================================================
@@ -914,8 +972,8 @@ DEFAULT_HOT_SITES = {
             "theverge.com",
             "simonwillison.net",
             "newsletter.pragmaticengineer.com",
-            "bytebytego.com"
-        ]
+            "bytebytego.com",
+        ],
     },
     "tech_de": {
         "description": "German tech news and professional IT sources",
@@ -925,8 +983,8 @@ DEFAULT_HOT_SITES = {
             "t3n.de",
             "the-decoder.de",
             "computerbase.de",
-            "heise.de/ix"
-        ]
+            "heise.de/ix",
+        ],
     },
     "ai": {
         "description": "AI/ML research, LLMs, agents, and AI-powered development",
@@ -947,8 +1005,8 @@ DEFAULT_HOT_SITES = {
             "unite.ai",
             "towardsdatascience.com",
             "thesequence.substack.com",
-            "importai.substack.com"
-        ]
+            "importai.substack.com",
+        ],
     },
     "devops": {
         "description": "DevOps, SRE, platform engineering, and developer experience",
@@ -965,8 +1023,8 @@ DEFAULT_HOT_SITES = {
             "devblogs.microsoft.com/devops",
             "cloud.google.com/blog",
             "kubernetes.io/blog",
-            "cncf.io/blog"
-        ]
+            "cncf.io/blog",
+        ],
     },
     "business": {
         "description": "Business strategy, tech leadership, and product management",
@@ -983,14 +1041,12 @@ DEFAULT_HOT_SITES = {
             "svpg.com",
             "productboard.com/blog",
             "intercom.com/blog",
-            "exponentialview.co"
-        ]
-    }
+            "exponentialview.co",
+        ],
+    },
 }
 
-DEFAULT_EXCLUDED_DOMAINS = [
-    "medium.com"
-]
+DEFAULT_EXCLUDED_DOMAINS = ["medium.com"]
 
 
 def get_recommendation_config() -> Dict[str, Any]:
@@ -1014,32 +1070,34 @@ def get_recommendation_config() -> Dict[str, Any]:
 
         logger.info("Fetching recommendation config from config/recommendation_domains")
 
-        doc_ref = db.collection('config').document('recommendation_domains')
+        doc_ref = db.collection("config").document("recommendation_domains")
         doc = doc_ref.get()
 
         if not doc.exists:
             logger.info("Config not found, creating default configuration")
             # Create default config
             default_config = {
-                'quality_domains': DEFAULT_QUALITY_DOMAINS,
-                'excluded_domains': DEFAULT_EXCLUDED_DOMAINS,
-                'last_updated': datetime.utcnow(),
-                'updated_by': 'initial_setup'
+                "quality_domains": DEFAULT_QUALITY_DOMAINS,
+                "excluded_domains": DEFAULT_EXCLUDED_DOMAINS,
+                "last_updated": datetime.utcnow(),
+                "updated_by": "initial_setup",
             }
             doc_ref.set(default_config)
             return default_config
 
         config = doc.to_dict()
-        logger.info(f"Retrieved recommendation config: {len(config.get('quality_domains', []))} domains")
+        logger.info(
+            f"Retrieved recommendation config: {len(config.get('quality_domains', []))} domains"
+        )
         return config
 
     except Exception as e:
         logger.error(f"Failed to get recommendation config: {e}")
         # Return defaults on error
         return {
-            'quality_domains': DEFAULT_QUALITY_DOMAINS,
-            'excluded_domains': DEFAULT_EXCLUDED_DOMAINS,
-            'error': str(e)
+            "quality_domains": DEFAULT_QUALITY_DOMAINS,
+            "excluded_domains": DEFAULT_EXCLUDED_DOMAINS,
+            "error": str(e),
         }
 
 
@@ -1048,7 +1106,7 @@ def update_recommendation_config(
     remove_domains: Optional[List[str]] = None,
     add_excluded: Optional[List[str]] = None,
     remove_excluded: Optional[List[str]] = None,
-    updated_by: str = "mcp_tool"
+    updated_by: str = "mcp_tool",
 ) -> Dict[str, Any]:
     """
     Update reading recommendation configuration in Firestore.
@@ -1073,65 +1131,65 @@ def update_recommendation_config(
         logger.info("Updating recommendation config")
 
         # Get current config
-        doc_ref = db.collection('config').document('recommendation_domains')
+        doc_ref = db.collection("config").document("recommendation_domains")
         doc = doc_ref.get()
 
         if doc.exists:
             current = doc.to_dict()
         else:
             current = {
-                'quality_domains': DEFAULT_QUALITY_DOMAINS.copy(),
-                'excluded_domains': DEFAULT_EXCLUDED_DOMAINS.copy()
+                "quality_domains": DEFAULT_QUALITY_DOMAINS.copy(),
+                "excluded_domains": DEFAULT_EXCLUDED_DOMAINS.copy(),
             }
 
         # Track changes
         changes = {
-            'domains_added': [],
-            'domains_removed': [],
-            'excluded_added': [],
-            'excluded_removed': []
+            "domains_added": [],
+            "domains_removed": [],
+            "excluded_added": [],
+            "excluded_removed": [],
         }
 
         # Update quality_domains
-        quality_domains = set(current.get('quality_domains', []))
+        quality_domains = set(current.get("quality_domains", []))
 
         if add_domains:
             for domain in add_domains:
                 domain = domain.lower().strip()
                 if domain and domain not in quality_domains:
                     quality_domains.add(domain)
-                    changes['domains_added'].append(domain)
+                    changes["domains_added"].append(domain)
 
         if remove_domains:
             for domain in remove_domains:
                 domain = domain.lower().strip()
                 if domain in quality_domains:
                     quality_domains.discard(domain)
-                    changes['domains_removed'].append(domain)
+                    changes["domains_removed"].append(domain)
 
         # Update excluded_domains
-        excluded_domains = set(current.get('excluded_domains', []))
+        excluded_domains = set(current.get("excluded_domains", []))
 
         if add_excluded:
             for domain in add_excluded:
                 domain = domain.lower().strip()
                 if domain and domain not in excluded_domains:
                     excluded_domains.add(domain)
-                    changes['excluded_added'].append(domain)
+                    changes["excluded_added"].append(domain)
 
         if remove_excluded:
             for domain in remove_excluded:
                 domain = domain.lower().strip()
                 if domain in excluded_domains:
                     excluded_domains.discard(domain)
-                    changes['excluded_removed'].append(domain)
+                    changes["excluded_removed"].append(domain)
 
         # Prepare updated config
         updated_config = {
-            'quality_domains': sorted(list(quality_domains)),
-            'excluded_domains': sorted(list(excluded_domains)),
-            'last_updated': datetime.utcnow(),
-            'updated_by': updated_by
+            "quality_domains": sorted(list(quality_domains)),
+            "excluded_domains": sorted(list(excluded_domains)),
+            "last_updated": datetime.utcnow(),
+            "updated_by": updated_by,
         }
 
         # Save to Firestore
@@ -1142,18 +1200,11 @@ def update_recommendation_config(
             f"+{len(changes['domains_added'])} -{len(changes['domains_removed'])} domains"
         )
 
-        return {
-            'success': True,
-            'config': updated_config,
-            'changes': changes
-        }
+        return {"success": True, "config": updated_config, "changes": changes}
 
     except Exception as e:
         logger.error(f"Failed to update recommendation config: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 def get_top_clusters(limit: int = 10) -> List[Dict[str, Any]]:
@@ -1173,18 +1224,20 @@ def get_top_clusters(limit: int = 10) -> List[Dict[str, Any]]:
 
         logger.info(f"Fetching top {limit} clusters by size")
 
-        query = db.collection('clusters').order_by(
-            'size', direction=firestore.Query.DESCENDING
-        ).limit(limit)
+        query = (
+            db.collection("clusters")
+            .order_by("size", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
 
         docs = query.stream()
 
         clusters = []
         for doc in docs:
             cluster_data = doc.to_dict()
-            cluster_data['id'] = doc.id
+            cluster_data["id"] = doc.id
             # Skip noise cluster
-            if doc.id not in ('noise', 'cluster_-1', '-1'):
+            if doc.id not in ("noise", "cluster_-1", "-1"):
                 clusters.append(cluster_data)
 
         logger.info(f"Retrieved {len(clusters)} top clusters")
@@ -1195,7 +1248,9 @@ def get_top_clusters(limit: int = 10) -> List[Dict[str, Any]]:
         return []
 
 
-def get_recent_chunks_with_cards(days: int = 14, limit: int = 50) -> List[Dict[str, Any]]:
+def get_recent_chunks_with_cards(
+    days: int = 14, limit: int = 50
+) -> List[Dict[str, Any]]:
     """
     Get recent chunks that have knowledge cards for recommendation query generation.
 
@@ -1210,16 +1265,18 @@ def get_recent_chunks_with_cards(days: int = 14, limit: int = 50) -> List[Dict[s
     """
     try:
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         now = datetime.utcnow()
-        start_dt = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_dt = (now - timedelta(days=days)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
 
         logger.info(f"Fetching recent chunks with knowledge cards (last {days} days)")
 
         query = db.collection(collection)
-        query = query.where('created_at', '>=', start_dt)
-        query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+        query = query.where("created_at", ">=", start_dt)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
         query = query.limit(limit)
 
         docs = query.stream()
@@ -1228,8 +1285,8 @@ def get_recent_chunks_with_cards(days: int = 14, limit: int = 50) -> List[Dict[s
         for doc in docs:
             chunk_data = doc.to_dict()
             # Only include chunks with knowledge cards
-            if chunk_data.get('knowledge_card'):
-                chunk_data['id'] = doc.id
+            if chunk_data.get("knowledge_card"):
+                chunk_data["id"] = doc.id
                 chunks.append(chunk_data)
 
         logger.info(f"Retrieved {len(chunks)} recent chunks with knowledge cards")
@@ -1245,31 +1302,27 @@ def get_recent_chunks_with_cards(days: int = 14, limit: int = 50) -> List[Dict[s
 # ============================================================================
 
 DEFAULT_RANKING_WEIGHTS = {
-    'relevance': 0.50,
-    'recency': 0.25,
-    'depth': 0.15,
-    'authority': 0.10
+    "relevance": 0.50,
+    "recency": 0.25,
+    "depth": 0.15,
+    "authority": 0.10,
 }
 
 DEFAULT_RANKING_SETTINGS = {
-    'recency': {
-        'half_life_days': 90,
-        'max_age_days': 365,
-        'tavily_days_filter': 180
+    "recency": {"half_life_days": 90, "max_age_days": 365, "tavily_days_filter": 180},
+    "diversity": {
+        "shown_ttl_days": 7,
+        "novelty_bonus": 0.10,
+        "domain_duplicate_penalty": 0.05,
+        "max_per_domain": 2,
+        "stochastic_temperature": 0.3,
     },
-    'diversity': {
-        'shown_ttl_days': 7,
-        'novelty_bonus': 0.10,
-        'domain_duplicate_penalty': 0.05,
-        'max_per_domain': 2,
-        'stochastic_temperature': 0.3
+    "slots": {
+        "relevance_count": 2,
+        "serendipity_count": 1,
+        "stale_refresh_count": 1,
+        "trending_count": 1,
     },
-    'slots': {
-        'relevance_count': 2,
-        'serendipity_count': 1,
-        'stale_refresh_count': 1,
-        'trending_count': 1
-    }
 }
 
 
@@ -1292,7 +1345,7 @@ def get_ranking_config() -> Dict[str, Any]:
         db = get_firestore_client()
 
         # Fetch ranking weights
-        weights_ref = db.collection('config').document('ranking_weights')
+        weights_ref = db.collection("config").document("ranking_weights")
         weights_doc = weights_ref.get()
 
         if weights_doc.exists:
@@ -1302,13 +1355,13 @@ def get_ranking_config() -> Dict[str, Any]:
             logger.info("Creating default ranking weights config")
             weights = {
                 **DEFAULT_RANKING_WEIGHTS,
-                'last_updated': datetime.utcnow(),
-                'updated_by': 'initial_setup'
+                "last_updated": datetime.utcnow(),
+                "updated_by": "initial_setup",
             }
             weights_ref.set(weights)
 
         # Fetch ranking settings
-        settings_ref = db.collection('config').document('ranking_settings')
+        settings_ref = db.collection("config").document("ranking_settings")
         settings_doc = settings_ref.get()
 
         if settings_doc.exists:
@@ -1318,43 +1371,49 @@ def get_ranking_config() -> Dict[str, Any]:
             logger.info("Creating default ranking settings config")
             settings = {
                 **DEFAULT_RANKING_SETTINGS,
-                'last_updated': datetime.utcnow(),
-                'updated_by': 'initial_setup'
+                "last_updated": datetime.utcnow(),
+                "updated_by": "initial_setup",
             }
             settings_ref.set(settings)
 
         logger.info("Retrieved ranking configuration")
 
         return {
-            'weights': {
-                'relevance': weights.get('relevance', DEFAULT_RANKING_WEIGHTS['relevance']),
-                'recency': weights.get('recency', DEFAULT_RANKING_WEIGHTS['recency']),
-                'depth': weights.get('depth', DEFAULT_RANKING_WEIGHTS['depth']),
-                'authority': weights.get('authority', DEFAULT_RANKING_WEIGHTS['authority'])
+            "weights": {
+                "relevance": weights.get(
+                    "relevance", DEFAULT_RANKING_WEIGHTS["relevance"]
+                ),
+                "recency": weights.get("recency", DEFAULT_RANKING_WEIGHTS["recency"]),
+                "depth": weights.get("depth", DEFAULT_RANKING_WEIGHTS["depth"]),
+                "authority": weights.get(
+                    "authority", DEFAULT_RANKING_WEIGHTS["authority"]
+                ),
             },
-            'settings': {
-                'recency': settings.get('recency', DEFAULT_RANKING_SETTINGS['recency']),
-                'diversity': settings.get('diversity', DEFAULT_RANKING_SETTINGS['diversity']),
-                'slots': settings.get('slots', DEFAULT_RANKING_SETTINGS['slots'])
+            "settings": {
+                "recency": settings.get("recency", DEFAULT_RANKING_SETTINGS["recency"]),
+                "diversity": settings.get(
+                    "diversity", DEFAULT_RANKING_SETTINGS["diversity"]
+                ),
+                "slots": settings.get("slots", DEFAULT_RANKING_SETTINGS["slots"]),
             },
-            'weights_last_updated': str(weights.get('last_updated', '')),
-            'settings_last_updated': str(settings.get('last_updated', ''))
+            "weights_last_updated": str(weights.get("last_updated", "")),
+            "settings_last_updated": str(settings.get("last_updated", "")),
         }
 
     except Exception as e:
         logger.error(f"Failed to get ranking config: {e}")
         # Return defaults on error
         return {
-            'weights': DEFAULT_RANKING_WEIGHTS,
-            'settings': DEFAULT_RANKING_SETTINGS,
-            'error': str(e)
+            "weights": DEFAULT_RANKING_WEIGHTS,
+            "settings": DEFAULT_RANKING_SETTINGS,
+            "error": str(e),
         }
 
 
 def update_ranking_config(
     weights: Optional[Dict[str, float]] = None,
     settings: Optional[Dict[str, Any]] = None,
-    updated_by: str = "mcp_tool"
+    updated_by: str = "mcp_tool",
 ) -> Dict[str, Any]:
     """
     Update ranking configuration in Firestore.
@@ -1383,47 +1442,40 @@ def update_ranking_config(
             weight_sum = sum(weights.values())
             if abs(weight_sum - 1.0) > 0.01:
                 return {
-                    'success': False,
-                    'error': f'Weights must sum to 1.0, got {weight_sum}'
+                    "success": False,
+                    "error": f"Weights must sum to 1.0, got {weight_sum}",
                 }
 
-            weights_ref = db.collection('config').document('ranking_weights')
+            weights_ref = db.collection("config").document("ranking_weights")
             weights_data = {
                 **weights,
-                'last_updated': datetime.utcnow(),
-                'updated_by': updated_by
+                "last_updated": datetime.utcnow(),
+                "updated_by": updated_by,
             }
             weights_ref.set(weights_data, merge=True)
-            changes['weights_updated'] = True
+            changes["weights_updated"] = True
             logger.info(f"Updated ranking weights: {weights}")
 
         # Update settings if provided
         if settings:
-            settings_ref = db.collection('config').document('ranking_settings')
+            settings_ref = db.collection("config").document("ranking_settings")
             settings_data = {
                 **settings,
-                'last_updated': datetime.utcnow(),
-                'updated_by': updated_by
+                "last_updated": datetime.utcnow(),
+                "updated_by": updated_by,
             }
             settings_ref.set(settings_data, merge=True)
-            changes['settings_updated'] = True
+            changes["settings_updated"] = True
             logger.info(f"Updated ranking settings")
 
         # Fetch updated config
         updated_config = get_ranking_config()
 
-        return {
-            'success': True,
-            'config': updated_config,
-            'changes': changes
-        }
+        return {"success": True, "config": updated_config, "changes": changes}
 
     except Exception as e:
         logger.error(f"Failed to update ranking config: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+        return {"success": False, "error": str(e)}
 
 
 # ============================================================================
@@ -1436,7 +1488,7 @@ DEFAULT_SHOWN_TTL_DAYS = 7
 def record_shown_recommendations(
     user_id: str,
     recommendations: List[Dict[str, Any]],
-    ttl_days: int = DEFAULT_SHOWN_TTL_DAYS
+    ttl_days: int = DEFAULT_SHOWN_TTL_DAYS,
 ) -> Dict[str, Any]:
     """
     Record shown recommendations to Firestore for deduplication.
@@ -1470,7 +1522,7 @@ def record_shown_recommendations(
         batch = db.batch()
 
         for rec in recommendations:
-            url = rec.get('url')
+            url = rec.get("url")
             if not url:
                 continue
 
@@ -1478,16 +1530,21 @@ def record_shown_recommendations(
             url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
             doc_id = f"{url_hash}_{now.strftime('%Y%m%d%H%M%S')}"
 
-            doc_ref = db.collection('shown_recommendations').document(user_id).collection('items').document(doc_id)
+            doc_ref = (
+                db.collection("shown_recommendations")
+                .document(user_id)
+                .collection("items")
+                .document(doc_id)
+            )
 
             doc_data = {
-                'url': url,
-                'url_hash': url_hash,
-                'shown_at': now,
-                'expires_at': expires_at,
-                'slot_type': rec.get('slot', 'UNKNOWN'),
-                'combined_score': rec.get('combined_score', 0),
-                'final_score': rec.get('final_score', 0)
+                "url": url,
+                "url_hash": url_hash,
+                "shown_at": now,
+                "expires_at": expires_at,
+                "slot_type": rec.get("slot", "UNKNOWN"),
+                "combined_score": rec.get("combined_score", 0),
+                "final_score": rec.get("final_score", 0),
             }
 
             batch.set(doc_ref, doc_data)
@@ -1499,24 +1556,17 @@ def record_shown_recommendations(
             logger.info(f"Recorded {recorded} shown recommendations for user {user_id}")
 
         return {
-            'success': True,
-            'recorded_count': recorded,
-            'expires_at': expires_at.isoformat()
+            "success": True,
+            "recorded_count": recorded,
+            "expires_at": expires_at.isoformat(),
         }
 
     except Exception as e:
         logger.error(f"Failed to record shown recommendations: {e}")
-        return {
-            'success': False,
-            'recorded_count': 0,
-            'error': str(e)
-        }
+        return {"success": False, "recorded_count": 0, "error": str(e)}
 
 
-def get_shown_urls(
-    user_id: str,
-    ttl_days: int = DEFAULT_SHOWN_TTL_DAYS
-) -> List[str]:
+def get_shown_urls(user_id: str, ttl_days: int = DEFAULT_SHOWN_TTL_DAYS) -> List[str]:
     """
     Get URLs shown to user within TTL period.
 
@@ -1540,15 +1590,17 @@ def get_shown_urls(
         logger.info(f"Fetching shown URLs for user {user_id} since {cutoff}")
 
         # Query items collection for non-expired entries
-        query = db.collection('shown_recommendations').document(user_id).collection('items')
-        query = query.where('shown_at', '>=', cutoff)
+        query = (
+            db.collection("shown_recommendations").document(user_id).collection("items")
+        )
+        query = query.where("shown_at", ">=", cutoff)
 
         docs = query.stream()
 
         urls = []
         for doc in docs:
             data = doc.to_dict()
-            url = data.get('url')
+            url = data.get("url")
             if url:
                 urls.append(url)
 
@@ -1581,8 +1633,10 @@ def cleanup_expired_shown_recommendations(user_id: str = "default") -> Dict[str,
         now = datetime.utcnow()
 
         # Query expired items
-        query = db.collection('shown_recommendations').document(user_id).collection('items')
-        query = query.where('expires_at', '<', now)
+        query = (
+            db.collection("shown_recommendations").document(user_id).collection("items")
+        )
+        query = query.where("expires_at", "<", now)
 
         docs = query.stream()
 
@@ -1602,25 +1656,21 @@ def cleanup_expired_shown_recommendations(user_id: str = "default") -> Dict[str,
         if deleted % 500 != 0:
             batch.commit()
 
-        logger.info(f"Cleaned up {deleted} expired shown recommendations for user {user_id}")
+        logger.info(
+            f"Cleaned up {deleted} expired shown recommendations for user {user_id}"
+        )
 
-        return {
-            'success': True,
-            'deleted_count': deleted
-        }
+        return {"success": True, "deleted_count": deleted}
 
     except Exception as e:
         logger.error(f"Failed to cleanup expired recommendations: {e}")
-        return {
-            'success': False,
-            'deleted_count': 0,
-            'error': str(e)
-        }
+        return {"success": False, "deleted_count": 0, "error": str(e)}
 
 
 # ============================================================================
 # Hot Sites Configuration (Story 3.9)
 # ============================================================================
+
 
 def get_hot_sites_config() -> Dict[str, Any]:
     """
@@ -1643,7 +1693,7 @@ def get_hot_sites_config() -> Dict[str, Any]:
 
         logger.info("Fetching hot sites config from config/hot_sites")
 
-        doc_ref = db.collection('config').document('hot_sites')
+        doc_ref = db.collection("config").document("hot_sites")
         doc = doc_ref.get()
 
         if not doc.exists:
@@ -1652,14 +1702,14 @@ def get_hot_sites_config() -> Dict[str, Any]:
             categories = {}
             descriptions = {}
             for cat_name, cat_data in DEFAULT_HOT_SITES.items():
-                categories[cat_name] = cat_data['domains']
-                descriptions[cat_name] = cat_data['description']
+                categories[cat_name] = cat_data["domains"]
+                descriptions[cat_name] = cat_data["description"]
 
             default_config = {
-                'categories': categories,
-                'descriptions': descriptions,
-                'last_updated': datetime.utcnow(),
-                'updated_by': 'initial_setup'
+                "categories": categories,
+                "descriptions": descriptions,
+                "last_updated": datetime.utcnow(),
+                "updated_by": "initial_setup",
             }
             doc_ref.set(default_config)
             return default_config
@@ -1667,8 +1717,12 @@ def get_hot_sites_config() -> Dict[str, Any]:
         config = doc.to_dict()
 
         # Calculate total domains
-        total_domains = sum(len(domains) for domains in config.get('categories', {}).values())
-        logger.info(f"Retrieved hot sites config: {len(config.get('categories', {}))} categories, {total_domains} total domains")
+        total_domains = sum(
+            len(domains) for domains in config.get("categories", {}).values()
+        )
+        logger.info(
+            f"Retrieved hot sites config: {len(config.get('categories', {}))} categories, {total_domains} total domains"
+        )
 
         return config
 
@@ -1678,13 +1732,9 @@ def get_hot_sites_config() -> Dict[str, Any]:
         categories = {}
         descriptions = {}
         for cat_name, cat_data in DEFAULT_HOT_SITES.items():
-            categories[cat_name] = cat_data['domains']
-            descriptions[cat_name] = cat_data['description']
-        return {
-            'categories': categories,
-            'descriptions': descriptions,
-            'error': str(e)
-        }
+            categories[cat_name] = cat_data["domains"]
+            descriptions[cat_name] = cat_data["description"]
+        return {"categories": categories, "descriptions": descriptions, "error": str(e)}
 
 
 def update_hot_sites_config(
@@ -1692,7 +1742,7 @@ def update_hot_sites_config(
     add_domains: Optional[List[str]] = None,
     remove_domains: Optional[List[str]] = None,
     description: Optional[str] = None,
-    updated_by: str = "mcp_tool"
+    updated_by: str = "mcp_tool",
 ) -> Dict[str, Any]:
     """
     Update hot sites configuration for a specific category.
@@ -1719,7 +1769,7 @@ def update_hot_sites_config(
         logger.info(f"Updating hot sites config for category: {category}")
 
         # Get current config
-        doc_ref = db.collection('config').document('hot_sites')
+        doc_ref = db.collection("config").document("hot_sites")
         doc = doc_ref.get()
 
         if doc.exists:
@@ -1729,24 +1779,21 @@ def update_hot_sites_config(
             categories = {}
             descriptions = {}
             for cat_name, cat_data in DEFAULT_HOT_SITES.items():
-                categories[cat_name] = cat_data['domains']
-                descriptions[cat_name] = cat_data['description']
-            current = {
-                'categories': categories,
-                'descriptions': descriptions
-            }
+                categories[cat_name] = cat_data["domains"]
+                descriptions[cat_name] = cat_data["description"]
+            current = {"categories": categories, "descriptions": descriptions}
 
         # Get current category domains (or empty list for new category)
-        categories = current.get('categories', {})
-        descriptions = current.get('descriptions', {})
+        categories = current.get("categories", {})
+        descriptions = current.get("descriptions", {})
 
         domain_set = set(categories.get(category, []))
 
         # Track changes
         changes = {
-            'domains_added': [],
-            'domains_removed': [],
-            'description_updated': False
+            "domains_added": [],
+            "domains_removed": [],
+            "description_updated": False,
         }
 
         # Add domains
@@ -1755,7 +1802,7 @@ def update_hot_sites_config(
                 domain = domain.lower().strip()
                 if domain and domain not in domain_set:
                     domain_set.add(domain)
-                    changes['domains_added'].append(domain)
+                    changes["domains_added"].append(domain)
 
         # Remove domains
         if remove_domains:
@@ -1763,22 +1810,22 @@ def update_hot_sites_config(
                 domain = domain.lower().strip()
                 if domain in domain_set:
                     domain_set.discard(domain)
-                    changes['domains_removed'].append(domain)
+                    changes["domains_removed"].append(domain)
 
         # Update description
         if description is not None:
             descriptions[category] = description
-            changes['description_updated'] = True
+            changes["description_updated"] = True
 
         # Update category
         categories[category] = sorted(list(domain_set))
 
         # Prepare updated config
         updated_config = {
-            'categories': categories,
-            'descriptions': descriptions,
-            'last_updated': datetime.utcnow(),
-            'updated_by': updated_by
+            "categories": categories,
+            "descriptions": descriptions,
+            "last_updated": datetime.utcnow(),
+            "updated_by": updated_by,
         }
 
         # Save to Firestore
@@ -1790,21 +1837,17 @@ def update_hot_sites_config(
         )
 
         return {
-            'success': True,
-            'category': category,
-            'domains': categories[category],
-            'domain_count': len(categories[category]),
-            'description': descriptions.get(category, ''),
-            'changes': changes
+            "success": True,
+            "category": category,
+            "domains": categories[category],
+            "domain_count": len(categories[category]),
+            "description": descriptions.get(category, ""),
+            "changes": changes,
         }
 
     except Exception as e:
         logger.error(f"Failed to update hot sites config: {e}")
-        return {
-            'success': False,
-            'category': category,
-            'error': str(e)
-        }
+        return {"success": False, "category": category, "error": str(e)}
 
 
 def get_hot_sites_domains(category: str) -> List[str]:
@@ -1821,7 +1864,7 @@ def get_hot_sites_domains(category: str) -> List[str]:
     """
     try:
         config = get_hot_sites_config()
-        categories = config.get('categories', {})
+        categories = config.get("categories", {})
 
         if category == "all":
             # Union of all category domains
@@ -1858,7 +1901,7 @@ def get_kb_credibility_signals() -> Dict[str, Any]:
         from urllib.parse import urlparse
 
         db = get_firestore_client()
-        collection = os.getenv('FIRESTORE_COLLECTION', 'kb_items')
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
         logger.info("Fetching KB credibility signals (all authors and source domains)")
 
@@ -1871,17 +1914,17 @@ def get_kb_credibility_signals() -> Dict[str, Any]:
             data = doc.to_dict()
 
             # Count authors
-            author = data.get('author')
+            author = data.get("author")
             if author and author.strip():
                 authors[author.strip()] += 1
 
             # Extract domain from source_url
-            source_url = data.get('source_url')
+            source_url = data.get("source_url")
             if source_url:
                 try:
                     parsed = urlparse(source_url)
-                    domain = parsed.netloc.replace('www.', '')
-                    if domain and domain not in ('readwise.io',):  # Skip meta-sources
+                    domain = parsed.netloc.replace("www.", "")
+                    if domain and domain not in ("readwise.io",):  # Skip meta-sources
                         domains[domain] += 1
                 except Exception:
                     pass
@@ -1891,10 +1934,10 @@ def get_kb_credibility_signals() -> Dict[str, Any]:
         top_domains = [domain for domain, _ in domains.most_common(50)]
 
         result = {
-            'authors': top_authors,
-            'domains': top_domains,
-            'author_count': len(authors),
-            'domain_count': len(domains)
+            "authors": top_authors,
+            "domains": top_domains,
+            "author_count": len(authors),
+            "domain_count": len(domains),
         }
 
         logger.info(
@@ -1907,9 +1950,330 @@ def get_kb_credibility_signals() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get KB credibility signals: {e}")
         return {
-            'authors': [],
-            'domains': [],
-            'author_count': 0,
-            'domain_count': 0,
-            'error': str(e)
+            "authors": [],
+            "domains": [],
+            "author_count": 0,
+            "domain_count": 0,
+            "error": str(e),
         }
+
+
+# ============================================================================
+# Relationship Functions (Story 4.3)
+# ============================================================================
+
+
+def get_chunk_relationships(chunk_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all relationships for a specific chunk (both as source and target).
+
+    Args:
+        chunk_id: The chunk ID to find relationships for
+
+    Returns:
+        List of relationships with type, confidence, explanation, and connected chunk info
+    """
+    try:
+        db = get_firestore_client()
+        relationships = []
+
+        # Get relationships where this chunk is the source
+        source_query = db.collection("relationships").where(
+            "source_chunk_id", "==", chunk_id
+        )
+        for doc in source_query.stream():
+            data = doc.to_dict()
+            relationships.append(
+                {
+                    "relationship_id": doc.id,
+                    "direction": "outgoing",
+                    "connected_chunk_id": data.get("target_chunk_id"),
+                    "type": data.get("type"),
+                    "confidence": data.get("confidence"),
+                    "explanation": data.get("explanation"),
+                    "source_context": data.get("source_context", {}),
+                }
+            )
+
+        # Get relationships where this chunk is the target
+        target_query = db.collection("relationships").where(
+            "target_chunk_id", "==", chunk_id
+        )
+        for doc in target_query.stream():
+            data = doc.to_dict()
+            relationships.append(
+                {
+                    "relationship_id": doc.id,
+                    "direction": "incoming",
+                    "connected_chunk_id": data.get("source_chunk_id"),
+                    "type": data.get("type"),
+                    "confidence": data.get("confidence"),
+                    "explanation": data.get("explanation"),
+                    "source_context": data.get("source_context", {}),
+                }
+            )
+
+        logger.info(f"Found {len(relationships)} relationships for chunk {chunk_id}")
+        return relationships
+
+    except Exception as e:
+        logger.error(f"Failed to get relationships for chunk {chunk_id}: {e}")
+        return []
+
+
+def get_source_relationships(source_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all relationships for chunks belonging to a specific source.
+
+    Args:
+        source_id: The source ID to find relationships for
+
+    Returns:
+        List of cross-source relationships aggregated by target source
+    """
+    try:
+        db = get_firestore_client()
+
+        # Get source document to find chunk IDs
+        source_doc = db.collection("sources").document(source_id).get()
+        if not source_doc.exists:
+            logger.warning(f"Source not found: {source_id}")
+            return []
+
+        source_data = source_doc.to_dict()
+        chunk_ids = source_data.get("chunk_ids", [])
+
+        if not chunk_ids:
+            return []
+
+        # Collect all relationships for this source's chunks
+        relationships_by_target_source = {}
+
+        for chunk_id in chunk_ids:
+            chunk_rels = get_chunk_relationships(chunk_id)
+            for rel in chunk_rels:
+                # Get target chunk to find its source
+                target_chunk_id = rel["connected_chunk_id"]
+                target_chunk = get_chunk_by_id(target_chunk_id)
+                if not target_chunk:
+                    continue
+
+                target_source_id = target_chunk.get("source_id", "unknown")
+
+                # Skip same-source relationships
+                if target_source_id == source_id:
+                    continue
+
+                # Aggregate by target source
+                if target_source_id not in relationships_by_target_source:
+                    relationships_by_target_source[target_source_id] = {
+                        "target_source_id": target_source_id,
+                        "target_title": target_chunk.get("title", "Unknown"),
+                        "target_author": target_chunk.get("author", "Unknown"),
+                        "relationship_types": {},
+                        "examples": [],
+                    }
+
+                # Count relationship types
+                rel_type = rel["type"]
+                if (
+                    rel_type
+                    not in relationships_by_target_source[target_source_id][
+                        "relationship_types"
+                    ]
+                ):
+                    relationships_by_target_source[target_source_id][
+                        "relationship_types"
+                    ][rel_type] = 0
+                relationships_by_target_source[target_source_id]["relationship_types"][
+                    rel_type
+                ] += 1
+
+                # Keep first few examples
+                if (
+                    len(relationships_by_target_source[target_source_id]["examples"])
+                    < 3
+                ):
+                    relationships_by_target_source[target_source_id]["examples"].append(
+                        {"type": rel_type, "explanation": rel["explanation"]}
+                    )
+
+        result = list(relationships_by_target_source.values())
+        logger.info(
+            f"Found relationships to {len(result)} other sources for {source_id}"
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get source relationships for {source_id}: {e}")
+        return []
+
+
+def list_sources(limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    List all sources with metadata.
+
+    Args:
+        limit: Maximum sources to return
+
+    Returns:
+        List of sources with title, author, chunk count
+    """
+    try:
+        db = get_firestore_client()
+
+        sources = []
+        for doc in db.collection("sources").limit(limit).stream():
+            data = doc.to_dict()
+            sources.append(
+                {
+                    "source_id": doc.id,
+                    "title": data.get("title", "Untitled"),
+                    "author": data.get("author", "Unknown"),
+                    "type": data.get("type", "unknown"),
+                    "chunk_count": data.get(
+                        "chunk_count", len(data.get("chunk_ids", []))
+                    ),
+                    "tags": data.get("tags", []),
+                }
+            )
+
+        logger.info(f"Listed {len(sources)} sources")
+        return sources
+
+    except Exception as e:
+        logger.error(f"Failed to list sources: {e}")
+        return []
+
+
+def get_source_by_id(source_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get a specific source with its chunks.
+
+    Args:
+        source_id: Source document ID
+
+    Returns:
+        Source data with chunk details, or None if not found
+    """
+    try:
+        db = get_firestore_client()
+
+        doc = db.collection("sources").document(source_id).get()
+        if not doc.exists:
+            return None
+
+        data = doc.to_dict()
+
+        # Get chunk summaries
+        chunk_ids = data.get("chunk_ids", [])
+        chunks = []
+        for chunk_id in chunk_ids[:20]:  # Limit to first 20 chunks
+            chunk = get_chunk_by_id(chunk_id)
+            if chunk:
+                kc = chunk.get("knowledge_card", {})
+                chunks.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "chunk_index": chunk.get("chunk_index", 0),
+                        "summary": kc.get("summary", "") if kc else "",
+                    }
+                )
+
+        return {
+            "source_id": doc.id,
+            "title": data.get("title", "Untitled"),
+            "author": data.get("author", "Unknown"),
+            "type": data.get("type", "unknown"),
+            "chunk_count": len(chunk_ids),
+            "tags": data.get("tags", []),
+            "chunks": sorted(chunks, key=lambda x: x["chunk_index"]),
+            "created_at": data.get("created_at"),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get source {source_id}: {e}")
+        return None
+
+
+def find_contradictions(limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Find chunks with contradicting relationships.
+
+    Args:
+        limit: Maximum contradictions to return
+
+    Returns:
+        List of contradiction pairs with explanations
+    """
+    try:
+        db = get_firestore_client()
+
+        contradictions = []
+        query = (
+            db.collection("relationships")
+            .where("type", "==", "contradicts")
+            .limit(limit)
+        )
+
+        for doc in query.stream():
+            data = doc.to_dict()
+
+            source_chunk = get_chunk_by_id(data.get("source_chunk_id"))
+            target_chunk = get_chunk_by_id(data.get("target_chunk_id"))
+
+            if source_chunk and target_chunk:
+                contradictions.append(
+                    {
+                        "chunk_a": {
+                            "chunk_id": data.get("source_chunk_id"),
+                            "title": source_chunk.get("title"),
+                            "author": source_chunk.get("author"),
+                            "summary": source_chunk.get("knowledge_card", {}).get(
+                                "summary", ""
+                            ),
+                        },
+                        "chunk_b": {
+                            "chunk_id": data.get("target_chunk_id"),
+                            "title": target_chunk.get("title"),
+                            "author": target_chunk.get("author"),
+                            "summary": target_chunk.get("knowledge_card", {}).get(
+                                "summary", ""
+                            ),
+                        },
+                        "explanation": data.get("explanation"),
+                        "confidence": data.get("confidence"),
+                    }
+                )
+
+        logger.info(f"Found {len(contradictions)} contradictions")
+        return contradictions
+
+    except Exception as e:
+        logger.error(f"Failed to find contradictions: {e}")
+        return []
+
+
+def get_relationship_stats() -> Dict[str, Any]:
+    """
+    Get statistics about relationships in the knowledge base.
+
+    Returns:
+        Dictionary with relationship counts by type
+    """
+    try:
+        db = get_firestore_client()
+
+        # Count by type
+        type_counts = {}
+        for doc in db.collection("relationships").stream():
+            rel_type = doc.to_dict().get("type", "unknown")
+            type_counts[rel_type] = type_counts.get(rel_type, 0) + 1
+
+        total = sum(type_counts.values())
+
+        return {"total_relationships": total, "by_type": type_counts}
+
+    except Exception as e:
+        logger.error(f"Failed to get relationship stats: {e}")
+        return {"total_relationships": 0, "by_type": {}, "error": str(e)}

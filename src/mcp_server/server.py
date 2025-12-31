@@ -8,20 +8,20 @@ This single FastAPI server handles:
 """
 
 import json
+import logging
 import os
 import sys
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 # Add current directory for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from oauth_server import OAuthServer
 import tools
+from oauth_server import OAuthServer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="KX-Hub MCP Server",
     description="MCP Server with OAuth 2.1 and Streamable HTTP transport",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Initialize OAuth server
@@ -45,12 +45,22 @@ TOOL_DEFINITIONS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Natural language search query"},
-                "filters": {"type": "object", "description": "Optional filters to narrow results"},
-                "limit": {"type": "integer", "description": "Maximum number of results (default 10)", "default": 10}
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query",
+                },
+                "filters": {
+                    "type": "object",
+                    "description": "Optional filters to narrow results",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results (default 10)",
+                    "default": 10,
+                },
             },
-            "required": ["query"]
-        }
+            "required": ["query"],
+        },
     },
     {
         "name": "get_chunk",
@@ -59,11 +69,19 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "chunk_id": {"type": "string", "description": "Chunk ID to retrieve"},
-                "include_related": {"type": "boolean", "description": "Include related chunks", "default": True},
-                "related_limit": {"type": "integer", "description": "Max related chunks (default 5)", "default": 5}
+                "include_related": {
+                    "type": "boolean",
+                    "description": "Include related chunks",
+                    "default": True,
+                },
+                "related_limit": {
+                    "type": "integer",
+                    "description": "Max related chunks (default 5)",
+                    "default": 5,
+                },
             },
-            "required": ["chunk_id"]
-        }
+            "required": ["chunk_id"],
+        },
     },
     {
         "name": "get_recent",
@@ -71,25 +89,37 @@ TOOL_DEFINITIONS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "limit": {"type": "integer", "description": "Max chunks to return (default 10)", "default": 10},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max chunks to return (default 10)",
+                    "default": 10,
+                },
                 "period": {
                     "type": "string",
                     "description": "Time period (default 'last_7_days')",
                     "default": "last_7_days",
-                    "enum": ["today", "yesterday", "last_3_days", "last_week", "last_7_days", "last_month", "last_30_days"]
-                }
-            }
-        }
+                    "enum": [
+                        "today",
+                        "yesterday",
+                        "last_3_days",
+                        "last_week",
+                        "last_7_days",
+                        "last_month",
+                        "last_30_days",
+                    ],
+                },
+            },
+        },
     },
     {
         "name": "get_stats",
         "description": "Get knowledge base statistics (total chunks, sources, authors, tags)",
-        "inputSchema": {"type": "object", "properties": {}}
+        "inputSchema": {"type": "object", "properties": {}},
     },
     {
         "name": "list_clusters",
         "description": "List all semantic clusters with metadata",
-        "inputSchema": {"type": "object", "properties": {}}
+        "inputSchema": {"type": "object", "properties": {}},
     },
     {
         "name": "get_cluster",
@@ -98,13 +128,29 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "cluster_id": {"type": "string", "description": "Cluster ID to fetch"},
-                "include_members": {"type": "boolean", "description": "Include member chunks", "default": True},
-                "include_related": {"type": "boolean", "description": "Include related clusters", "default": True},
-                "member_limit": {"type": "integer", "description": "Max member chunks (default 20)", "default": 20},
-                "related_limit": {"type": "integer", "description": "Max related clusters (default 5)", "default": 5}
+                "include_members": {
+                    "type": "boolean",
+                    "description": "Include member chunks",
+                    "default": True,
+                },
+                "include_related": {
+                    "type": "boolean",
+                    "description": "Include related clusters",
+                    "default": True,
+                },
+                "member_limit": {
+                    "type": "integer",
+                    "description": "Max member chunks (default 20)",
+                    "default": 20,
+                },
+                "related_limit": {
+                    "type": "integer",
+                    "description": "Max related clusters (default 5)",
+                    "default": 5,
+                },
             },
-            "required": ["cluster_id"]
-        }
+            "required": ["cluster_id"],
+        },
     },
     {
         "name": "configure_kb",
@@ -115,12 +161,23 @@ TOOL_DEFINITIONS = [
                 "action": {
                     "type": "string",
                     "description": "Action to perform",
-                    "enum": ["show_all", "show_ranking", "show_domains", "show_hot_sites", "update_ranking", "update_domains", "update_hot_sites"]
+                    "enum": [
+                        "show_all",
+                        "show_ranking",
+                        "show_domains",
+                        "show_hot_sites",
+                        "update_ranking",
+                        "update_domains",
+                        "update_hot_sites",
+                    ],
                 },
-                "params": {"type": "object", "description": "Action-specific parameters"}
+                "params": {
+                    "type": "object",
+                    "description": "Action-specific parameters",
+                },
             },
-            "required": ["action"]
-        }
+            "required": ["action"],
+        },
     },
     {
         "name": "search_within_cluster",
@@ -128,12 +185,22 @@ TOOL_DEFINITIONS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "cluster_id": {"type": "string", "description": "Cluster ID to search within"},
-                "query": {"type": "string", "description": "Natural language search query"},
-                "limit": {"type": "integer", "description": "Max results (default 10)", "default": 10}
+                "cluster_id": {
+                    "type": "string",
+                    "description": "Cluster ID to search within",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 10)",
+                    "default": 10,
+                },
             },
-            "required": ["cluster_id", "query"]
-        }
+            "required": ["cluster_id", "query"],
+        },
     },
     {
         "name": "get_reading_recommendations",
@@ -141,17 +208,119 @@ TOOL_DEFINITIONS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "cluster_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional cluster IDs to scope"},
-                "days": {"type": "integer", "description": "Lookback period in days (default 14)", "default": 14},
-                "hot_sites": {"type": "string", "description": "Source category", "enum": ["tech", "tech_de", "ai", "devops", "business", "all"]},
-                "include_seen": {"type": "boolean", "description": "Include previously shown", "default": False},
-                "limit": {"type": "integer", "description": "Max recommendations (default 10)", "default": 10},
-                "mode": {"type": "string", "description": "Discovery mode", "default": "balanced", "enum": ["balanced", "fresh", "deep", "surprise_me"]},
-                "predictable": {"type": "boolean", "description": "Disable query variation", "default": False},
-                "scope": {"type": "string", "description": "Scope", "default": "both", "enum": ["recent", "clusters", "both"]}
-            }
-        }
-    }
+                "cluster_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional cluster IDs to scope",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Lookback period in days (default 14)",
+                    "default": 14,
+                },
+                "hot_sites": {
+                    "type": "string",
+                    "description": "Source category",
+                    "enum": ["tech", "tech_de", "ai", "devops", "business", "all"],
+                },
+                "include_seen": {
+                    "type": "boolean",
+                    "description": "Include previously shown",
+                    "default": False,
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max recommendations (default 10)",
+                    "default": 10,
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Discovery mode",
+                    "default": "balanced",
+                    "enum": ["balanced", "fresh", "deep", "surprise_me"],
+                },
+                "predictable": {
+                    "type": "boolean",
+                    "description": "Disable query variation",
+                    "default": False,
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Scope",
+                    "default": "both",
+                    "enum": ["recent", "clusters", "both"],
+                },
+            },
+        },
+    },
+    # Story 4.3: Source and Relationship Tools
+    {
+        "name": "list_sources",
+        "description": "List all sources (books, articles) with metadata",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max sources to return (default 50)",
+                    "default": 50,
+                }
+            },
+        },
+    },
+    {
+        "name": "get_source",
+        "description": "Get source details with chunks and cross-source relationships",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source_id": {"type": "string", "description": "Source ID to retrieve"},
+                "include_relationships": {
+                    "type": "boolean",
+                    "description": "Include relationships to other sources",
+                    "default": True,
+                },
+            },
+            "required": ["source_id"],
+        },
+    },
+    {
+        "name": "get_contradictions",
+        "description": "Find contradicting ideas across sources",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max contradictions to return (default 10)",
+                    "default": 10,
+                }
+            },
+        },
+    },
+    {
+        "name": "search_within_source",
+        "description": "Semantic search restricted to a specific source",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source_id": {
+                    "type": "string",
+                    "description": "Source ID to search within",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 10)",
+                    "default": 10,
+                },
+            },
+            "required": ["source_id", "query"],
+        },
+    },
 ]
 
 
@@ -164,13 +333,11 @@ def verify_jwt_token(request: Request) -> Optional[Dict[str, Any]]:
     token = auth_header[7:]  # Remove "Bearer " prefix
     try:
         import jwt
+
         public_key = oauth_server.get_public_key()
         # Skip audience verification - aud is dynamic client_id from DCR
         decoded = jwt.decode(
-            token,
-            public_key,
-            algorithms=["RS256"],
-            options={"verify_aud": False}
+            token, public_key, algorithms=["RS256"], options={"verify_aud": False}
         )
         return decoded
     except Exception as e:
@@ -186,18 +353,18 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         return tools.search_kb(
             query=arguments.get("query", ""),
             filters=arguments.get("filters"),
-            limit=arguments.get("limit", 10)
+            limit=arguments.get("limit", 10),
         )
     elif name == "get_chunk":
         return tools.get_chunk(
             chunk_id=arguments.get("chunk_id", ""),
             include_related=arguments.get("include_related", True),
-            related_limit=arguments.get("related_limit", 5)
+            related_limit=arguments.get("related_limit", 5),
         )
     elif name == "get_recent":
         return tools.get_recent(
             period=arguments.get("period", "last_7_days"),
-            limit=arguments.get("limit", 10)
+            limit=arguments.get("limit", 10),
         )
     elif name == "get_stats":
         return tools.get_stats()
@@ -209,18 +376,17 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             include_members=arguments.get("include_members", True),
             include_related=arguments.get("include_related", True),
             member_limit=arguments.get("member_limit", 20),
-            related_limit=arguments.get("related_limit", 5)
+            related_limit=arguments.get("related_limit", 5),
         )
     elif name == "configure_kb":
         return tools.configure_kb(
-            action=arguments.get("action", ""),
-            params=arguments.get("params")
+            action=arguments.get("action", ""), params=arguments.get("params")
         )
     elif name == "search_within_cluster":
         return tools.search_within_cluster(
             cluster_id=arguments.get("cluster_id", ""),
             query=arguments.get("query", ""),
-            limit=arguments.get("limit", 10)
+            limit=arguments.get("limit", 10),
         )
     elif name == "get_reading_recommendations":
         return tools.get_reading_recommendations(
@@ -231,7 +397,23 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             limit=arguments.get("limit", 10),
             mode=arguments.get("mode", "balanced"),
             predictable=arguments.get("predictable", False),
-            scope=arguments.get("scope", "both")
+            scope=arguments.get("scope", "both"),
+        )
+    # Story 4.3: Source and Relationship Tools
+    elif name == "list_sources":
+        return tools.list_sources(limit=arguments.get("limit", 50))
+    elif name == "get_source":
+        return tools.get_source(
+            source_id=arguments.get("source_id", ""),
+            include_relationships=arguments.get("include_relationships", True),
+        )
+    elif name == "get_contradictions":
+        return tools.get_contradictions(limit=arguments.get("limit", 10))
+    elif name == "search_within_source":
+        return tools.search_within_source(
+            source_id=arguments.get("source_id", ""),
+            query=arguments.get("query", ""),
+            limit=arguments.get("limit", 10),
         )
     else:
         raise ValueError(f"Unknown tool: {name}")
@@ -239,17 +421,19 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 # ==================== Health Check ====================
 
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "kx-hub-mcp-server",
-        "transport": "streamable-http"
+        "transport": "streamable-http",
     }
 
 
 # ==================== OAuth 2.1 Endpoints ====================
+
 
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_metadata(request: Request):
@@ -284,6 +468,7 @@ async def token_endpoint(request: Request):
 
 # ==================== MCP Streamable HTTP ====================
 
+
 @app.post("/")
 @app.post("/mcp")
 async def mcp_endpoint(request: Request):
@@ -296,7 +481,10 @@ async def mcp_endpoint(request: Request):
     if not token_data:
         return JSONResponse(
             status_code=401,
-            content={"error": "Unauthorized", "error_description": "Invalid or missing token"}
+            content={
+                "error": "Unauthorized",
+                "error_description": "Invalid or missing token",
+            },
         )
 
     logger.info(f"MCP request from user: {token_data.get('sub')}")
@@ -309,22 +497,26 @@ async def mcp_endpoint(request: Request):
         logger.info(f"MCP method: {method}")
 
         if method == "initialize":
-            return JSONResponse(content={
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "serverInfo": {"name": "kx-hub", "version": "1.0.0"},
-                    "capabilities": {"tools": {}}
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "serverInfo": {"name": "kx-hub", "version": "1.0.0"},
+                        "capabilities": {"tools": {}},
+                    },
                 }
-            })
+            )
 
         elif method == "tools/list":
-            return JSONResponse(content={
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {"tools": TOOL_DEFINITIONS}
-            })
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {"tools": TOOL_DEFINITIONS},
+                }
+            )
 
         elif method == "tools/call":
             tool_name = body.get("params", {}).get("name")
@@ -332,28 +524,36 @@ async def mcp_endpoint(request: Request):
 
             try:
                 result = call_tool(tool_name, tool_args)
-                return JSONResponse(content={
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {"content": [{"type": "text", "text": json.dumps(result)}]}
-                })
+                return JSONResponse(
+                    content={
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "content": [{"type": "text", "text": json.dumps(result)}]
+                        },
+                    }
+                )
             except Exception as e:
                 logger.error(f"Tool call error: {e}", exc_info=True)
-                return JSONResponse(content={
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "error": {"code": -32603, "message": str(e)}
-                })
+                return JSONResponse(
+                    content={
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {"code": -32603, "message": str(e)},
+                    }
+                )
 
         elif method == "notifications/initialized":
             return JSONResponse(status_code=204, content=None)
 
         else:
-            return JSONResponse(content={
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {"code": -32601, "message": f"Method not found: {method}"}
-            })
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                }
+            )
 
     except Exception as e:
         logger.error(f"MCP endpoint error: {e}", exc_info=True)
@@ -362,8 +562,8 @@ async def mcp_endpoint(request: Request):
             content={
                 "jsonrpc": "2.0",
                 "id": None,
-                "error": {"code": -32603, "message": str(e)}
-            }
+                "error": {"code": -32603, "message": str(e)},
+            },
         )
 
 
@@ -376,11 +576,12 @@ async def root():
         "transport": "streamable-http",
         "oauth": {
             "metadata": "/.well-known/oauth-authorization-server",
-            "protected_resource": "/.well-known/oauth-protected-resource"
-        }
+            "protected_resource": "/.well-known/oauth-protected-resource",
+        },
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8080)
