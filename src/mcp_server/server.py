@@ -116,40 +116,35 @@ TOOL_DEFINITIONS = [
         "description": "Get knowledge base statistics (total chunks, sources, authors, tags)",
         "inputSchema": {"type": "object", "properties": {}},
     },
+    # Story 4.3: Replaced cluster tools with source tools
     {
-        "name": "list_clusters",
-        "description": "List all semantic clusters with metadata",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "get_cluster",
-        "description": "Get cluster details with member chunks and related clusters.",
+        "name": "list_sources",
+        "description": "List all sources (books, articles) with metadata",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "cluster_id": {"type": "string", "description": "Cluster ID to fetch"},
-                "include_members": {
-                    "type": "boolean",
-                    "description": "Include member chunks",
-                    "default": True,
-                },
-                "include_related": {
-                    "type": "boolean",
-                    "description": "Include related clusters",
-                    "default": True,
-                },
-                "member_limit": {
+                "limit": {
                     "type": "integer",
-                    "description": "Max member chunks (default 20)",
-                    "default": 20,
-                },
-                "related_limit": {
-                    "type": "integer",
-                    "description": "Max related clusters (default 5)",
-                    "default": 5,
+                    "description": "Max sources to return (default 50)",
+                    "default": 50,
+                }
+            },
+        },
+    },
+    {
+        "name": "get_source",
+        "description": "Get source details with chunks and cross-source relationships",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source_id": {"type": "string", "description": "Source ID to retrieve"},
+                "include_relationships": {
+                    "type": "boolean",
+                    "description": "Include relationships to other sources",
+                    "default": True,
                 },
             },
-            "required": ["cluster_id"],
+            "required": ["source_id"],
         },
     },
     {
@@ -180,14 +175,14 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "name": "search_within_cluster",
-        "description": "Semantic search restricted to a specific cluster",
+        "name": "search_within_source",
+        "description": "Semantic search restricted to a specific source",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "cluster_id": {
+                "source_id": {
                     "type": "string",
-                    "description": "Cluster ID to search within",
+                    "description": "Source ID to search within",
                 },
                 "query": {
                     "type": "string",
@@ -199,7 +194,21 @@ TOOL_DEFINITIONS = [
                     "default": 10,
                 },
             },
-            "required": ["cluster_id", "query"],
+            "required": ["source_id", "query"],
+        },
+    },
+    {
+        "name": "get_contradictions",
+        "description": "Find contradicting ideas across different sources",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max contradictions to return (default 10)",
+                    "default": 10,
+                }
+            },
         },
     },
     {
@@ -253,74 +262,6 @@ TOOL_DEFINITIONS = [
             },
         },
     },
-    # Story 4.3: Source and Relationship Tools
-    {
-        "name": "list_sources",
-        "description": "List all sources (books, articles) with metadata",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "description": "Max sources to return (default 50)",
-                    "default": 50,
-                }
-            },
-        },
-    },
-    {
-        "name": "get_source",
-        "description": "Get source details with chunks and cross-source relationships",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "source_id": {"type": "string", "description": "Source ID to retrieve"},
-                "include_relationships": {
-                    "type": "boolean",
-                    "description": "Include relationships to other sources",
-                    "default": True,
-                },
-            },
-            "required": ["source_id"],
-        },
-    },
-    {
-        "name": "get_contradictions",
-        "description": "Find contradicting ideas across sources",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "description": "Max contradictions to return (default 10)",
-                    "default": 10,
-                }
-            },
-        },
-    },
-    {
-        "name": "search_within_source",
-        "description": "Semantic search restricted to a specific source",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "source_id": {
-                    "type": "string",
-                    "description": "Source ID to search within",
-                },
-                "query": {
-                    "type": "string",
-                    "description": "Natural language search query",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max results (default 10)",
-                    "default": 10,
-                },
-            },
-            "required": ["source_id", "query"],
-        },
-    },
 ]
 
 
@@ -368,26 +309,26 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
     elif name == "get_stats":
         return tools.get_stats()
-    elif name == "list_clusters":
-        return tools.list_clusters()
-    elif name == "get_cluster":
-        return tools.get_cluster(
-            cluster_id=arguments.get("cluster_id", ""),
-            include_members=arguments.get("include_members", True),
-            include_related=arguments.get("include_related", True),
-            member_limit=arguments.get("member_limit", 20),
-            related_limit=arguments.get("related_limit", 5),
+    # Story 4.3: Replaced cluster tools with source tools
+    elif name == "list_sources":
+        return tools.list_sources(limit=arguments.get("limit", 50))
+    elif name == "get_source":
+        return tools.get_source(
+            source_id=arguments.get("source_id", ""),
+            include_relationships=arguments.get("include_relationships", True),
         )
     elif name == "configure_kb":
         return tools.configure_kb(
             action=arguments.get("action", ""), params=arguments.get("params")
         )
-    elif name == "search_within_cluster":
-        return tools.search_within_cluster(
-            cluster_id=arguments.get("cluster_id", ""),
+    elif name == "search_within_source":
+        return tools.search_within_source(
+            source_id=arguments.get("source_id", ""),
             query=arguments.get("query", ""),
             limit=arguments.get("limit", 10),
         )
+    elif name == "get_contradictions":
+        return tools.get_contradictions(limit=arguments.get("limit", 10))
     elif name == "get_reading_recommendations":
         return tools.get_reading_recommendations(
             cluster_ids=arguments.get("cluster_ids"),
@@ -398,22 +339,6 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             mode=arguments.get("mode", "balanced"),
             predictable=arguments.get("predictable", False),
             scope=arguments.get("scope", "both"),
-        )
-    # Story 4.3: Source and Relationship Tools
-    elif name == "list_sources":
-        return tools.list_sources(limit=arguments.get("limit", 50))
-    elif name == "get_source":
-        return tools.get_source(
-            source_id=arguments.get("source_id", ""),
-            include_relationships=arguments.get("include_relationships", True),
-        )
-    elif name == "get_contradictions":
-        return tools.get_contradictions(limit=arguments.get("limit", 10))
-    elif name == "search_within_source":
-        return tools.search_within_source(
-            source_id=arguments.get("source_id", ""),
-            query=arguments.get("query", ""),
-            limit=arguments.get("limit", 10),
         )
     else:
         raise ValueError(f"Unknown tool: {name}")

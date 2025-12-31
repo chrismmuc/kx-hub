@@ -70,37 +70,64 @@ def _format_knowledge_card(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
-def _format_cluster_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _format_source_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Extract and format cluster information from chunk data.
-    Fetches cluster metadata from Firestore if cluster_id exists.
+    Extract and format source information from chunk data.
+    Story 4.3: Replaced _format_cluster_info with source-based approach.
 
     Args:
         chunk: Chunk dictionary from Firestore
 
     Returns:
-        Formatted cluster dict or None if no cluster assignment
+        Formatted source dict or None if no source_id
     """
-    cluster_ids = chunk.get("cluster_id", [])
+    source_id = chunk.get("source_id")
 
-    # Handle edge cases
+    if not source_id:
+        # Fallback: derive from title if no source_id
+        return {
+            "source_id": None,
+            "title": chunk.get("title", "Unknown"),
+            "author": chunk.get("author", "Unknown"),
+        }
+
+    # Fetch source metadata from Firestore
+    try:
+        source_metadata = firestore_client.get_source_by_id(source_id)
+        if source_metadata:
+            return {
+                "source_id": source_id,
+                "title": source_metadata.get("title", "Unknown"),
+                "author": source_metadata.get("author", "Unknown"),
+                "type": source_metadata.get("type", "unknown"),
+                "chunk_count": source_metadata.get("chunk_count", 0),
+            }
+        else:
+            return {
+                "source_id": source_id,
+                "title": chunk.get("title", "Unknown"),
+                "author": chunk.get("author", "Unknown"),
+            }
+    except Exception as e:
+        logger.warning(f"Failed to fetch source metadata for {source_id}: {e}")
+        return {
+            "source_id": source_id,
+            "title": chunk.get("title", "Unknown"),
+            "author": chunk.get("author", "Unknown"),
+        }
+
+
+# Deprecated: Keep for backward compatibility during transition (Story 4.4)
+def _format_cluster_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """DEPRECATED: Use _format_source_info instead. Will be removed in Story 4.4."""
+    cluster_ids = chunk.get("cluster_id", [])
     if not cluster_ids:
         return None
-
-    # Get primary cluster (first in array)
     primary_cluster_id = (
         cluster_ids[0] if isinstance(cluster_ids, list) else cluster_ids
     )
-
-    # Handle noise cluster
     if primary_cluster_id == "noise":
-        return {
-            "cluster_id": "noise",
-            "name": "Outliers / Noise",
-            "description": "Chunks that do not fit well into any semantic cluster",
-        }
-
-    # Fetch cluster metadata from Firestore
+        return {"cluster_id": "noise", "name": "Outliers / Noise", "description": ""}
     try:
         cluster_metadata = firestore_client.get_cluster_by_id(primary_cluster_id)
         if cluster_metadata:
@@ -109,22 +136,13 @@ def _format_cluster_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 "name": cluster_metadata.get("name", f"Cluster {primary_cluster_id}"),
                 "description": cluster_metadata.get("description", ""),
             }
-        else:
-            # Cluster metadata not found
-            return {
-                "cluster_id": primary_cluster_id,
-                "name": f"Cluster {primary_cluster_id}",
-                "description": "Cluster metadata not available",
-            }
-    except Exception as e:
-        logger.warning(
-            f"Failed to fetch cluster metadata for {primary_cluster_id}: {e}"
-        )
-        return {
-            "cluster_id": primary_cluster_id,
-            "name": f"Cluster {primary_cluster_id}",
-            "description": "Error fetching cluster metadata",
-        }
+    except Exception:
+        pass
+    return {
+        "cluster_id": primary_cluster_id,
+        "name": f"Cluster {primary_cluster_id}",
+        "description": "",
+    }
 
 
 def get_chunk(
@@ -179,8 +197,8 @@ def get_chunk(
         if not knowledge_card:
             logger.info(f"No knowledge card found for chunk {chunk_id}")
 
-        # Task 1.5: Extract cluster membership info from chunk.cluster_id
-        cluster_info = _format_cluster_info(chunk)
+        # Story 4.3: Extract source info instead of cluster
+        source_info = _format_source_info(chunk)
 
         # Task 1.6: Format all URLs using _format_urls helper
         urls = _format_urls(chunk)
@@ -277,7 +295,7 @@ def get_chunk(
             "content": content,
             "chunk_info": chunk_info,
             "knowledge_card": knowledge_card,
-            "cluster": cluster_info,
+            "source_info": source_info,  # Story 4.3: Source instead of cluster
             "related_chunks": related_chunks,
             "relationships": formatted_relationships,  # Story 4.3: Explicit relationships
             **urls,  # Unpack URL fields (readwise_url, source_url, highlight_url)
