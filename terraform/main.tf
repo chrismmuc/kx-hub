@@ -387,6 +387,13 @@ data "google_project" "project" {
   project_id = var.project_id
 }
 
+# Grant Cloud Build service account access to Artifact Registry (kx-llm package)
+resource "google_project_iam_member" "cloudbuild_sa_artifact_registry_reader" {
+  project = var.project_id
+  role    = "roles/artifactregistry.reader"
+  member  = "serviceAccount:${data.google_project.project.number}@cloudbuild.gserviceaccount.com"
+}
+
 # Allow Pub/Sub service agent to invoke ingest Cloud Run service (2nd gen function trigger)
 resource "google_cloud_run_service_iam_member" "ingest_function_pubsub_invoker" {
   location = google_cloudfunctions2_function.ingest_function.location

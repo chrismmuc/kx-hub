@@ -35,6 +35,13 @@ resource "google_project_iam_member" "knowledge_cards_sa_log_writer" {
   member  = "serviceAccount:${google_service_account.knowledge_cards_function_sa.email}"
 }
 
+# Grant knowledge cards function access to Artifact Registry (kx-llm package)
+resource "google_project_iam_member" "knowledge_cards_sa_artifact_registry_reader" {
+  project = var.project_id
+  role    = "roles/artifactregistry.reader"
+  member  = "serviceAccount:${google_service_account.knowledge_cards_function_sa.email}"
+}
+
 # Archive the source code for the Knowledge Cards Cloud Function
 data "archive_file" "knowledge_cards_source" {
   type        = "zip"
