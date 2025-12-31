@@ -3,22 +3,20 @@ Smart query generation for reading recommendations.
 
 Story 3.5: AI-Powered Reading Recommendations
 Story 3.8: Enhanced Query Variation
+Story 4.4: Removed cluster dependency, uses sources and recent reads
 
 Generates search queries from KB context:
 - Recent read themes
-- Top cluster topics
+- Top source topics
 - Knowledge card takeaways for "beyond what you know" queries
-- Stale cluster detection for gap filling
-- Cluster rotation based on time/session seed (Story 3.8)
-- Synonym and perspective variation (Story 3.8)
 """
 
-import logging
 import hashlib
+import logging
 import random
-from datetime import datetime
-from typing import List, Dict, Any, Optional
 from collections import Counter
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import firestore_client
 
@@ -31,16 +29,16 @@ logger = logging.getLogger(__name__)
 
 # Synonym expansions for common terms
 SYNONYM_MAP = {
-    'architecture': ['system design', 'software architecture', 'design patterns'],
-    'microservices': ['distributed systems', 'service mesh', 'containerization'],
-    'platform': ['developer platform', 'internal platform', 'platform engineering'],
-    'ai': ['artificial intelligence', 'machine learning', 'deep learning'],
-    'ml': ['machine learning', 'predictive modeling', 'data science'],
-    'devops': ['site reliability', 'infrastructure', 'CI/CD'],
-    'security': ['cybersecurity', 'application security', 'zero trust'],
-    'data': ['data engineering', 'data pipelines', 'analytics'],
-    'cloud': ['cloud native', 'cloud computing', 'serverless'],
-    'api': ['REST API', 'GraphQL', 'API design'],
+    "architecture": ["system design", "software architecture", "design patterns"],
+    "microservices": ["distributed systems", "service mesh", "containerization"],
+    "platform": ["developer platform", "internal platform", "platform engineering"],
+    "ai": ["artificial intelligence", "machine learning", "deep learning"],
+    "ml": ["machine learning", "predictive modeling", "data science"],
+    "devops": ["site reliability", "infrastructure", "CI/CD"],
+    "security": ["cybersecurity", "application security", "zero trust"],
+    "data": ["data engineering", "data pipelines", "analytics"],
+    "cloud": ["cloud native", "cloud computing", "serverless"],
+    "api": ["REST API", "GraphQL", "API design"],
 }
 
 # Query perspective templates
@@ -98,10 +96,7 @@ def expand_with_synonyms(term: str) -> List[str]:
     return list(dict.fromkeys(expanded))  # Deduplicate while preserving order
 
 
-def vary_query_perspective(
-    topic: str,
-    session_seed: Optional[int] = None
-) -> str:
+def vary_query_perspective(topic: str, session_seed: Optional[int] = None) -> str:
     """
     Generate varied query using different perspective templates.
 
@@ -122,35 +117,6 @@ def vary_query_perspective(
     template = random.choice(PERSPECTIVE_TEMPLATES)
 
     return template.format(topic=topic)
-
-
-def rotate_clusters(
-    clusters: List[Dict[str, Any]],
-    session_seed: Optional[int] = None
-) -> List[Dict[str, Any]]:
-    """
-    Rotate cluster order based on session seed for variety.
-
-    Story 3.8 AC#5: Cluster rotation based on session.
-
-    Args:
-        clusters: List of cluster dictionaries
-        session_seed: Seed for rotation (default: time-based)
-
-    Returns:
-        Rotated list of clusters
-    """
-    if not clusters or len(clusters) <= 1:
-        return clusters
-
-    if session_seed is None:
-        session_seed = get_session_seed()
-
-    # Calculate rotation amount based on seed
-    rotation = session_seed % len(clusters)
-
-    # Rotate the list
-    return clusters[rotation:] + clusters[:rotation]
 
 
 def get_recent_read_themes(days: int = 14, limit: int = 50) -> Dict[str, Any]:
@@ -175,12 +141,7 @@ def get_recent_read_themes(days: int = 14, limit: int = 50) -> Dict[str, Any]:
 
         if not chunks:
             logger.warning("No recent chunks found for theme extraction")
-            return {
-                'themes': [],
-                'authors': [],
-                'sources': [],
-                'takeaways': []
-            }
+            return {"themes": [], "authors": [], "sources": [], "takeaways": []}
 
         # Collect metadata
         authors = Counter()
@@ -190,20 +151,20 @@ def get_recent_read_themes(days: int = 14, limit: int = 50) -> Dict[str, Any]:
 
         for chunk in chunks:
             # Count authors and sources
-            if chunk.get('author'):
-                authors[chunk['author']] += 1
-            if chunk.get('source'):
-                sources[chunk['source']] += 1
+            if chunk.get("author"):
+                authors[chunk["author"]] += 1
+            if chunk.get("source"):
+                sources[chunk["source"]] += 1
 
             # Collect tags
-            for tag in chunk.get('tags', []):
+            for tag in chunk.get("tags", []):
                 if tag:
                     tags[tag] += 1
 
             # Collect takeaways from knowledge cards
-            knowledge_card = chunk.get('knowledge_card', {})
+            knowledge_card = chunk.get("knowledge_card", {})
             if knowledge_card:
-                card_takeaways = knowledge_card.get('takeaways', [])
+                card_takeaways = knowledge_card.get("takeaways", [])
                 if card_takeaways:
                     takeaways.extend(card_takeaways[:2])  # Top 2 per chunk
 
@@ -214,11 +175,11 @@ def get_recent_read_themes(days: int = 14, limit: int = 50) -> Dict[str, Any]:
         unique_takeaways = list(dict.fromkeys(takeaways))[:10]
 
         result = {
-            'themes': top_tags,
-            'authors': [author for author, _ in authors.most_common(5)],
-            'sources': [source for source, _ in sources.most_common(5)],
-            'takeaways': unique_takeaways,
-            'chunk_count': len(chunks)
+            "themes": top_tags,
+            "authors": [author for author, _ in authors.most_common(5)],
+            "sources": [source for source, _ in sources.most_common(5)],
+            "takeaways": unique_takeaways,
+            "chunk_count": len(chunks),
         }
 
         logger.info(
@@ -231,276 +192,183 @@ def get_recent_read_themes(days: int = 14, limit: int = 50) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to extract recent read themes: {e}")
         return {
-            'themes': [],
-            'authors': [],
-            'sources': [],
-            'takeaways': [],
-            'error': str(e)
+            "themes": [],
+            "authors": [],
+            "sources": [],
+            "takeaways": [],
+            "error": str(e),
         }
 
 
-def get_top_cluster_themes(limit: int = 5) -> List[Dict[str, Any]]:
+def get_top_source_themes(limit: int = 5) -> List[Dict[str, Any]]:
     """
-    Get themes from top clusters by size.
+    Get themes from top sources by chunk count.
+
+    Story 4.4: Replaces get_top_cluster_themes
 
     Args:
-        limit: Maximum clusters to include
+        limit: Maximum sources to include
 
     Returns:
-        List of dictionaries with cluster info:
-        - cluster_id: Cluster identifier
-        - name: Cluster name (theme)
-        - description: Cluster description
-        - size: Number of chunks in cluster
+        List of dictionaries with source info:
+        - source_id: Source identifier
+        - title: Source title (theme)
+        - author: Source author
+        - chunk_count: Number of chunks in source
     """
     try:
-        logger.info(f"Getting top {limit} cluster themes")
+        logger.info(f"Getting top {limit} source themes")
 
-        clusters = firestore_client.get_top_clusters(limit=limit)
+        sources = firestore_client.list_sources(limit=limit)
 
         themes = []
-        for cluster in clusters:
-            cluster_id = cluster.get('id', '')
-            name = cluster.get('name', '')
+        for source in sources:
+            source_id = source.get("source_id", "")
+            title = source.get("title", "")
+            author = source.get("author", "")
 
-            # Skip noise or unnamed clusters
-            if not name or 'noise' in name.lower():
+            # Skip unnamed sources
+            if not title:
                 continue
 
-            themes.append({
-                'cluster_id': cluster_id,
-                'name': name,
-                'description': cluster.get('description', ''),
-                'size': cluster.get('size', 0)
-            })
+            themes.append(
+                {
+                    "source_id": source_id,
+                    "title": title,
+                    "author": author,
+                    "chunk_count": source.get("chunk_count", 0),
+                }
+            )
 
-        logger.info(f"Extracted {len(themes)} cluster themes")
+        logger.info(f"Extracted {len(themes)} source themes")
         return themes
 
     except Exception as e:
-        logger.error(f"Failed to get cluster themes: {e}")
+        logger.error(f"Failed to get source themes: {e}")
         return []
 
 
-def get_clusters_by_ids(cluster_ids: List[str]) -> List[Dict[str, Any]]:
-    """
-    Get cluster themes for specific cluster IDs.
-
-    Story 3.9 AC#1: Cluster filtering support
-
-    Args:
-        cluster_ids: List of cluster IDs to fetch
-
-    Returns:
-        List of dictionaries with cluster info:
-        - cluster_id: Cluster identifier
-        - name: Cluster name (theme)
-        - description: Cluster description
-        - size: Number of chunks in cluster
-    """
-    try:
-        logger.info(f"Getting cluster themes for {len(cluster_ids)} specific clusters")
-
-        themes = []
-        for cid in cluster_ids:
-            cluster = firestore_client.get_cluster_by_id(cid)
-
-            if not cluster:
-                logger.warning(f"Cluster not found: {cid}")
-                continue
-
-            name = cluster.get('name', '')
-
-            # Skip noise or unnamed clusters
-            if not name or 'noise' in name.lower():
-                continue
-
-            themes.append({
-                'cluster_id': cid,
-                'name': name,
-                'description': cluster.get('description', ''),
-                'size': cluster.get('size', 0)
-            })
-
-        logger.info(f"Fetched {len(themes)} cluster themes from specific IDs")
-        return themes
-
-    except Exception as e:
-        logger.error(f"Failed to get clusters by IDs: {e}")
-        return []
-
-
-def get_stale_cluster_themes(
-    stale_days: int = 30,
-    min_size: int = 5
+def rotate_sources(
+    sources: List[Dict[str, Any]], session_seed: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
-    Find clusters that haven't been updated recently for gap detection.
+    Rotate source order based on session seed for variety.
+
+    Story 3.8 AC#5: Source rotation based on session.
+    Story 4.4: Replaces rotate_clusters
 
     Args:
-        stale_days: Consider clusters stale if no new content in N days
-        min_size: Minimum cluster size to consider "important"
+        sources: List of source dictionaries
+        session_seed: Seed for rotation (default: time-based)
 
     Returns:
-        List of stale cluster dictionaries needing refresh
+        Rotated list of sources
     """
-    try:
-        logger.info(f"Finding stale clusters (>{stale_days} days, min size {min_size})")
+    if not sources or len(sources) <= 1:
+        return sources
 
-        # Get all clusters
-        all_clusters = firestore_client.get_all_clusters()
+    if session_seed is None:
+        session_seed = get_session_seed()
 
-        # For now, return clusters above minimum size
-        # Future: Track last_updated_at per cluster for true staleness
-        stale = []
-        for cluster in all_clusters:
-            name = cluster.get('name', '')
-            size = cluster.get('size', 0)
+    # Calculate rotation amount based on seed
+    rotation = session_seed % len(sources)
 
-            # Skip noise and small clusters
-            if not name or 'noise' in name.lower() or size < min_size:
-                continue
-
-            stale.append({
-                'cluster_id': cluster.get('id'),
-                'name': name,
-                'description': cluster.get('description', ''),
-                'size': size
-            })
-
-        # Return bottom half by size (likely stale/neglected)
-        stale.sort(key=lambda x: x['size'])
-        result = stale[:len(stale) // 2]
-
-        logger.info(f"Found {len(result)} potentially stale clusters")
-        return result[:5]  # Limit to 5
-
-    except Exception as e:
-        logger.error(f"Failed to find stale clusters: {e}")
-        return []
+    # Rotate the list
+    return sources[rotation:] + sources[:rotation]
 
 
 def generate_search_queries(
-    scope: str = "both",
     days: int = 14,
     max_queries: int = 8,
     use_variation: bool = True,
-    cluster_ids: Optional[List[str]] = None
 ) -> List[Dict[str, Any]]:
     """
     Generate smart search queries for Tavily based on KB context.
 
     Story 3.5: Base query generation
     Story 3.8 AC#5: Enhanced query variation
-    Story 3.9 AC#1: Cluster filtering support
+    Story 4.4: Simplified - removed cluster/scope parameters
 
     Args:
-        scope: "recent" (recent reads), "clusters" (top clusters), or "both"
         days: Lookback period for recent reads
         max_queries: Maximum number of queries to generate
         use_variation: Enable Story 3.8 query variation (default True)
-        cluster_ids: Optional list of specific cluster IDs to use (Story 3.9)
 
     Returns:
         List of query dictionaries:
         - query: Search query string
-        - source: Where query came from (cluster, theme, takeaway, gap)
-        - context: Additional context (cluster_id, etc.)
+        - source: Where query came from (source, theme, takeaway)
+        - context: Additional context
     """
     try:
         logger.info(
-            f"Generating search queries: scope={scope}, days={days}, "
-            f"variation={use_variation}, cluster_ids={cluster_ids}"
+            f"Generating search queries: days={days}, variation={use_variation}"
         )
 
         queries = []
         session_seed = get_session_seed() if use_variation else None
 
-        # Get cluster themes if scope includes clusters
-        if scope in ("clusters", "both"):
-            # Story 3.9: Use specific clusters if provided, otherwise top clusters
-            if cluster_ids:
-                cluster_themes = get_clusters_by_ids(cluster_ids)
-                logger.info(f"Using {len(cluster_themes)} specific clusters from cluster_ids")
-            else:
-                cluster_themes = get_top_cluster_themes(limit=5)
+        # Get top source themes
+        source_themes = get_top_source_themes(limit=5)
 
-            # Story 3.8: Rotate clusters based on session
+        # Story 3.8: Rotate sources based on session
+        if use_variation:
+            source_themes = rotate_sources(source_themes, session_seed)
+
+        for source in source_themes[:3]:
+            # Generate query from source title
+            title = source["title"]
+
+            # Story 3.8: Use varied query perspective
             if use_variation:
-                cluster_themes = rotate_clusters(cluster_themes, session_seed)
+                query = vary_query_perspective(title, session_seed)
+            else:
+                query = f"{title} latest developments 2024 2025"
 
-            for cluster in cluster_themes:
-                # Generate query from cluster name
-                name = cluster['name']
+            queries.append(
+                {
+                    "query": query,
+                    "source": "source",
+                    "context": {
+                        "source_id": source["source_id"],
+                        "source_title": title,
+                    },
+                }
+            )
 
-                # Story 3.8: Use varied query perspective
-                if use_variation:
-                    query = vary_query_perspective(name, session_seed)
-                else:
-                    query = f"{name} latest developments 2024 2025"
+        # Get recent read themes
+        recent = get_recent_read_themes(days=days)
 
-                queries.append({
-                    'query': query,
-                    'source': 'cluster',
-                    'context': {
-                        'cluster_id': cluster['cluster_id'],
-                        'cluster_name': name
-                    }
-                })
+        # Generate queries from themes (tags)
+        for theme in recent.get("themes", [])[:3]:
+            # Story 3.8: Use varied query perspective
+            if use_variation:
+                query = vary_query_perspective(theme, session_seed)
+            else:
+                query = f"{theme} best practices insights 2024 2025"
 
-        # Get recent read themes if scope includes recent
-        if scope in ("recent", "both"):
-            recent = get_recent_read_themes(days=days)
+            queries.append(
+                {"query": query, "source": "theme", "context": {"theme": theme}}
+            )
 
-            # Generate queries from themes
-            for theme in recent.get('themes', [])[:3]:
-                # Story 3.8: Use varied query perspective
-                if use_variation:
-                    query = vary_query_perspective(theme, session_seed)
-                else:
-                    query = f"{theme} best practices insights 2024 2025"
-
-                queries.append({
-                    'query': query,
-                    'source': 'theme',
-                    'context': {
-                        'theme': theme
-                    }
-                })
-
-            # Generate "beyond what you know" queries from takeaways
-            for takeaway in recent.get('takeaways', [])[:2]:
-                # Extract key concept from takeaway
-                takeaway_short = takeaway[:100] if len(takeaway) > 100 else takeaway
-                query = f"beyond {takeaway_short}"
-                queries.append({
-                    'query': query,
-                    'source': 'takeaway',
-                    'context': {
-                        'takeaway': takeaway
-                    }
-                })
-
-        # Add gap-filling queries for stale clusters
-        if scope == "both":
-            stale_clusters = get_stale_cluster_themes()
-            for cluster in stale_clusters[:2]:
-                query = f"{cluster['name']} new research findings"
-                queries.append({
-                    'query': query,
-                    'source': 'gap',
-                    'context': {
-                        'cluster_id': cluster['cluster_id'],
-                        'cluster_name': cluster['name'],
-                        'reason': 'stale_cluster'
-                    }
-                })
+        # Generate "beyond what you know" queries from takeaways
+        for takeaway in recent.get("takeaways", [])[:2]:
+            # Extract key concept from takeaway
+            takeaway_short = takeaway[:100] if len(takeaway) > 100 else takeaway
+            query = f"beyond {takeaway_short}"
+            queries.append(
+                {
+                    "query": query,
+                    "source": "takeaway",
+                    "context": {"takeaway": takeaway},
+                }
+            )
 
         # Deduplicate and limit queries
         seen_queries = set()
         unique_queries = []
         for q in queries:
-            query_lower = q['query'].lower()
+            query_lower = q["query"].lower()
             if query_lower not in seen_queries:
                 seen_queries.add(query_lower)
                 unique_queries.append(q)
@@ -525,10 +393,10 @@ def format_query_for_tavily(query_dict: Dict[str, Any]) -> str:
     Returns:
         Formatted query string
     """
-    query = query_dict.get('query', '')
+    query = query_dict.get("query", "")
 
     # Tavily works best with natural language queries
     # Remove excessive punctuation but keep structure
-    query = query.replace('"', '').replace("'", '')
+    query = query.replace('"', "").replace("'", "")
 
     return query.strip()

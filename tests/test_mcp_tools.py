@@ -230,7 +230,6 @@ class TestSearchKBUnified(unittest.TestCase):
                     "summary": "Test summary",
                     "takeaways": ["Takeaway 1"],
                 },
-                "cluster_id": ["cluster-1"],
             }
         ]
 
@@ -249,9 +248,6 @@ class TestSearchKBUnified(unittest.TestCase):
         self.assertEqual(
             result["results"][0]["knowledge_card"]["summary"], "Test summary"
         )
-
-        # Verify cluster info included (AC 9)
-        self.assertIsNotNone(result["results"][0]["cluster"])
 
         # Verify mocks called
         mock_generate_embedding.assert_called_once_with("test query")
@@ -340,39 +336,6 @@ class TestSearchKBUnified(unittest.TestCase):
         mock_query_time.assert_called_once_with(
             period="last_week", limit=10, tags=None, author=None, source=None
         )
-
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    @patch("mcp_server.tools.embeddings.generate_query_embedding")
-    @patch("mcp_server.tools.firestore_client.search_within_cluster")
-    def test_search_kb_with_cluster_id(
-        self, mock_search_cluster, mock_generate_embedding, mock_get_cluster
-    ):
-        """Test search_kb with cluster_id filter (cluster scoping)."""
-        # Mock cluster exists
-        mock_get_cluster.return_value = {
-            "id": "cluster-1",
-            "name": "Test Cluster",
-            "description": "Test cluster description",
-        }
-
-        # Mock embedding generation
-        mock_generate_embedding.return_value = [0.1] * 768
-
-        # Mock cluster search results
-        mock_search_cluster.return_value = []
-
-        # Execute search with cluster_id
-        result = tools.search_kb(
-            query="test query", filters={"cluster_id": "cluster-1"}, limit=10
-        )
-
-        # Verify cluster search called
-        mock_search_cluster.assert_called_once_with(
-            cluster_id="cluster-1", embedding_vector=[0.1] * 768, limit=10
-        )
-
-        # Verify cluster name in result
-        self.assertEqual(result["cluster_name"], "Test Cluster")
 
     @patch("mcp_server.tools.embeddings.generate_query_embedding")
     @patch("mcp_server.tools.firestore_client.find_nearest")
@@ -471,22 +434,6 @@ class TestSearchKBUnified(unittest.TestCase):
         # Verify error returned
         self.assertIn("error", result)
         self.assertIn("date_range requires both start and end dates", result["error"])
-
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_search_kb_cluster_not_found(self, mock_get_cluster):
-        """Test search_kb with non-existent cluster_id."""
-        # Mock cluster not found
-        mock_get_cluster.return_value = None
-
-        # Execute search
-        result = tools.search_kb(
-            query="test query", filters={"cluster_id": "non-existent-cluster"}, limit=10
-        )
-
-        # Verify error returned
-        self.assertIn("error", result)
-        self.assertIn("Cluster not found", result["error"])
-        self.assertEqual(result["result_count"], 0)
 
     @patch("mcp_server.tools.embeddings.generate_query_embedding")
     @patch("mcp_server.tools.firestore_client.find_nearest")
@@ -781,9 +728,8 @@ class TestGetChunk(unittest.TestCase):
         # Other data should still be present
         self.assertEqual(result["chunk_id"], "chunk-123")
 
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.get_chunk_by_id")
-    def test_get_chunk_all_url_fields(self, mock_get_chunk, mock_get_cluster):
+    def test_get_chunk_all_url_fields(self, mock_get_chunk):
         """Test get_chunk includes all URL fields (AC 6)."""
         # Mock chunk with all URL fields
         mock_get_chunk.return_value = {
@@ -796,13 +742,10 @@ class TestGetChunk(unittest.TestCase):
             "content": "Content.",
             "chunk_index": 0,
             "total_chunks": 1,
-            "cluster_id": ["cluster-1"],
             "readwise_url": "https://readwise.io/book/123",
             "source_url": "https://amazon.com/book/456",
             "highlight_url": "https://readwise.io/highlight/789",
         }
-
-        mock_get_cluster.return_value = {"name": "Test", "description": "Test"}
 
         # Execute get_chunk
         result = tools.get_chunk(chunk_id="chunk-123", include_related=False)
@@ -815,11 +758,10 @@ class TestGetChunk(unittest.TestCase):
         self.assertEqual(result["source_url"], "https://amazon.com/book/456")
         self.assertEqual(result["highlight_url"], "https://readwise.io/highlight/789")
 
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.find_nearest")
     @patch("mcp_server.tools.firestore_client.get_chunk_by_id")
     def test_get_chunk_filters_out_source_chunk(
-        self, mock_get_chunk, mock_find_nearest, mock_get_cluster
+        self, mock_get_chunk, mock_find_nearest
     ):
         """Test get_chunk filters out the source chunk from related chunks results."""
         # Mock chunk data
@@ -834,7 +776,6 @@ class TestGetChunk(unittest.TestCase):
             "chunk_index": 0,
             "total_chunks": 1,
             "embedding": [0.1] * 768,
-            "cluster_id": ["cluster-1"],
         }
 
         # Mock related chunks including the source chunk
@@ -857,8 +798,6 @@ class TestGetChunk(unittest.TestCase):
             },
         ]
 
-        mock_get_cluster.return_value = {"name": "Test", "description": "Test"}
-
         # Execute get_chunk
         result = tools.get_chunk(
             chunk_id="chunk-source", include_related=True, related_limit=5
@@ -873,11 +812,10 @@ class TestGetChunk(unittest.TestCase):
 class TestGetRecent(unittest.TestCase):
     """Test suite for get_recent tool (Story 4.3)."""
 
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
     @patch("mcp_server.tools.firestore_client.get_recently_added")
     def test_get_recent_default_parameters(
-        self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster
+        self, mock_get_recently_added, mock_get_activity_summary
     ):
         """Test get_recent with default parameters (AC 1)."""
         # Mock recently added chunks
@@ -893,7 +831,6 @@ class TestGetRecent(unittest.TestCase):
                 "chunk_index": 0,
                 "total_chunks": 1,
                 "created_at": "2025-12-19T10:00:00Z",
-                "cluster_id": ["cluster-28"],
             }
         ]
 
@@ -907,12 +844,6 @@ class TestGetRecent(unittest.TestCase):
                 {"source": "reader", "count": 5},
             ],
             "top_authors": [{"author": "Test Author", "count": 8}],
-        }
-
-        # Mock cluster metadata
-        mock_get_cluster.return_value = {
-            "name": "AI Agents & LLMs",
-            "description": "AI content",
         }
 
         # Execute get_recent with defaults
@@ -931,19 +862,10 @@ class TestGetRecent(unittest.TestCase):
         self.assertIn("activity_summary", result)
         self.assertEqual(result["activity_summary"]["total_chunks_added"], 15)
 
-        # AC 4: Verify cluster distribution included
-        self.assertIn("cluster_distribution", result)
-        self.assertIn("cluster-28", result["cluster_distribution"])
-        self.assertEqual(result["cluster_distribution"]["cluster-28"]["count"], 1)
-        self.assertEqual(
-            result["cluster_distribution"]["cluster-28"]["name"], "AI Agents & LLMs"
-        )
-
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
     @patch("mcp_server.tools.firestore_client.get_recently_added")
     def test_get_recent_with_knowledge_cards(
-        self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster
+        self, mock_get_recently_added, mock_get_activity_summary
     ):
         """Test get_recent includes knowledge cards for chunks (AC 6)."""
         # Mock chunk with knowledge card
@@ -983,11 +905,10 @@ class TestGetRecent(unittest.TestCase):
             len(result["recent_chunks"][0]["knowledge_card"]["takeaways"]), 2
         )
 
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
     @patch("mcp_server.tools.firestore_client.get_recently_added")
     def test_get_recent_with_custom_period(
-        self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster
+        self, mock_get_recently_added, mock_get_activity_summary
     ):
         """Test get_recent with different period values (AC 5)."""
         # Mock empty results
@@ -1004,11 +925,10 @@ class TestGetRecent(unittest.TestCase):
         mock_get_recently_added.assert_called_once_with(limit=10, days=3)
         self.assertEqual(result["period"], "last_3_days")
 
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
     @patch("mcp_server.tools.firestore_client.get_recently_added")
     def test_get_recent_with_custom_limit(
-        self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster
+        self, mock_get_recently_added, mock_get_activity_summary
     ):
         """Test get_recent with custom limit parameter (AC 7)."""
         # Mock 5 chunks
@@ -1061,13 +981,11 @@ class TestGetRecent(unittest.TestCase):
         # AC 8: Verify graceful handling of empty results
         self.assertEqual(len(result["recent_chunks"]), 0)
         self.assertEqual(result["activity_summary"]["total_chunks_added"], 0)
-        self.assertEqual(result["cluster_distribution"], {})
 
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
     @patch("mcp_server.tools.firestore_client.get_recently_added")
     def test_get_recent_url_fields_included(
-        self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster
+        self, mock_get_recently_added, mock_get_activity_summary
     ):
         """Test get_recent includes all URL fields (AC 9)."""
         # Mock chunk with all URL fields
@@ -1082,7 +1000,6 @@ class TestGetRecent(unittest.TestCase):
                 "content": "Content.",
                 "chunk_index": 0,
                 "total_chunks": 1,
-                "cluster_id": ["cluster-1"],
                 "readwise_url": "https://readwise.io/book/123",
                 "source_url": "https://amazon.com/book/456",
                 "highlight_url": "https://readwise.io/highlight/789",
@@ -1093,8 +1010,6 @@ class TestGetRecent(unittest.TestCase):
             "period": "last_7_days",
             "total_chunks_added": 1,
         }
-
-        mock_get_cluster.return_value = {"name": "Test", "description": "Test"}
 
         # Execute get_recent
         result = tools.get_recent()
@@ -1108,87 +1023,10 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(chunk["source_url"], "https://amazon.com/book/456")
         self.assertEqual(chunk["highlight_url"], "https://readwise.io/highlight/789")
 
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
-    def test_get_recent_cluster_distribution_calculation(
-        self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster
-    ):
-        """Test get_recent calculates cluster distribution correctly (AC 4)."""
-        # Mock 3 chunks: 2 in cluster-1, 1 in cluster-2
-        mock_get_recently_added.return_value = [
-            {
-                "id": "chunk-1",
-                "chunk_id": "chunk-1",
-                "title": "Book 1",
-                "author": "Author",
-                "source": "kindle",
-                "tags": [],
-                "content": "Content 1",
-                "chunk_index": 0,
-                "total_chunks": 1,
-                "cluster_id": ["cluster-1"],
-            },
-            {
-                "id": "chunk-2",
-                "chunk_id": "chunk-2",
-                "title": "Book 2",
-                "author": "Author",
-                "source": "kindle",
-                "tags": [],
-                "content": "Content 2",
-                "chunk_index": 0,
-                "total_chunks": 1,
-                "cluster_id": ["cluster-1"],
-            },
-            {
-                "id": "chunk-3",
-                "chunk_id": "chunk-3",
-                "title": "Book 3",
-                "author": "Author",
-                "source": "reader",
-                "tags": [],
-                "content": "Content 3",
-                "chunk_index": 0,
-                "total_chunks": 1,
-                "cluster_id": ["cluster-2"],
-            },
-        ]
-
-        mock_get_activity_summary.return_value = {
-            "period": "last_7_days",
-            "total_chunks_added": 3,
-        }
-
-        # Mock cluster metadata calls
-        def mock_get_cluster_side_effect(cluster_id):
-            if cluster_id == "cluster-1":
-                return {"name": "Cluster One", "description": "First cluster"}
-            elif cluster_id == "cluster-2":
-                return {"name": "Cluster Two", "description": "Second cluster"}
-            return None
-
-        mock_get_cluster.side_effect = mock_get_cluster_side_effect
-
-        # Execute get_recent
-        result = tools.get_recent()
-
-        # AC 4: Verify cluster distribution calculated correctly
-        self.assertEqual(len(result["cluster_distribution"]), 2)
-        self.assertEqual(result["cluster_distribution"]["cluster-1"]["count"], 2)
-        self.assertEqual(
-            result["cluster_distribution"]["cluster-1"]["name"], "Cluster One"
-        )
-        self.assertEqual(result["cluster_distribution"]["cluster-2"]["count"], 1)
-        self.assertEqual(
-            result["cluster_distribution"]["cluster-2"]["name"], "Cluster Two"
-        )
-
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
     @patch("mcp_server.tools.firestore_client.get_recently_added")
     def test_get_recent_top_sources_and_authors(
-        self, mock_get_recently_added, mock_get_activity_summary, mock_get_cluster
+        self, mock_get_recently_added, mock_get_activity_summary
     ):
         """Test get_recent includes top sources and authors in activity summary (AC 10)."""
         # Mock chunks
@@ -1261,296 +1099,6 @@ class TestGetRecent(unittest.TestCase):
                 limit=10, days=expected_days
             )
             self.assertEqual(result["period"], period)
-
-
-class TestGetClusterEnhanced(unittest.TestCase):
-    """Test suite for enhanced get_cluster tool (Story 4.4)."""
-
-    @patch("mcp_server.tools.firestore_client.get_firestore_client")
-    @patch("mcp_server.tools.firestore_client.get_chunks_by_cluster")
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_with_members_and_related(
-        self, mock_get_cluster, mock_get_chunks, mock_get_db
-    ):
-        """Test get_cluster with both members and related clusters (AC 1, 2, 3)."""
-        # Mock cluster data
-        mock_get_cluster.return_value = {
-            "name": "AI Agents & LLMs",
-            "description": "Content about AI agents",
-            "size": 25,
-            "created_at": "2025-01-01",
-            "centroid_768d": [0.1] * 768,
-        }
-
-        # Mock member chunks
-        mock_get_chunks.return_value = [
-            {
-                "id": "chunk-1",
-                "title": "Test Book",
-                "author": "Test Author",
-                "source": "kindle",
-                "knowledge_card": {"summary": "AI summary", "takeaways": ["Point 1"]},
-            }
-        ]
-
-        # Mock Firestore db and vector search
-        mock_doc1 = MagicMock()
-        mock_doc1.id = "cluster-2"
-        mock_doc1.to_dict.return_value = {
-            "name": "Related Cluster",
-            "description": "Related content",
-            "size": 15,
-            "vector_distance": 0.3,
-        }
-
-        mock_doc2 = MagicMock()
-        mock_doc2.id = "cluster-test"  # Source cluster (should be filtered)
-        mock_doc2.to_dict.return_value = {
-            "name": "Source Cluster",
-            "size": 25,
-            "vector_distance": 0.0,
-        }
-
-        mock_vector_query = MagicMock()
-        mock_vector_query.stream.return_value = [mock_doc2, mock_doc1]
-
-        mock_collection = MagicMock()
-        mock_collection.find_nearest.return_value = mock_vector_query
-
-        mock_db = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_get_db.return_value = mock_db
-
-        # Execute get_cluster
-        result = tools.get_cluster(
-            cluster_id="cluster-test",
-            include_members=True,
-            include_related=True,
-            member_limit=20,
-            related_limit=5,
-        )
-
-        # AC 1: Cluster metadata returned
-        self.assertEqual(result["cluster_id"], "cluster-test")
-        self.assertEqual(result["name"], "AI Agents & LLMs")
-        self.assertEqual(result["size"], 25)
-
-        # AC 2: Member chunks included
-        self.assertIn("members", result)
-        self.assertEqual(len(result["members"]), 1)
-        self.assertEqual(result["members"][0]["chunk_id"], "chunk-1")
-
-        # AC 3: Related clusters included
-        self.assertIn("related_clusters", result)
-        self.assertEqual(len(result["related_clusters"]), 1)
-        self.assertEqual(result["related_clusters"][0]["cluster_id"], "cluster-2")
-        self.assertIn("similarity_score", result["related_clusters"][0])
-
-    @patch("mcp_server.tools.firestore_client.get_chunks_by_cluster")
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_with_include_members_false(
-        self, mock_get_cluster, mock_get_chunks
-    ):
-        """Test get_cluster with include_members=False (AC 4)."""
-        # Mock cluster data
-        mock_get_cluster.return_value = {
-            "name": "Test Cluster",
-            "description": "Test",
-            "size": 10,
-            "created_at": "2025-01-01",
-        }
-
-        # Execute get_cluster with include_members=False
-        result = tools.get_cluster(
-            cluster_id="cluster-1", include_members=False, include_related=False
-        )
-
-        # AC 4: Members should not be included
-        self.assertNotIn("members", result)
-        self.assertNotIn("member_count", result)
-
-        # Verify get_chunks_by_cluster was NOT called
-        mock_get_chunks.assert_not_called()
-
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_with_include_related_false(self, mock_get_cluster):
-        """Test get_cluster with include_related=False (AC 5)."""
-        # Mock cluster data with centroid
-        mock_get_cluster.return_value = {
-            "name": "Test Cluster",
-            "description": "Test",
-            "size": 10,
-            "created_at": "2025-01-01",
-            "centroid_768d": [0.1] * 768,
-        }
-
-        # Execute get_cluster with include_related=False
-        result = tools.get_cluster(
-            cluster_id="cluster-1", include_members=False, include_related=False
-        )
-
-        # AC 5: Related clusters should not be included
-        self.assertNotIn("related_clusters", result)
-        self.assertNotIn("related_count", result)
-
-    @patch("mcp_server.tools.firestore_client.get_firestore_client")
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_custom_limits(self, mock_get_cluster, mock_get_db):
-        """Test get_cluster with custom member_limit and related_limit (AC 6, 7)."""
-        # Mock cluster data
-        mock_get_cluster.return_value = {
-            "name": "Test Cluster",
-            "size": 50,
-            "centroid_768d": [0.1] * 768,
-        }
-
-        # Mock vector search
-        mock_vector_query = MagicMock()
-        mock_vector_query.stream.return_value = []
-
-        mock_collection = MagicMock()
-        mock_collection.find_nearest.return_value = mock_vector_query
-
-        mock_db = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_get_db.return_value = mock_db
-
-        # Execute get_cluster with custom limits
-        result = tools.get_cluster(
-            cluster_id="cluster-1", member_limit=10, related_limit=3
-        )
-
-        # Verify vector search called with correct limit (+1 for source)
-        mock_collection.find_nearest.assert_called_once()
-        call_kwargs = mock_collection.find_nearest.call_args[1]
-        self.assertEqual(call_kwargs["limit"], 4)  # related_limit + 1
-
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_no_centroid(self, mock_get_cluster):
-        """Test get_cluster when cluster has no centroid (AC 8)."""
-        # Mock cluster without centroid
-        mock_get_cluster.return_value = {
-            "name": "Test Cluster",
-            "description": "Test",
-            "size": 10,
-        }
-
-        # Execute get_cluster with include_related=True
-        result = tools.get_cluster(
-            cluster_id="cluster-1", include_members=False, include_related=True
-        )
-
-        # AC 8: Related clusters should be empty (no centroid available)
-        self.assertEqual(result["related_count"], 0)
-        self.assertEqual(result["related_clusters"], [])
-
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_not_found(self, mock_get_cluster):
-        """Test get_cluster with non-existent cluster_id (AC 9)."""
-        # Mock cluster not found
-        mock_get_cluster.return_value = None
-
-        # Execute get_cluster
-        result = tools.get_cluster(cluster_id="nonexistent")
-
-        # AC 9: Error returned
-        self.assertIn("error", result)
-        self.assertIn("not found", result["error"])
-        self.assertEqual(result["cluster_id"], "nonexistent")
-
-    @patch("mcp_server.tools.firestore_client.get_firestore_client")
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_filters_source_cluster(self, mock_get_cluster, mock_get_db):
-        """Test get_cluster filters out source cluster from related results (AC 10)."""
-        # Mock cluster data
-        mock_get_cluster.return_value = {
-            "name": "Source Cluster",
-            "size": 25,
-            "centroid_768d": [0.1] * 768,
-        }
-
-        # Mock vector search returning source cluster
-        mock_source_doc = MagicMock()
-        mock_source_doc.id = "cluster-source"
-        mock_source_doc.to_dict.return_value = {
-            "name": "Source Cluster",
-            "size": 25,
-            "vector_distance": 0.0,
-        }
-
-        mock_related_doc = MagicMock()
-        mock_related_doc.id = "cluster-related"
-        mock_related_doc.to_dict.return_value = {
-            "name": "Related Cluster",
-            "size": 15,
-            "vector_distance": 0.4,
-        }
-
-        mock_vector_query = MagicMock()
-        mock_vector_query.stream.return_value = [mock_source_doc, mock_related_doc]
-
-        mock_collection = MagicMock()
-        mock_collection.find_nearest.return_value = mock_vector_query
-
-        mock_db = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_get_db.return_value = mock_db
-
-        # Execute get_cluster
-        result = tools.get_cluster(
-            cluster_id="cluster-source", include_members=False, include_related=True
-        )
-
-        # AC 10: Source cluster filtered out from related
-        self.assertEqual(len(result["related_clusters"]), 1)
-        self.assertEqual(result["related_clusters"][0]["cluster_id"], "cluster-related")
-
-    @patch("mcp_server.tools.firestore_client.get_firestore_client")
-    @patch("mcp_server.tools.firestore_client.get_cluster_by_id")
-    def test_get_cluster_filters_noise_clusters(self, mock_get_cluster, mock_get_db):
-        """Test get_cluster filters out noise clusters from related results."""
-        # Mock cluster data
-        mock_get_cluster.return_value = {
-            "name": "Source Cluster",
-            "size": 25,
-            "centroid_768d": [0.1] * 768,
-        }
-
-        # Mock vector search returning noise cluster
-        mock_noise_doc = MagicMock()
-        mock_noise_doc.id = "noise"
-        mock_noise_doc.to_dict.return_value = {
-            "name": "Noise / Outliers",
-            "size": 100,
-            "vector_distance": 0.5,
-        }
-
-        mock_valid_doc = MagicMock()
-        mock_valid_doc.id = "cluster-valid"
-        mock_valid_doc.to_dict.return_value = {
-            "name": "Valid Cluster",
-            "size": 20,
-            "vector_distance": 0.3,
-        }
-
-        mock_vector_query = MagicMock()
-        mock_vector_query.stream.return_value = [mock_noise_doc, mock_valid_doc]
-
-        mock_collection = MagicMock()
-        mock_collection.find_nearest.return_value = mock_vector_query
-
-        mock_db = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_get_db.return_value = mock_db
-
-        # Execute get_cluster
-        result = tools.get_cluster(
-            cluster_id="cluster-source", include_members=False, include_related=True
-        )
-
-        # Noise cluster should be filtered out
-        self.assertEqual(len(result["related_clusters"]), 1)
-        self.assertEqual(result["related_clusters"][0]["cluster_id"], "cluster-valid")
 
 
 class TestConfigureKB(unittest.TestCase):

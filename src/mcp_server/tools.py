@@ -117,34 +117,6 @@ def _format_source_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         }
 
 
-# Deprecated: Keep for backward compatibility during transition (Story 4.4)
-def _format_cluster_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """DEPRECATED: Use _format_source_info instead. Will be removed in Story 4.4."""
-    cluster_ids = chunk.get("cluster_id", [])
-    if not cluster_ids:
-        return None
-    primary_cluster_id = (
-        cluster_ids[0] if isinstance(cluster_ids, list) else cluster_ids
-    )
-    if primary_cluster_id == "noise":
-        return {"cluster_id": "noise", "name": "Outliers / Noise", "description": ""}
-    try:
-        cluster_metadata = firestore_client.get_cluster_by_id(primary_cluster_id)
-        if cluster_metadata:
-            return {
-                "cluster_id": primary_cluster_id,
-                "name": cluster_metadata.get("name", f"Cluster {primary_cluster_id}"),
-                "description": cluster_metadata.get("description", ""),
-            }
-    except Exception:
-        pass
-    return {
-        "cluster_id": primary_cluster_id,
-        "name": f"Cluster {primary_cluster_id}",
-        "description": "",
-    }
-
-
 def get_chunk(
     chunk_id: str, include_related: bool = True, related_limit: int = 5
 ) -> Dict[str, Any]:
@@ -380,7 +352,7 @@ def get_recent(period: str = "last_7_days", limit: int = 10) -> Dict[str, Any]:
             knowledge_card = _format_knowledge_card(chunk)
 
             # Task 1.5: Extract cluster info
-            cluster_info = _format_cluster_info(chunk)
+            source_info = _format_source_info(chunk)
 
             # Task 1.6: Extract URLs
             urls = _format_urls(chunk)
@@ -405,7 +377,7 @@ def get_recent(period: str = "last_7_days", limit: int = 10) -> Dict[str, Any]:
                 "chunk_info": f"{chunk_index + 1}/{total_chunks}",
                 "added_date": added_date,
                 "knowledge_card": knowledge_card,
-                "cluster": cluster_info,
+                "source": source_info,
                 **urls,  # Unpack URL fields
             }
 
@@ -545,7 +517,7 @@ def search_kb(
                 snippet = content[:500] + "..." if len(content) > 500 else content
 
                 knowledge_card = _format_knowledge_card(chunk)
-                cluster_info = _format_cluster_info(chunk)
+                source_info = _format_source_info(chunk)
                 urls = _format_urls(chunk)
 
                 result = {
@@ -559,7 +531,7 @@ def search_kb(
                     "snippet": snippet,
                     "full_content": content,
                     "knowledge_card": knowledge_card,
-                    "cluster": cluster_info,
+                    "source": source_info,
                     **urls,
                 }
                 results.append(result)
@@ -613,7 +585,7 @@ def search_kb(
                 snippet = content[:500] + "..." if len(content) > 500 else content
 
                 knowledge_card = _format_knowledge_card(chunk)
-                cluster_info = _format_cluster_info(chunk)
+                source_info = _format_source_info(chunk)
                 urls = _format_urls(chunk)
 
                 result = {
@@ -627,7 +599,7 @@ def search_kb(
                     "snippet": snippet,
                     "full_content": content,
                     "knowledge_card": knowledge_card,
-                    "cluster": cluster_info,
+                    "source": source_info,
                     **urls,
                 }
                 results.append(result)
@@ -664,7 +636,7 @@ def search_kb(
                 snippet = content[:500] + "..." if len(content) > 500 else content
 
                 knowledge_card = _format_knowledge_card(chunk)
-                cluster_info = _format_cluster_info(chunk)
+                source_info = _format_source_info(chunk)
                 urls = _format_urls(chunk)
 
                 result = {
@@ -678,7 +650,7 @@ def search_kb(
                     "snippet": snippet,
                     "full_content": content,
                     "knowledge_card": knowledge_card,
-                    "cluster": cluster_info,
+                    "source": source_info,
                     **urls,
                 }
                 results.append(result)
@@ -771,7 +743,7 @@ def search_kb(
             snippet = content[:500] + "..." if len(content) > 500 else content
 
             knowledge_card = _format_knowledge_card(chunk)
-            cluster_info = _format_cluster_info(chunk)
+            source_info = _format_source_info(chunk)
             urls = _format_urls(chunk)
 
             result = {
@@ -785,7 +757,7 @@ def search_kb(
                 "snippet": snippet,
                 "full_content": content,
                 "knowledge_card": knowledge_card,
-                "cluster": cluster_info,
+                "source": source_info,
                 **urls,
             }
             results.append(result)
@@ -863,7 +835,7 @@ def search_semantic(
 
             # Extract knowledge card, cluster info, and URLs
             knowledge_card = _format_knowledge_card(chunk)
-            cluster_info = _format_cluster_info(chunk)
+            source_info = _format_source_info(chunk)
             urls = _format_urls(chunk)
 
             result = {
@@ -877,7 +849,7 @@ def search_semantic(
                 "snippet": snippet,
                 "full_content": content,
                 "knowledge_card": knowledge_card,
-                "cluster": cluster_info,
+                "source": source_info,
                 **urls,  # Story 2.7: Include URL fields
             }
 
@@ -950,7 +922,7 @@ def search_by_metadata(
 
             # Extract knowledge card, cluster info, and URLs
             knowledge_card = _format_knowledge_card(chunk)
-            cluster_info = _format_cluster_info(chunk)
+            source_info = _format_source_info(chunk)
             urls = _format_urls(chunk)
 
             result = {
@@ -963,7 +935,7 @@ def search_by_metadata(
                 "snippet": snippet,
                 "full_content": content,
                 "knowledge_card": knowledge_card,
-                "cluster": cluster_info,
+                "source": source_info,
                 **urls,  # Story 2.7: Include URL fields
             }
 
@@ -1050,7 +1022,7 @@ def get_related_chunks(chunk_id: str, limit: int = 5) -> Dict[str, Any]:
 
             # Extract knowledge card, cluster info, and URLs
             knowledge_card = _format_knowledge_card(chunk)
-            cluster_info = _format_cluster_info(chunk)
+            source_info = _format_source_info(chunk)
             urls = _format_urls(chunk)
 
             result = {
@@ -1062,7 +1034,7 @@ def get_related_chunks(chunk_id: str, limit: int = 5) -> Dict[str, Any]:
                 "snippet": snippet,
                 "full_content": content,
                 "knowledge_card": knowledge_card,
-                "cluster": cluster_info,
+                "source": source_info,
                 **urls,  # Story 2.7: Include URL fields
             }
 
@@ -1495,484 +1467,15 @@ def search_knowledge_cards(query: str, limit: int = 10) -> Dict[str, Any]:
         return {"query": query, "result_count": 0, "error": str(e), "results": []}
 
 
-def list_clusters() -> Dict[str, Any]:
-    """
-    List all semantic clusters with metadata.
-
-    Returns:
-        Dictionary with list of clusters sorted by size
-    """
-    try:
-        logger.info("Listing all clusters")
-
-        clusters = firestore_client.get_all_clusters()
-
-        # Format results
-        results = []
-        for cluster in clusters:
-            cluster_id = cluster.get("id", "unknown")
-
-            # Skip noise cluster or handle specially
-            if cluster_id == "noise":
-                result = {
-                    "cluster_id": cluster_id,
-                    "name": "Outliers / Noise",
-                    "description": "Chunks that do not fit well into any semantic cluster",
-                    "size": cluster.get("size", 0),
-                }
-            else:
-                result = {
-                    "cluster_id": cluster_id,
-                    "name": cluster.get("name", f"Cluster {cluster_id}"),
-                    "description": cluster.get("description", ""),
-                    "size": cluster.get("size", 0),
-                    "created_at": str(cluster.get("created_at", "")),
-                }
-
-            results.append(result)
-
-        logger.info(f"Retrieved {len(results)} clusters")
-
-        return {"cluster_count": len(results), "clusters": results}
-
-    except Exception as e:
-        logger.error(f"List clusters failed: {e}")
-        return {"cluster_count": 0, "error": str(e), "clusters": []}
-
-
-def get_cluster(
-    cluster_id: str,
-    include_members: bool = True,
-    include_related: bool = True,
-    member_limit: int = 20,
-    related_limit: int = 5,
-) -> Dict[str, Any]:
-    """
-    Get cluster details with member chunks and related clusters.
-
-    Story 4.4: Enhanced to include related clusters via centroid similarity.
-    Consolidates get_cluster and get_related_clusters into unified tool.
-
-    Args:
-        cluster_id: Cluster ID to fetch
-        include_members: Whether to include member chunks (default True)
-        include_related: Whether to include related clusters (default True)
-        member_limit: Maximum member chunks to return (default 20)
-        related_limit: Maximum related clusters to return (default 5)
-
-    Returns:
-        Dictionary with cluster metadata, member chunks, and related clusters
-    """
-    try:
-        logger.info(
-            f"Fetching cluster {cluster_id} (members: {include_members}, related: {include_related})"
-        )
-
-        # Fetch cluster metadata
-        cluster = firestore_client.get_cluster_by_id(cluster_id)
-
-        if not cluster:
-            return {
-                "error": f"Cluster not found: {cluster_id}",
-                "cluster_id": cluster_id,
-            }
-
-        # Build response with metadata
-        response = {
-            "cluster_id": cluster_id,
-            "name": cluster.get("name", f"Cluster {cluster_id}"),
-            "description": cluster.get("description", ""),
-            "size": cluster.get("size", 0),
-            "created_at": str(cluster.get("created_at", "")),
-        }
-
-        # Fetch member chunks if requested
-        if include_members:
-            member_chunks = firestore_client.get_chunks_by_cluster(
-                cluster_id, limit=member_limit
-            )
-
-            # Format member chunks with knowledge cards and URLs
-            members = []
-            for chunk in member_chunks:
-                chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
-                knowledge_card = _format_knowledge_card(chunk)
-                urls = _format_urls(chunk)
-
-                member = {
-                    "chunk_id": chunk_id,
-                    "title": chunk.get("title", "Untitled"),
-                    "author": chunk.get("author", "Unknown"),
-                    "source": chunk.get("source", "unknown"),
-                    "knowledge_card": knowledge_card,
-                    **urls,  # Story 2.7: Include URL fields
-                }
-
-                members.append(member)
-
-            response["member_count"] = len(members)
-            response["members"] = members
-
-        # Fetch related clusters if requested (Story 4.4)
-        if include_related:
-            # Get centroid from cluster
-            source_centroid = cluster.get("centroid_768d")
-
-            if source_centroid:
-                try:
-                    # Import Firestore vector search types
-                    from google.cloud.firestore_v1.base_vector_query import (
-                        DistanceMeasure,
-                    )
-                    from google.cloud.firestore_v1.vector import Vector
-
-                    # Perform vector search on cluster centroids
-                    db = firestore_client.get_firestore_client()
-                    vector_query = db.collection("clusters").find_nearest(
-                        vector_field="centroid_768d",
-                        query_vector=Vector(source_centroid),
-                        distance_measure=DistanceMeasure.COSINE,
-                        limit=related_limit + 1,  # +1 to account for source cluster
-                        distance_result_field="vector_distance",
-                    )
-
-                    # Format related clusters
-                    related_clusters = []
-                    for doc in vector_query.stream():
-                        # Skip source cluster itself
-                        if doc.id == cluster_id:
-                            continue
-
-                        # Skip noise clusters
-                        doc_data = doc.to_dict()
-                        cluster_name = doc_data.get("name", "")
-                        if (
-                            doc.id in ("-1", "cluster_-1", "noise", "cluster-noise")
-                            or "noise" in cluster_name.lower()
-                            or "noise" in doc.id.lower()
-                        ):
-                            continue
-
-                        # Calculate similarity from distance
-                        distance_value = doc_data.get("vector_distance", 0)
-                        similarity = 1 - (distance_value / 2)  # COSINE: 0-2 range
-
-                        related_clusters.append(
-                            {
-                                "cluster_id": doc.id,
-                                "name": doc_data.get("name", f"Cluster {doc.id}"),
-                                "description": doc_data.get("description", ""),
-                                "similarity_score": round(similarity, 3),
-                                "size": doc_data.get("size", 0),
-                            }
-                        )
-
-                        if len(related_clusters) >= related_limit:
-                            break
-
-                    response["related_count"] = len(related_clusters)
-                    response["related_clusters"] = related_clusters
-
-                except ImportError:
-                    logger.warning(
-                        "Firestore vector search not available for related clusters"
-                    )
-                    response["related_count"] = 0
-                    response["related_clusters"] = []
-            else:
-                logger.warning(
-                    f"Cluster {cluster_id} has no centroid_768d - cannot find related clusters"
-                )
-                response["related_count"] = 0
-                response["related_clusters"] = []
-
-        logger.info(
-            f"Retrieved cluster {cluster_id} with {response.get('member_count', 0)} members and {response.get('related_count', 0)} related"
-        )
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Get cluster failed: {e}")
-        return {"error": str(e), "cluster_id": cluster_id}
-
-
-def search_within_cluster_tool(
-    cluster_id: str, query: str, limit: int = 10
-) -> Dict[str, Any]:
-    """
-    Semantic search restricted to a specific cluster.
-
-    Args:
-        cluster_id: Cluster ID to search within
-        query: Natural language search query
-        limit: Maximum number of results (default 10)
-
-    Returns:
-        Dictionary with search results from the cluster
-    """
-    try:
-        logger.info(
-            f"Searching within cluster {cluster_id} for query: '{query}' (limit: {limit})"
-        )
-
-        # Verify cluster exists
-        cluster = firestore_client.get_cluster_by_id(cluster_id)
-
-        if not cluster:
-            return {
-                "error": f"Cluster not found: {cluster_id}",
-                "cluster_id": cluster_id,
-                "query": query,
-                "result_count": 0,
-                "results": [],
-            }
-
-        # Generate embedding for query
-        query_embedding = embeddings.generate_query_embedding(query)
-
-        # Execute filtered vector search
-        chunks = firestore_client.search_within_cluster(
-            cluster_id=cluster_id, embedding_vector=query_embedding, limit=limit
-        )
-
-        # Format results
-        results = []
-        for rank, chunk in enumerate(chunks, 1):
-            chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
-            title = chunk.get("title", "Untitled")
-            author = chunk.get("author", "Unknown")
-            source = chunk.get("source", "unknown")
-            content = chunk.get("content", "")
-
-            # Content snippet
-            snippet = content[:500] + "..." if len(content) > 500 else content
-
-            # Extract knowledge card and URLs
-            knowledge_card = _format_knowledge_card(chunk)
-            urls = _format_urls(chunk)
-
-            result = {
-                "rank": rank,
-                "chunk_id": chunk_id,
-                "title": title,
-                "author": author,
-                "source": source,
-                "snippet": snippet,
-                "knowledge_card": knowledge_card,
-                **urls,  # Story 2.7: Include URL fields
-            }
-
-            results.append(result)
-
-        logger.info(f"Found {len(results)} results in cluster {cluster_id}")
-
-        return {
-            "cluster_id": cluster_id,
-            "cluster_name": cluster.get("name", f"Cluster {cluster_id}"),
-            "query": query,
-            "result_count": len(results),
-            "limit": limit,
-            "results": results,
-        }
-
-    except Exception as e:
-        logger.error(f"Search within cluster failed: {e}")
-        return {
-            "cluster_id": cluster_id,
-            "query": query,
-            "result_count": 0,
-            "error": str(e),
-            "results": [],
-        }
-
-
-def get_related_clusters(
-    cluster_id: str, limit: int = 5, distance_measure: str = "COSINE"
-) -> Dict[str, Any]:
-    """
-    Find clusters conceptually related to the given cluster using Firestore vector search.
-
-    Story 3.4: Cluster Relationship Discovery via Vector Search
-
-    Uses Firestore vector search on cluster centroids to find nearest neighbors.
-    Enables concept chaining and emergent idea discovery across the knowledge base.
-
-    Args:
-        cluster_id: Source cluster ID to find relations for
-        limit: Maximum number of related clusters (default 5, max 20)
-        distance_measure: COSINE (default), EUCLIDEAN, or DOT_PRODUCT
-
-    Returns:
-        Dictionary with related clusters list and metadata
-
-    Example:
-        >>> get_related_clusters("cluster_12", limit=3)
-        {
-            'source_cluster': {
-                'cluster_id': 'cluster_12',
-                'name': 'Semantic Search & Embeddings',
-                'description': '...'
-            },
-            'result_count': 3,
-            'results': [
-                {
-                    'cluster_id': 'cluster_18',
-                    'name': 'Personal Knowledge Management',
-                    'description': 'Systems for organizing personal knowledge...',
-                    'similarity_score': 0.872,
-                    'distance': 0.256,
-                    'chunk_count': 31
-                },
-                ...
-            ]
-        }
-    """
-    try:
-        logger.info(
-            f"Finding related clusters for {cluster_id} (limit: {limit}, distance: {distance_measure})"
-        )
-
-        # Validate limit parameter
-        if limit < 1 or limit > 20:
-            return {
-                "cluster_id": cluster_id,
-                "error": "Limit must be between 1 and 20",
-                "result_count": 0,
-                "results": [],
-            }
-
-        # Get source cluster
-        source_cluster = firestore_client.get_cluster_by_id(cluster_id)
-        if not source_cluster:
-            return {
-                "cluster_id": cluster_id,
-                "error": f"Cluster not found: {cluster_id}",
-                "result_count": 0,
-                "results": [],
-            }
-
-        # Get centroid from source cluster
-        source_centroid = source_cluster.get("centroid_768d")
-        if not source_centroid:
-            return {
-                "cluster_id": cluster_id,
-                "error": f"Cluster {cluster_id} has no centroid_768d (vector search not possible)",
-                "result_count": 0,
-                "results": [],
-            }
-
-        # Import Firestore vector search types
-        from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
-        from google.cloud.firestore_v1.vector import Vector
-
-        # Map distance measure string to enum
-        measure_map = {
-            "COSINE": DistanceMeasure.COSINE,
-            "EUCLIDEAN": DistanceMeasure.EUCLIDEAN,
-            "DOT_PRODUCT": DistanceMeasure.DOT_PRODUCT,
-        }
-        distance = measure_map.get(distance_measure, DistanceMeasure.COSINE)
-
-        # Perform Firestore vector search
-        db = firestore_client.get_firestore_client()
-        logger.info(f"Executing vector search on centroid_768d...")
-
-        vector_query = db.collection("clusters").find_nearest(
-            vector_field="centroid_768d",
-            query_vector=Vector(source_centroid),
-            distance_measure=distance,
-            limit=limit + 1,  # +1 because source cluster will be in results
-            distance_result_field="vector_distance",  # Store distance in result
-        )
-
-        # Format results
-        results = []
-        for doc in vector_query.stream():
-            # Skip source cluster itself
-            if doc.id == cluster_id:
-                continue
-
-            # Skip noise clusters (various naming conventions)
-            # Noise clusters don't represent coherent concepts
-            doc_data = doc.to_dict()
-            cluster_name = doc_data.get("name", "")
-            if (
-                doc.id in ("-1", "cluster_-1", "noise", "cluster-noise")
-                or "noise" in cluster_name.lower()
-                or "noise" in doc.id.lower()
-            ):
-                continue
-
-            # Extract distance (lower = more similar)
-            distance_value = doc_data.get("vector_distance", 0)
-
-            # Convert distance to similarity score (1 = identical, 0 = opposite)
-            # For COSINE: distance is 0-2 range (0=identical, 2=opposite)
-            if distance_measure == "COSINE":
-                similarity = 1 - (distance_value / 2)
-            else:
-                # For EUCLIDEAN/DOT_PRODUCT: use normalized similarity
-                similarity = 1 / (1 + distance_value)
-
-            results.append(
-                {
-                    "cluster_id": doc.id,
-                    "name": doc_data.get("name", f"Cluster {doc.id}"),
-                    "description": doc_data.get("description", ""),
-                    "similarity_score": round(similarity, 3),
-                    "distance": round(distance_value, 3),
-                    "size": doc_data.get("size", 0),
-                }
-            )
-
-            if len(results) >= limit:
-                break
-
-        logger.info(f"Found {len(results)} related clusters for {cluster_id}")
-
-        return {
-            "source_cluster": {
-                "cluster_id": cluster_id,
-                "name": source_cluster.get("name", f"Cluster {cluster_id}"),
-                "description": source_cluster.get("description", ""),
-                "size": source_cluster.get("size", 0),
-            },
-            "distance_measure": distance_measure,
-            "result_count": len(results),
-            "limit": limit,
-            "results": results,
-        }
-
-    except ImportError as e:
-        logger.error(f"Firestore vector search not available: {e}")
-        return {
-            "cluster_id": cluster_id,
-            "error": "Firestore vector search requires google-cloud-firestore >= 2.16.0",
-            "result_count": 0,
-            "results": [],
-        }
-    except Exception as e:
-        logger.error(f"Get related clusters failed: {e}")
-        return {
-            "cluster_id": cluster_id,
-            "error": str(e),
-            "result_count": 0,
-            "results": [],
-        }
-
-
 # ============================================================================
 # Reading Recommendations (Story 3.5)
 # ============================================================================
 
 
 def get_reading_recommendations(
-    scope: str = "both",
     days: int = 14,
     limit: int = 10,
     user_id: str = "default",
-    cluster_ids: Optional[List[str]] = None,
     hot_sites: Optional[str] = None,
     mode: str = "balanced",
     include_seen: bool = False,
@@ -1984,23 +1487,15 @@ def get_reading_recommendations(
     Story 3.5: AI-Powered Reading Recommendations
     Story 3.8: Enhanced Recommendation Ranking
     Story 3.9: Parameterized Recommendations
+    Story 4.4: Removed cluster dependency
 
-    Analyzes recent reads and top clusters, searches Tavily with domain
+    Analyzes recent reads and top sources, searches Tavily with domain
     whitelisting, filters for quality, and deduplicates against KB.
 
-    Story 3.9 Enhancements:
-    - Cluster filtering: scope to specific cluster IDs
-    - Hot sites: curated domain categories (tech, ai, devops, etc.)
-    - Discovery modes: balanced, fresh, deep, surprise_me
-    - Include seen: bypass shown URL filtering
-    - Predictable: disable query variation for reproducibility
-
     Args:
-        scope: "recent" (recent reads), "clusters" (top clusters), or "both" (default)
         days: Lookback period for recent reads (default 14)
         limit: Maximum recommendations to return (default 10)
         user_id: User identifier for shown tracking (default "default")
-        cluster_ids: Optional list of cluster IDs to scope recommendations
         hot_sites: Optional source category: "tech", "tech_de", "ai", "devops", "business", "all"
         mode: Discovery mode: "balanced", "fresh", "deep", "surprise_me" (default "balanced")
         include_seen: Include previously shown recommendations (default False)
@@ -2010,9 +1505,9 @@ def get_reading_recommendations(
         Dictionary with:
         - generated_at: Timestamp
         - processing_time_seconds: Total time taken
-        - scope: Scope used
+        - scope: Scope used (always "both")
         - mode: Discovery mode used
-        - filters_applied: Active filters (cluster_ids, hot_sites, etc.)
+        - filters_applied: Active filters (hot_sites, etc.)
         - days_analyzed: Days lookback
         - queries_used: List of search queries
         - recommendations: List of recommendation objects
@@ -2033,19 +1528,13 @@ def get_reading_recommendations(
         }
     """
     start_time = time.time()
+    scope = "both"  # Story 4.4: Fixed scope, no longer configurable
 
     try:
         logger.info(
-            f"Generating reading recommendations: scope={scope}, days={days}, limit={limit}, "
-            f"mode={mode}, cluster_ids={cluster_ids}, hot_sites={hot_sites}"
+            f"Generating reading recommendations: days={days}, limit={limit}, "
+            f"mode={mode}, hot_sites={hot_sites}"
         )
-
-        # Validate scope
-        if scope not in ("recent", "clusters", "both"):
-            return {
-                "error": f"Invalid scope: {scope}. Must be 'recent', 'clusters', or 'both'",
-                "recommendations": [],
-            }
 
         # Validate mode
         valid_modes = ["balanced", "fresh", "deep", "surprise_me"]
@@ -2064,23 +1553,10 @@ def get_reading_recommendations(
         mode_config = recommendation_filter.get_mode_config(mode)
         logger.info(f"Using mode '{mode}': {mode_config.get('description', '')}")
 
-        # Story 3.9: Build filters_applied for response
+        # Build filters_applied for response
         filters_applied = {"include_seen": include_seen, "predictable": predictable}
 
-        # Story 3.9: Resolve cluster filtering
-        cluster_names = []
-        if cluster_ids:
-            filters_applied["cluster_ids"] = cluster_ids
-            # Fetch cluster names for response
-            for cid in cluster_ids:
-                cluster_data = firestore_client.get_cluster_by_id(cid)
-                if cluster_data:
-                    cluster_names.append(cluster_data.get("name", cid))
-                else:
-                    logger.warning(f"Cluster not found: {cid}")
-            filters_applied["cluster_names"] = cluster_names
-
-        # Story 3.9: Resolve hot sites domain filtering
+        # Resolve hot sites domain filtering
         hot_sites_domains = []
         if hot_sites:
             hot_sites_domains = firestore_client.get_hot_sites_domains(hot_sites)
@@ -2157,24 +1633,15 @@ def get_reading_recommendations(
             f"KB credibility: {len(known_authors)} authors, {len(known_domains)} domains"
         )
 
-        # Story 3.9: Generate queries based on cluster_ids or default scope
+        # Story 4.4: Simplified query generation (no cluster dependency)
         # Use predictable flag to control query variation
         use_variation = not predictable
 
-        if cluster_ids:
-            # Story 3.9 AC#1: Generate queries from specific clusters
-            queries = recommendation_queries.generate_search_queries(
-                scope="clusters",  # Force cluster mode
-                days=days,
-                max_queries=8,
-                use_variation=use_variation,
-                cluster_ids=cluster_ids,  # Pass specific cluster IDs
-            )
-        else:
-            # Default: Generate queries from scope
-            queries = recommendation_queries.generate_search_queries(
-                scope=scope, days=days, max_queries=8, use_variation=use_variation
-            )
+        queries = recommendation_queries.generate_search_queries(
+            days=days,
+            max_queries=8,
+            use_variation=use_variation,
+        )
 
         if not queries:
             return {
@@ -2237,7 +1704,7 @@ def get_reading_recommendations(
                     result["recency_score"] = recency_score
                     result["relevance_score"] = result.get("score", 0.5)
 
-                    # Add cluster context for slot assignment
+                    # Add query context for slot assignment
                     result["related_to"] = query_dict.get("context", {})
 
                     all_results.append(result)

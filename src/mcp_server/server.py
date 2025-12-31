@@ -41,7 +41,7 @@ oauth_server = OAuthServer()
 TOOL_DEFINITIONS = [
     {
         "name": "search_kb",
-        "description": "Unified knowledge base search with flexible filtering. Combines semantic search with cluster, metadata, time, and knowledge card filters.",
+        "description": "Unified knowledge base search with flexible filtering. Combines semantic search with metadata, time, and knowledge card filters.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -116,7 +116,6 @@ TOOL_DEFINITIONS = [
         "description": "Get knowledge base statistics (total chunks, sources, authors, tags)",
         "inputSchema": {"type": "object", "properties": {}},
     },
-    # Story 4.3: Replaced cluster tools with source tools
     {
         "name": "list_sources",
         "description": "List all sources (books, articles) with metadata",
@@ -217,11 +216,6 @@ TOOL_DEFINITIONS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "cluster_ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional cluster IDs to scope",
-                },
                 "days": {
                     "type": "integer",
                     "description": "Lookback period in days (default 14)",
@@ -252,12 +246,6 @@ TOOL_DEFINITIONS = [
                     "type": "boolean",
                     "description": "Disable query variation",
                     "default": False,
-                },
-                "scope": {
-                    "type": "string",
-                    "description": "Scope",
-                    "default": "both",
-                    "enum": ["recent", "clusters", "both"],
                 },
             },
         },
@@ -309,7 +297,6 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
     elif name == "get_stats":
         return tools.get_stats()
-    # Story 4.3: Replaced cluster tools with source tools
     elif name == "list_sources":
         return tools.list_sources(limit=arguments.get("limit", 50))
     elif name == "get_source":
@@ -331,14 +318,12 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         return tools.get_contradictions(limit=arguments.get("limit", 10))
     elif name == "get_reading_recommendations":
         return tools.get_reading_recommendations(
-            cluster_ids=arguments.get("cluster_ids"),
             days=arguments.get("days", 14),
             hot_sites=arguments.get("hot_sites"),
             include_seen=arguments.get("include_seen", False),
             limit=arguments.get("limit", 10),
             mode=arguments.get("mode", "balanced"),
             predictable=arguments.get("predictable", False),
-            scope=arguments.get("scope", "both"),
         )
     else:
         raise ValueError(f"Unknown tool: {name}")

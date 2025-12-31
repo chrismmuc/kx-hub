@@ -132,45 +132,18 @@ class TestRecommendationQueries(unittest.TestCase):
         self.assertEqual(result["authors"], ["Martin Fowler"])
         self.assertEqual(len(result["takeaways"]), 3)
 
-    @patch("mcp_server.recommendation_queries.firestore_client.get_top_clusters")
-    def test_get_top_cluster_themes(self, mock_get_clusters):
-        """Test cluster theme extraction."""
-        from mcp_server import recommendation_queries
-
-        mock_get_clusters.return_value = [
-            {
-                "id": "cluster_1",
-                "name": "Platform Engineering",
-                "description": "Building developer platforms",
-                "size": 50,
-            },
-            {
-                "id": "cluster_2",
-                "name": "AI and Machine Learning",
-                "description": "ML concepts",
-                "size": 40,
-            },
-        ]
-
-        result = recommendation_queries.get_top_cluster_themes(limit=5)
-
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]["name"], "Platform Engineering")
-        self.assertEqual(result[1]["cluster_id"], "cluster_2")
-
-    @patch("mcp_server.recommendation_queries.get_top_cluster_themes")
+    @patch("mcp_server.recommendation_queries.get_top_source_themes")
     @patch("mcp_server.recommendation_queries.get_recent_read_themes")
-    @patch("mcp_server.recommendation_queries.get_stale_cluster_themes")
-    def test_generate_search_queries(self, mock_stale, mock_recent, mock_clusters):
+    def test_generate_search_queries(self, mock_recent, mock_sources):
         """Test smart query generation."""
         from mcp_server import recommendation_queries
 
-        mock_clusters.return_value = [
+        mock_sources.return_value = [
             {
-                "cluster_id": "c1",
-                "name": "Platform Engineering",
-                "description": "",
-                "size": 50,
+                "source_id": "s1",
+                "title": "Platform Engineering Guide",
+                "author": "Test Author",
+                "chunk_count": 50,
             }
         ]
         mock_recent.return_value = {
@@ -179,14 +152,13 @@ class TestRecommendationQueries(unittest.TestCase):
             "authors": [],
             "sources": [],
         }
-        mock_stale.return_value = []
 
-        result = recommendation_queries.generate_search_queries(scope="both", days=14)
+        result = recommendation_queries.generate_search_queries(days=14)
 
         self.assertGreater(len(result), 0)
-        # Should have at least cluster and theme queries
+        # Should have source and theme queries
         sources = [q["source"] for q in result]
-        self.assertIn("cluster", sources)
+        self.assertIn("source", sources)
         self.assertIn("theme", sources)
 
 
@@ -231,20 +203,19 @@ class TestRecommendationFilter(unittest.TestCase):
         self.assertEqual(result["depth_score"], 3)
         self.assertIn("error", result)
 
-    def test_generate_why_recommended_cluster(self):
-        """Test why_recommended for cluster-based recommendations."""
+    def test_generate_why_recommended_source(self):
+        """Test why_recommended for source-based recommendations."""
         from mcp_server.recommendation_filter import generate_why_recommended
 
         rec = {"title": "Test", "url": "https://example.com"}
         context = {
-            "source": "cluster",
-            "context": {"cluster_name": "Platform Engineering"},
+            "source": "source",
+            "context": {"source_title": "Platform Engineering Guide"},
         }
 
         result = generate_why_recommended(rec, context)
 
-        self.assertIn("Platform Engineering", result)
-        self.assertIn("cluster", result.lower())
+        self.assertIn("Platform Engineering Guide", result)
 
     def test_generate_why_recommended_theme(self):
         """Test why_recommended for theme-based recommendations."""
@@ -616,16 +587,6 @@ class TestFindBySourceURL(unittest.TestCase):
 class TestGetReadingRecommendations(unittest.TestCase):
     """Test suite for the main get_reading_recommendations() tool."""
 
-    @patch("mcp_server.tools.firestore_client.get_recommendation_config")
-    def test_invalid_scope(self, mock_config):
-        """Test error handling for invalid scope."""
-        from mcp_server import tools
-
-        result = tools.get_reading_recommendations(scope="invalid")
-
-        self.assertIn("error", result)
-        self.assertIn("Invalid scope", result["error"])
-
     @patch("recommendation_queries.generate_search_queries")
     @patch("firestore_client.get_recommendation_config")
     def test_no_queries_generated(self, mock_config, mock_queries):
@@ -635,7 +596,7 @@ class TestGetReadingRecommendations(unittest.TestCase):
         mock_config.return_value = {"quality_domains": [], "excluded_domains": []}
         mock_queries.return_value = []
 
-        result = tools.get_reading_recommendations(scope="both")
+        result = tools.get_reading_recommendations()
 
         self.assertIn("error", result)
         self.assertIn("No queries", result["error"])
@@ -773,7 +734,7 @@ class TestGetReadingRecommendations(unittest.TestCase):
             }
         ]
 
-        result = tools.get_reading_recommendations(scope="both", days=14, limit=10)
+        result = tools.get_reading_recommendations(days=14, limit=10)
 
         self.assertIn("recommendations", result)
         self.assertEqual(len(result["recommendations"]), 1)
@@ -1142,24 +1103,24 @@ class TestQueryVariation(unittest.TestCase):
         # Note: May occasionally be the same by chance, so we just verify it's valid
         self.assertIn("platform engineering", query3)
 
-    def test_rotate_clusters(self):
-        """Test cluster rotation."""
-        from mcp_server.recommendation_queries import rotate_clusters
+    def test_rotate_sources(self):
+        """Test source rotation."""
+        from mcp_server.recommendation_queries import rotate_sources
 
-        clusters = [
-            {"name": "A"},
-            {"name": "B"},
-            {"name": "C"},
-            {"name": "D"},
+        sources = [
+            {"title": "A"},
+            {"title": "B"},
+            {"title": "C"},
+            {"title": "D"},
         ]
 
-        rotated = rotate_clusters(clusters, session_seed=100)
+        rotated = rotate_sources(sources, session_seed=100)
 
         self.assertEqual(len(rotated), 4)
         # Order should be different from original (unless seed happens to = 0 mod 4)
         # Just verify all items are present
-        names = [c["name"] for c in rotated]
-        self.assertEqual(sorted(names), ["A", "B", "C", "D"])
+        titles = [s["title"] for s in rotated]
+        self.assertEqual(sorted(titles), ["A", "B", "C", "D"])
 
 
 class TestDateParsing(unittest.TestCase):

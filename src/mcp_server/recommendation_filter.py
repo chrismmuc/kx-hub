@@ -385,9 +385,9 @@ def parse_published_date(date_str: Optional[str]) -> Optional[datetime]:
 class SlotType:
     """Slot types for recommendation rotation strategy."""
 
-    RELEVANCE = "RELEVANCE"  # Top combined score from active clusters
-    SERENDIPITY = "SERENDIPITY"  # From related but unexplored cluster
-    STALE_REFRESH = "STALE_REFRESH"  # From clusters with oldest content
+    RELEVANCE = "RELEVANCE"  # Top combined score from active topics
+    SERENDIPITY = "SERENDIPITY"  # From related but unexplored topic
+    STALE_REFRESH = "STALE_REFRESH"  # From topics with oldest content
     TRENDING = "TRENDING"  # Highest recency score
 
 
@@ -401,8 +401,8 @@ def assign_slots(
 
     Slot Strategy:
     - Slots 1-2 (RELEVANCE): Highest combined score from user's interests
-    - Slot 3 (SERENDIPITY): Discovery pick from related cluster
-    - Slot 4 (STALE_REFRESH): From cluster needing fresh content
+    - Slot 3 (SERENDIPITY): Discovery pick from related topic
+    - Slot 4 (STALE_REFRESH): From topic needing fresh content
     - Slot 5 (TRENDING): Highest recency score, may sacrifice relevance
 
     Args:
@@ -454,13 +454,13 @@ def assign_slots(
             result.append(rec)
             assigned_urls.add(rec.get("url"))
 
-    # Slot 3: SERENDIPITY (from different clusters than RELEVANCE)
+    # Slot 3: SERENDIPITY (from different sources/themes than RELEVANCE)
     serendipity_count = slot_config.get("serendipity_count", 1)
-    relevance_clusters = set()
+    relevance_sources = set()
     for rec in result:
-        cluster = rec.get("related_to", {}).get("cluster_id")
-        if cluster:
-            relevance_clusters.add(cluster)
+        source_id = rec.get("related_to", {}).get("source_id")
+        if source_id:
+            relevance_sources.add(source_id)
 
     for rec in by_combined:
         if (
@@ -470,18 +470,18 @@ def assign_slots(
             break
         if rec.get("url") in assigned_urls:
             continue
-        # Prefer recommendations from different clusters
-        rec_cluster = rec.get("related_to", {}).get("cluster_id")
-        if rec_cluster and rec_cluster not in relevance_clusters:
+        # Prefer recommendations from different sources
+        rec_source = rec.get("related_to", {}).get("source_id")
+        if rec_source and rec_source not in relevance_sources:
             rec["slot"] = SlotType.SERENDIPITY
             rec["slot_reason"] = (
-                f"Discovery from cluster: {rec.get('related_to', {}).get('cluster_name', 'related topic')}"
+                f"Discovery from: {rec.get('related_to', {}).get('source_title', 'related topic')}"
             )
             result.append(rec)
             assigned_urls.add(rec.get("url"))
             break
 
-    # If no serendipity from different cluster, take next best
+    # If no serendipity from different source, take next best
     if (
         len([r for r in result if r.get("slot") == SlotType.SERENDIPITY])
         < serendipity_count
@@ -631,9 +631,9 @@ def generate_why_recommended(
         source = query_context.get("source", "search")
         context = query_context.get("context", {})
 
-        if source == "cluster":
-            cluster_name = context.get("cluster_name", "your interests")
-            return f"Connects to your reading cluster: {cluster_name}"
+        if source == "source":
+            source_title = context.get("source_title", "your interests")
+            return f"Connects to your reading: {source_title}"
 
         elif source == "theme":
             theme = context.get("theme", "recent topics")
@@ -649,8 +649,8 @@ def generate_why_recommended(
             return "Extends your recent learning"
 
         elif source == "gap":
-            cluster_name = context.get("cluster_name", "an area")
-            return f"Refreshes knowledge in: {cluster_name}"
+            topic = context.get("source_title", context.get("theme", "an area"))
+            return f"Refreshes knowledge in: {topic}"
 
         else:
             return "Matches your reading interests"

@@ -14,8 +14,9 @@ Resources provide read-only access via URIs like:
 import logging
 from typing import List
 from urllib.parse import unquote
-from mcp.types import Resource, TextContent
+
 import firestore_client
+from mcp.types import Resource, TextContent
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +31,18 @@ def list_resources() -> List[Resource]:
     try:
         logger.info("Listing all chunk resources...")
 
-        chunks = firestore_client.list_all_chunks(limit=1000)  # Increased limit for full KB
+        chunks = firestore_client.list_all_chunks(
+            limit=1000
+        )  # Increased limit for full KB
 
         resources = []
         for chunk in chunks:
-            chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
-            title = chunk.get('title', 'Untitled')
-            author = chunk.get('author', 'Unknown')
-            source = chunk.get('source', 'unknown')
-            chunk_index = chunk.get('chunk_index', 0)
-            total_chunks = chunk.get('total_chunks', 1)
+            chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
+            title = chunk.get("title", "Untitled")
+            author = chunk.get("author", "Unknown")
+            source = chunk.get("source", "unknown")
+            chunk_index = chunk.get("chunk_index", 0)
+            total_chunks = chunk.get("total_chunks", 1)
 
             # Create resource with URI
             uri = f"kxhub://chunk/{chunk_id}"
@@ -51,7 +54,7 @@ def list_resources() -> List[Resource]:
                 uri=uri,
                 name=f"Chunk: {title} [{chunk_index + 1}/{total_chunks}]",
                 description=description,
-                mimeType="text/markdown"
+                mimeType="text/markdown",
             )
 
             resources.append(resource)
@@ -189,19 +192,19 @@ def format_chunk_markdown(chunk: dict) -> str:
     Returns:
         Markdown-formatted chunk with metadata
     """
-    chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
-    title = chunk.get('title', 'Untitled')
-    author = chunk.get('author', 'Unknown')
-    source = chunk.get('source', 'unknown')
-    tags = chunk.get('tags', [])
-    chunk_index = chunk.get('chunk_index', 0)
-    total_chunks = chunk.get('total_chunks', 1)
-    content = chunk.get('content', '*No content available*')
+    chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
+    title = chunk.get("title", "Untitled")
+    author = chunk.get("author", "Unknown")
+    source = chunk.get("source", "unknown")
+    tags = chunk.get("tags", [])
+    chunk_index = chunk.get("chunk_index", 0)
+    total_chunks = chunk.get("total_chunks", 1)
+    content = chunk.get("content", "*No content available*")
 
     # Story 2.7: Extract URL fields
-    readwise_url = chunk.get('readwise_url')
-    source_url = chunk.get('source_url')
-    highlight_url = chunk.get('highlight_url')
+    readwise_url = chunk.get("readwise_url")
+    source_url = chunk.get("source_url")
+    highlight_url = chunk.get("highlight_url")
 
     # Build markdown
     md = f"# {title}\n\n"
@@ -247,15 +250,15 @@ def format_multiple_chunks(chunks: List[dict], filter_description: str) -> str:
     md += "---\n\n"
 
     for i, chunk in enumerate(chunks, 1):
-        chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
-        title = chunk.get('title', 'Untitled')
-        author = chunk.get('author', 'Unknown')
-        chunk_index = chunk.get('chunk_index', 0)
-        total_chunks = chunk.get('total_chunks', 1)
-        content = chunk.get('content', '')
+        chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
+        title = chunk.get("title", "Untitled")
+        author = chunk.get("author", "Unknown")
+        chunk_index = chunk.get("chunk_index", 0)
+        total_chunks = chunk.get("total_chunks", 1)
+        content = chunk.get("content", "")
 
         # Story 2.7: Extract URL fields
-        readwise_url = chunk.get('readwise_url')
+        readwise_url = chunk.get("readwise_url")
 
         # Snippet (first 300 chars)
         snippet = content[:300] + "..." if len(content) > 300 else content
@@ -268,145 +271,5 @@ def format_multiple_chunks(chunks: List[dict], filter_description: str) -> str:
         md += "\n\n"
         md += f"{snippet}\n\n"
         md += "---\n\n"
-
-    return md
-
-
-def format_clusters_list(clusters: List[dict]) -> str:
-    """
-    Format list of all clusters as markdown.
-
-    Args:
-        clusters: List of cluster dictionaries
-
-    Returns:
-        Markdown-formatted clusters overview
-    """
-    md = "# Knowledge Base Clusters\n\n"
-    md += f"**Total Clusters:** {len(clusters)}\n\n"
-    md += "Semantic clusters organize your knowledge base by topic themes.\n\n"
-    md += "---\n\n"
-
-    for i, cluster in enumerate(clusters, 1):
-        cluster_id = cluster.get('id', 'unknown')
-        name = cluster.get('name', f'Cluster {cluster_id}')
-        description = cluster.get('description', 'No description')
-        size = cluster.get('size', 0)
-
-        md += f"## {i}. {name}\n\n"
-        md += f"**Cluster ID:** `{cluster_id}`  \n"
-        md += f"**Size:** {size} chunks  \n"
-        md += f"**Description:** {description}\n\n"
-        md += f"**View Details:** `kxhub://cluster/{cluster_id}`  \n"
-        md += f"**View with Cards:** `kxhub://cluster/{cluster_id}/cards`\n\n"
-        md += "---\n\n"
-
-    return md
-
-
-def format_cluster_details(cluster: dict, members: List[dict]) -> str:
-    """
-    Format cluster details with member chunks.
-
-    Args:
-        cluster: Cluster dictionary
-        members: List of member chunk dictionaries
-
-    Returns:
-        Markdown-formatted cluster overview
-    """
-    cluster_id = cluster.get('id', 'unknown')
-    name = cluster.get('name', f'Cluster {cluster_id}')
-    description = cluster.get('description', 'No description')
-    size = cluster.get('size', 0)
-
-    md = f"# {name}\n\n"
-    md += f"**Cluster ID:** `{cluster_id}`  \n"
-    md += f"**Total Members:** {size} chunks  \n"
-    md += f"**Description:** {description}\n\n"
-    md += "---\n\n"
-
-    md += "## Member Chunks\n\n"
-
-    for i, chunk in enumerate(members, 1):
-        chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
-        title = chunk.get('title', 'Untitled')
-        author = chunk.get('author', 'Unknown')
-        source = chunk.get('source', 'unknown')
-        content = chunk.get('content', '')
-
-        # Story 2.7: Extract URL fields
-        readwise_url = chunk.get('readwise_url')
-
-        # Snippet
-        snippet = content[:200] + "..." if len(content) > 200 else content
-
-        md += f"### {i}. {title}\n\n"
-        md += f"**Author:** {author} | **Source:** {source}  \n"
-        md += f"**ID:** `{chunk_id}`"
-        if readwise_url:
-            md += f" | [Readwise]({readwise_url})"
-        md += "\n\n"
-        md += f"{snippet}\n\n"
-
-    md += f"\n**View with Knowledge Cards:** `kxhub://cluster/{cluster_id}/cards`\n"
-
-    return md
-
-
-def format_cluster_with_cards(cluster: dict, members: List[dict]) -> str:
-    """
-    Format cluster with knowledge card summaries for each member.
-
-    Args:
-        cluster: Cluster dictionary
-        members: List of member chunk dictionaries
-
-    Returns:
-        Markdown-formatted cluster with knowledge cards
-    """
-    cluster_id = cluster.get('id', 'unknown')
-    name = cluster.get('name', f'Cluster {cluster_id}')
-    description = cluster.get('description', 'No description')
-    size = cluster.get('size', 0)
-
-    md = f"# {name} - Knowledge Cards\n\n"
-    md += f"**Cluster ID:** `{cluster_id}`  \n"
-    md += f"**Total Members:** {size} chunks  \n"
-    md += f"**Description:** {description}\n\n"
-    md += "---\n\n"
-
-    md += "## Member Highlights (AI Summaries)\n\n"
-
-    for i, chunk in enumerate(members, 1):
-        chunk_id = chunk.get('id') or chunk.get('chunk_id', 'unknown')
-        title = chunk.get('title', 'Untitled')
-        author = chunk.get('author', 'Unknown')
-        source = chunk.get('source', 'unknown')
-        knowledge_card = chunk.get('knowledge_card', {})
-
-        # Story 2.7: Extract URL fields
-        readwise_url = chunk.get('readwise_url')
-
-        md += f"### {i}. {title}\n\n"
-        md += f"**Author:** {author} | **Source:** {source}  \n"
-        md += f"**ID:** `{chunk_id}`"
-        if readwise_url:
-            md += f" | [Readwise]({readwise_url})"
-        md += "\n\n"
-
-        if knowledge_card:
-            summary = knowledge_card.get('summary', 'No summary available')
-            takeaways = knowledge_card.get('takeaways', [])
-
-            md += f"**Summary:** {summary}\n\n"
-
-            if takeaways:
-                md += "**Key Takeaways:**\n\n"
-                for takeaway in takeaways:
-                    md += f"- {takeaway}\n"
-                md += "\n"
-        else:
-            md += "*Knowledge card not available*\n\n"
 
     return md
