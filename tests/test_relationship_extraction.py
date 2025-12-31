@@ -32,14 +32,14 @@ class TestRelationshipSchema:
             type="extends",
             confidence=0.85,
             explanation="Chunk 2 builds on chunk 1",
-            cluster_id="cluster1",
+            source_context="source-a--source-b",
         )
 
         assert rel.source_chunk_id == "chunk1"
         assert rel.target_chunk_id == "chunk2"
         assert rel.type == "extends"
         assert rel.confidence == 0.85
-        assert rel.cluster_id == "cluster1"
+        assert rel.source_context == "source-a--source-b"
         assert isinstance(rel.created_at, datetime)
 
     def test_relationship_invalid_type(self):
@@ -51,7 +51,7 @@ class TestRelationshipSchema:
                 type="invalid_type",
                 confidence=0.8,
                 explanation="Test",
-                cluster_id="cluster1",
+                source_context="source-a--source-b",
             )
 
     def test_relationship_invalid_confidence(self):
@@ -63,7 +63,7 @@ class TestRelationshipSchema:
                 type="extends",
                 confidence=1.5,
                 explanation="Test",
-                cluster_id="cluster1",
+                source_context="source-a--source-b",
             )
 
     def test_relationship_same_source_target(self):
@@ -77,7 +77,7 @@ class TestRelationshipSchema:
                 type="extends",
                 confidence=0.8,
                 explanation="Test",
-                cluster_id="cluster1",
+                source_context="source-a--source-b",
             )
 
     def test_relationship_to_dict(self):
@@ -88,7 +88,7 @@ class TestRelationshipSchema:
             type="supports",
             confidence=0.9,
             explanation="Evidence provided",
-            cluster_id="cluster1",
+            source_context="source-a--source-b",
         )
 
         d = rel.to_dict()
@@ -98,7 +98,7 @@ class TestRelationshipSchema:
         assert d["type"] == "supports"
         assert d["confidence"] == 0.9
         assert d["explanation"] == "Evidence provided"
-        assert d["cluster_id"] == "cluster1"
+        assert d["source_context"] == "source-a--source-b"
         assert "created_at" in d
 
     def test_relationship_from_dict(self):
@@ -109,7 +109,7 @@ class TestRelationshipSchema:
             "type": "contradicts",
             "confidence": 0.75,
             "explanation": "Opposing view",
-            "cluster_id": "cluster1",
+            "source_context": "source-a--source-b",
         }
 
         rel = Relationship.from_dict(d)
@@ -129,7 +129,7 @@ class TestRelationshipSchema:
                     type=rel_type,
                     confidence=0.5,
                     explanation="Test",
-                    cluster_id="c",
+                    source_context="source-a--source-b",
                 )
                 assert rel.type == rel_type
 
@@ -145,7 +145,7 @@ class TestValidateLLMResponse:
             "explanation": "Builds upon the concept",
         }
 
-        rel = validate_llm_response(response, "chunk1", "chunk2", "cluster1")
+        rel = validate_llm_response(response, "chunk1", "chunk2", "source-a--source-b")
 
         assert rel is not None
         assert rel.type == "extends"
@@ -160,7 +160,7 @@ class TestValidateLLMResponse:
             "explanation": "No relationship",
         }
 
-        rel = validate_llm_response(response, "chunk1", "chunk2", "cluster1")
+        rel = validate_llm_response(response, "chunk1", "chunk2", "source-a--source-b")
 
         assert rel is None
 
@@ -172,7 +172,7 @@ class TestValidateLLMResponse:
             "explanation": "Test",
         }
 
-        rel = validate_llm_response(response, "chunk1", "chunk2", "cluster1")
+        rel = validate_llm_response(response, "chunk1", "chunk2", "source-a--source-b")
 
         assert rel is None
 
@@ -181,7 +181,7 @@ class TestValidateLLMResponse:
         response = {"type": "extends"}  # Missing confidence and explanation
 
         # Should not raise, just return None or partial
-        rel = validate_llm_response(response, "chunk1", "chunk2", "cluster1")
+        rel = validate_llm_response(response, "chunk1", "chunk2", "source-a--source-b")
         # It will create with defaults (0.0 confidence, "" explanation)
         # But validation in Relationship might catch it
 
@@ -388,7 +388,7 @@ class TestRelationshipExtractor:
         chunk_a = {"id": "chunk1", "title": "A", "content": "Content A"}
         chunk_b = {"id": "chunk2", "title": "B", "content": "Content B"}
 
-        rel = extractor.extract_relationship(chunk_a, chunk_b, "cluster1")
+        rel = extractor.extract_relationship(chunk_a, chunk_b, "source-a--source-b")
 
         assert rel is not None
         assert rel.type == "extends"
@@ -410,7 +410,7 @@ class TestRelationshipExtractor:
         chunk_a = {"id": "chunk1", "title": "A", "content": "Content A"}
         chunk_b = {"id": "chunk2", "title": "B", "content": "Content B"}
 
-        rel = extractor.extract_relationship(chunk_a, chunk_b, "cluster1")
+        rel = extractor.extract_relationship(chunk_a, chunk_b, "source-a--source-b")
 
         assert rel is None
 
@@ -424,13 +424,13 @@ class TestRelationshipExtractor:
         chunk_a = {"id": "chunk1", "title": "A", "content": "Content A"}
         chunk_b = {"id": "chunk2", "title": "B", "content": "Content B"}
 
-        rel = extractor.extract_relationship(chunk_a, chunk_b, "cluster1")
+        rel = extractor.extract_relationship(chunk_a, chunk_b, "source-a--source-b")
 
         assert rel is None  # Should handle error gracefully
 
     @patch.object(RelationshipExtractor, "llm_client")
-    def test_process_cluster(self, mock_llm):
-        """Test processing an entire cluster."""
+    def test_process_chunks(self, mock_llm):
+        """Test processing chunks with source context."""
         extractor = RelationshipExtractor(
             similarity_threshold=0.5, confidence_threshold=0.7
         )
@@ -448,11 +448,13 @@ class TestRelationshipExtractor:
             {"id": "b", "title": "B", "content": "Y", "embedding": [0.9, 0.44]},
         ]
 
-        relationships = extractor.process_cluster("cluster1", chunks)
+        result = extractor.process_chunks(chunks, "source-a--source-b")
 
-        assert len(relationships) == 1
-        assert relationships[0].type == "supports"
-        assert relationships[0].cluster_id == "cluster1"
+        assert result["candidates"] == 1
+        assert result["extracted"] == 1
+        assert len(result["relationships"]) == 1
+        assert result["relationships"][0].type == "supports"
+        assert result["relationships"][0].source_context == "source-a--source-b"
 
 
 class TestMainModule:
@@ -470,7 +472,7 @@ class TestMainModule:
                 type="extends",
                 confidence=0.8,
                 explanation="Test",
-                cluster_id="c",
+                source_context="source-a--source-b",
             )
         ]
 

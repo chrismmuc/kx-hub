@@ -46,7 +46,7 @@ class Relationship:
         type: One of the fixed relationship types
         confidence: LLM confidence score (0.0-1.0)
         explanation: Brief explanation of why this relationship exists
-        cluster_id: ID of the cluster where this relationship was found
+        source_context: Context info (e.g., "source_a--source_b" for cross-source)
         created_at: Timestamp when relationship was extracted
     """
 
@@ -55,7 +55,7 @@ class Relationship:
     type: RelationType
     confidence: float
     explanation: str
-    cluster_id: str
+    source_context: str  # Replaces cluster_id
     created_at: datetime = field(default_factory=_utc_now)
 
     def __post_init__(self):
@@ -82,7 +82,7 @@ class Relationship:
             "type": self.type,
             "confidence": self.confidence,
             "explanation": self.explanation,
-            "cluster_id": self.cluster_id,
+            "source_context": self.source_context,
             "created_at": self.created_at,
         }
 
@@ -103,7 +103,7 @@ class Relationship:
             type=data["type"],
             confidence=data["confidence"],
             explanation=data["explanation"],
-            cluster_id=data["cluster_id"],
+            source_context=data.get("source_context", data.get("cluster_id", "")),
             created_at=data.get("created_at", _utc_now()),
         )
 
@@ -112,7 +112,7 @@ def validate_llm_response(
     response: Dict[str, Any],
     source_chunk_id: str,
     target_chunk_id: str,
-    cluster_id: str,
+    source_context: str,
 ) -> Optional[Relationship]:
     """
     Validate and convert LLM response to Relationship.
@@ -121,14 +121,14 @@ def validate_llm_response(
         response: Parsed JSON from LLM containing type, confidence, explanation
         source_chunk_id: ID of source chunk
         target_chunk_id: ID of target chunk
-        cluster_id: ID of the cluster
+        source_context: Context info (e.g., source IDs)
 
     Returns:
         Relationship if valid, None if type is "none" or validation fails
 
     Example:
         >>> response = {"type": "extends", "confidence": 0.85, "explanation": "..."}
-        >>> rel = validate_llm_response(response, "chunk1", "chunk2", "cluster1")
+        >>> rel = validate_llm_response(response, "chunk1", "chunk2", "source-a--source-b")
     """
     try:
         rel_type = response.get("type", "none")
@@ -150,7 +150,7 @@ def validate_llm_response(
             type=rel_type,
             confidence=confidence,
             explanation=explanation,
-            cluster_id=cluster_id,
+            source_context=source_context,
         )
 
     except (ValueError, TypeError, KeyError) as e:

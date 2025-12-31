@@ -31,6 +31,10 @@ class GenerationConfig:
     top_p: float = 0.95
     top_k: int = 40
 
+    # Thinking mode (Gemini 2.5+): enables extended reasoning
+    # Costs $3.50/1M thinking tokens - use only for complex reasoning tasks
+    enable_thinking: bool = False
+
     # Provider-specific overrides (optional)
     extra: Dict[str, Any] = field(default_factory=dict)
 

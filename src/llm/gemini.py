@@ -96,19 +96,23 @@ class GeminiClient(BaseLLMClient):
         """
         self._ensure_initialized()
 
-        from vertexai.generative_models import GenerationConfig as GeminiGenConfig
         from vertexai.generative_models import HarmBlockThreshold, HarmCategory
 
         config = config or GenerationConfig()
 
-        # Convert to Gemini config
-        gemini_config = GeminiGenConfig(
-            temperature=config.temperature,
-            max_output_tokens=config.max_output_tokens,
-            top_p=config.top_p,
-            top_k=config.top_k,
-            candidate_count=1,
-        )
+        # Convert to Gemini config as dict to support thinking_config
+        gemini_config = {
+            "temperature": config.temperature,
+            "max_output_tokens": config.max_output_tokens,
+            "top_p": config.top_p,
+            "top_k": config.top_k,
+            "candidate_count": 1,
+        }
+
+        # Thinking mode: disabled by default to avoid $3.50/1M token costs
+        # Enable explicitly via config.enable_thinking=True for complex reasoning
+        if not config.enable_thinking:
+            gemini_config["thinking_config"] = {"thinking_budget": 0}
 
         # Safety settings - permissive for content generation
         safety_settings = {

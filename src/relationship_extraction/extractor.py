@@ -155,7 +155,7 @@ class RelationshipExtractor:
         self,
         chunk_a: Dict[str, Any],
         chunk_b: Dict[str, Any],
-        cluster_id: str,
+        source_context: str = "",
     ) -> Optional[Relationship]:
         """
         Extract relationship between two chunks using LLM.
@@ -163,7 +163,7 @@ class RelationshipExtractor:
         Args:
             chunk_a: Source chunk dictionary
             chunk_b: Target chunk dictionary
-            cluster_id: ID of the containing cluster
+            source_context: Context info (e.g., "source_a--source_b")
 
         Returns:
             Relationship if found and above confidence threshold, None otherwise
@@ -185,15 +185,21 @@ class RelationshipExtractor:
         )
 
         try:
-            # Call LLM for JSON response
-            response = self.llm_client.generate_json(prompt)
+            # Call LLM with thinking enabled for better reasoning
+            from src.llm.base import GenerationConfig
+
+            config = GenerationConfig(
+                temperature=0.3,  # Lower for consistent classification
+                enable_thinking=True,  # Enable reasoning for relationship analysis
+            )
+            response = self.llm_client.generate_json(prompt, config=config)
 
             # Validate and convert response
             relationship = validate_llm_response(
                 response=response,
                 source_chunk_id=source_id,
                 target_chunk_id=target_id,
-                cluster_id=cluster_id,
+                source_context=source_context,
             )
 
             # Filter by confidence threshold
@@ -210,58 +216,17 @@ class RelationshipExtractor:
             logger.warning(f"Failed to extract relationship: {e}")
             return None
 
-    def process_cluster(
-        self,
-        cluster_id: str,
-        chunks: List[Dict[str, Any]],
-    ) -> List[Relationship]:
-        """
-        Process all chunk pairs in a cluster and extract relationships.
-
-        Args:
-            cluster_id: ID of the cluster
-            chunks: List of chunks in the cluster
-
-        Returns:
-            List of extracted relationships
-        """
-        logger.info(f"Processing cluster {cluster_id} with {len(chunks)} chunks")
-
-        # Get candidate pairs
-        candidates = self.get_candidate_pairs(chunks)
-
-        if not candidates:
-            logger.info(f"No candidate pairs found in cluster {cluster_id}")
-            return []
-
-        relationships = []
-
-        for i, (chunk_a, chunk_b, similarity) in enumerate(candidates):
-            if (i + 1) % 10 == 0 or i == 0:
-                logger.info(f"  Processing pair {i + 1}/{len(candidates)}...")
-
-            relationship = self.extract_relationship(chunk_a, chunk_b, cluster_id)
-            if relationship:
-                relationships.append(relationship)
-
-        logger.info(
-            f"Cluster {cluster_id}: Extracted {len(relationships)} relationships "
-            f"from {len(candidates)} candidates"
-        )
-
-        return relationships
-
     def process_chunks(
         self,
         chunks: List[Dict[str, Any]],
-        cluster_id: str = "unknown",
+        source_context: str = "",
     ) -> Dict[str, Any]:
         """
         Process a list of chunks and extract all relationships.
 
         Args:
             chunks: List of chunk dictionaries
-            cluster_id: Cluster ID to assign to relationships
+            source_context: Context info for relationships
 
         Returns:
             Dictionary with:
@@ -272,8 +237,11 @@ class RelationshipExtractor:
         candidates = self.get_candidate_pairs(chunks)
         relationships = []
 
-        for chunk_a, chunk_b, similarity in candidates:
-            rel = self.extract_relationship(chunk_a, chunk_b, cluster_id)
+        for i, (chunk_a, chunk_b, similarity) in enumerate(candidates):
+            if (i + 1) % 10 == 0 or i == 0:
+                logger.info(f"  Processing pair {i + 1}/{len(candidates)}...")
+
+            rel = self.extract_relationship(chunk_a, chunk_b, source_context)
             if rel:
                 relationships.append(rel)
 
