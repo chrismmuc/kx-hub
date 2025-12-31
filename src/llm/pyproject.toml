@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kx-llm"
+version = "0.1.0"
+description = "LLM abstraction layer for kx-hub - unified interface for Gemini and Claude"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    {name = "Christian", email = "christian@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "google-cloud-aiplatform>=1.130.0",
+    "anthropic[vertex]>=0.75.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["kx_llm*"]
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]

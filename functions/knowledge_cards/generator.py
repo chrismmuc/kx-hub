@@ -1,82 +1,48 @@
 """
 Knowledge Card Generator
 
-Batch processes chunks to generate AI-powered knowledge cards using Gemini 2.5 Flash-Lite.
+Batch processes chunks to generate AI-powered knowledge cards using Gemini 2.5 Flash.
 Story 2.1: Knowledge Card Generation (Epic 2)
+
+Uses kx-llm package for LLM abstraction (thinking disabled by default for cost efficiency).
 """
 
-import os
-import time
 import json
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+import os
+import time
+from typing import Any, Dict, List, Optional
 
-# Vertex AI imports
-try:
-    from google.cloud import aiplatform
-    from vertexai.generative_models import GenerativeModel, GenerationConfig
-    _HAS_VERTEX_AI = True
-except ImportError:
-    _HAS_VERTEX_AI = False
-    GenerativeModel = None
-    GenerationConfig = None
-
-from schema import KnowledgeCard, validate_knowledge_card_response
+from kx_llm import GenerationConfig, get_client
 from prompt_manager import PromptManager, estimate_cost
+from schema import KnowledgeCard, validate_knowledge_card_response
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Configuration (from environment or defaults)
-GCP_PROJECT = os.environ.get('GCP_PROJECT', 'kx-hub')
-GCP_REGION = os.environ.get('GCP_REGION', 'europe-west4')
-
-# Gemini Flash model configuration (January 2025 - latest stable GA model)
-GEMINI_MODEL_NAME = "gemini-2.5-flash"  # Gemini 2.5 Flash (GA) - available in europe-west4
+# Configuration
 DEFAULT_BATCH_SIZE = 100  # Process 100 chunks at a time (Firestore batch limit)
 
-# Retry configuration (from context: follow src/embed/main.py pattern)
+# Retry configuration
 MAX_RETRIES = 3
 INITIAL_BACKOFF = 1.0  # seconds
 MAX_BACKOFF = 30.0  # seconds
 
-# Global model instance (lazy initialization)
-_gemini_model = None
+# Global LLM client (lazy initialization)
+_llm_client = None
 
 
-def get_gemini_model() -> GenerativeModel:
-    """
-    Get or create Gemini 2.5 Flash-Lite model instance (cached).
-
-    Returns:
-        Initialized GenerativeModel for Gemini 2.5 Flash-Lite
-
-    Raises:
-        ImportError: If Vertex AI SDK not available
-    """
-    global _gemini_model
-
-    if not _HAS_VERTEX_AI:
-        raise ImportError(
-            "google-cloud-aiplatform and vertexai libraries are required. "
-            "Install with: pip install google-cloud-aiplatform"
-        )
-
-    if _gemini_model is None:
-        # Initialize Vertex AI
-        aiplatform.init(project=GCP_PROJECT, location=GCP_REGION)
-
-        # Create Gemini model
-        _gemini_model = GenerativeModel(GEMINI_MODEL_NAME)
-
-        logger.info(f"Initialized Gemini model: {GEMINI_MODEL_NAME}")
-
-    return _gemini_model
+def get_llm_client():
+    """Get or create LLM client instance (cached)."""
+    global _llm_client
+    if _llm_client is None:
+        # Uses LLM_MODEL env var or defaults to gemini-2.5-flash
+        _llm_client = get_client()
+        logger.info(f"Initialized LLM client: {_llm_client}")
+    return _llm_client
 
 
 def generate_knowledge_card(
@@ -84,10 +50,10 @@ def generate_knowledge_card(
     title: str,
     author: str,
     content: str,
-    prompt_manager: Optional[PromptManager] = None
+    prompt_manager: Optional[PromptManager] = None,
 ) -> KnowledgeCard:
     """
-    Generate knowledge card for a single chunk using Gemini 2.5 Flash-Lite.
+    Generate knowledge card for a single chunk using LLM.
 
     Implements retry logic with exponential backoff for rate limiting.
 
@@ -110,85 +76,38 @@ def generate_knowledge_card(
     # Format prompt with chunk data
     prompt = prompt_manager.format_prompt(title, author, content)
 
-    # Get Gemini model
-    model = get_gemini_model()
+    # Get LLM client
+    client = get_llm_client()
 
-    # Generation config for JSON output
-    generation_config = GenerationConfig(
+    # Generation config - thinking disabled for cost efficiency
+    config = GenerationConfig(
         temperature=0.7,  # Balanced creativity for summarization
         top_p=0.95,
         top_k=40,
-        max_output_tokens=2048,  # Increased to ensure complete output
-        candidate_count=1
+        max_output_tokens=2048,
+        enable_thinking=False,  # Disabled to avoid $3.50/1M token costs
     )
-
-    # Safety settings - block none to avoid truncation
-    from vertexai.generative_models import HarmCategory, HarmBlockThreshold
-    safety_settings = {
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-    }
 
     backoff = INITIAL_BACKOFF
 
     for attempt in range(MAX_RETRIES):
         try:
-            # Call Gemini API
-            logger.debug(f"Generating knowledge card for chunk {chunk_id} (attempt {attempt + 1}/{MAX_RETRIES})")
-
-            response = model.generate_content(
-                prompt,
-                generation_config=generation_config,
-                safety_settings=safety_settings
+            logger.debug(
+                f"Generating knowledge card for chunk {chunk_id} (attempt {attempt + 1}/{MAX_RETRIES})"
             )
 
-            # Extract response text (handle candidates properly)
-            if not response.candidates or len(response.candidates) == 0:
-                raise ValueError(f"No response candidates from Gemini API. Response: {response}")
+            # Use generate_json for automatic JSON parsing
+            response_data = client.generate_json(prompt, config=config)
 
-            candidate = response.candidates[0]
-
-            # Check finish reason for issues
-            finish_reason = getattr(candidate, 'finish_reason', None)
-            if finish_reason and finish_reason not in [1, 'STOP']:  # 1 = STOP in enum
-                logger.warning(f"Unusual finish reason for chunk {chunk_id}: {finish_reason}")
-
-            if not candidate.content or not candidate.content.parts:
-                raise ValueError(f"Empty response from Gemini API. Finish reason: {finish_reason}")
-
-            # Concatenate all parts (in case response is multipart)
-            response_text = ''.join([part.text for part in candidate.content.parts if hasattr(part, 'text')])
-
-            if not response_text or len(response_text.strip()) == 0:
-                raise ValueError(f"Empty text from Gemini API. Candidate: {candidate}, Finish reason: {finish_reason}")
-
-            # Debug: Log full response for troubleshooting
-            logger.debug(f"Full response text ({len(response_text)} chars): {response_text[:1000]}")
-
-            # Parse JSON response (handle markdown code blocks if present)
-            try:
-                # Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
-                cleaned_text = response_text.strip()
-                if cleaned_text.startswith('```'):
-                    # Remove opening code fence
-                    cleaned_text = cleaned_text.split('\n', 1)[1] if '\n' in cleaned_text else cleaned_text[3:]
-                    # Remove closing code fence
-                    if cleaned_text.endswith('```'):
-                        cleaned_text = cleaned_text.rsplit('\n```', 1)[0]
-                    cleaned_text = cleaned_text.strip()
-
-                response_data = json.loads(cleaned_text)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON response for chunk {chunk_id}: {e}")
-                logger.error(f"Response text: {response_text[:500]}")
-                raise ValueError(f"Invalid JSON response from Gemini: {response_text[:200]}")
+            if response_data is None:
+                raise ValueError(f"Empty response from LLM API for chunk {chunk_id}")
 
             # Validate and create KnowledgeCard
             knowledge_card = validate_knowledge_card_response(response_data)
 
-            logger.info(f"Generated knowledge card for chunk {chunk_id}: {len(knowledge_card.summary)} chars, {len(knowledge_card.takeaways)} takeaways")
+            logger.info(
+                f"Generated knowledge card for chunk {chunk_id}: {len(knowledge_card.summary)} chars, {len(knowledge_card.takeaways)} takeaways"
+            )
 
             return knowledge_card
 
@@ -196,8 +115,12 @@ def generate_knowledge_card(
             error_msg = str(e).lower()
 
             # Check if rate limit or server error (retriable)
-            is_rate_limit = 'rate' in error_msg or 'quota' in error_msg or '429' in error_msg
-            is_server_error = 'internal' in error_msg or '500' in error_msg or '503' in error_msg
+            is_rate_limit = (
+                "rate" in error_msg or "quota" in error_msg or "429" in error_msg
+            )
+            is_server_error = (
+                "internal" in error_msg or "500" in error_msg or "503" in error_msg
+            )
 
             if (is_rate_limit or is_server_error) and attempt < MAX_RETRIES - 1:
                 logger.warning(
@@ -207,13 +130,14 @@ def generate_knowledge_card(
                 time.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
-                logger.error(f"Failed to generate knowledge card for chunk {chunk_id} after {attempt + 1} attempts: {e}")
+                logger.error(
+                    f"Failed to generate knowledge card for chunk {chunk_id} after {attempt + 1} attempts: {e}"
+                )
                 raise
 
 
 def process_chunks_batch(
-    chunks: List[Dict[str, Any]],
-    batch_size: int = DEFAULT_BATCH_SIZE
+    chunks: List[Dict[str, Any]], batch_size: int = DEFAULT_BATCH_SIZE
 ) -> Dict[str, Any]:
     """
     Process chunks in batches to generate knowledge cards.
@@ -246,17 +170,21 @@ def process_chunks_batch(
     prompt_manager = PromptManager()
 
     total_chunks = len(chunks)
-    logger.info(f"Starting batch processing: {total_chunks} chunks with batch_size={batch_size}")
+    logger.info(
+        f"Starting batch processing: {total_chunks} chunks with batch_size={batch_size}"
+    )
 
     # Estimate cost upfront
     cost_estimate = estimate_cost(total_chunks)
-    logger.info(f"Estimated cost: ${cost_estimate['total_cost']:.4f} for {total_chunks} chunks")
+    logger.info(
+        f"Estimated cost: ${cost_estimate['total_cost']:.4f} for {total_chunks} chunks"
+    )
 
     for i, chunk in enumerate(chunks):
-        chunk_id = chunk.get('chunk_id') or chunk.get('id')
-        title = chunk.get('title', 'Untitled')
-        author = chunk.get('author', 'Unknown')
-        content = chunk.get('content', '')
+        chunk_id = chunk.get("chunk_id") or chunk.get("id")
+        title = chunk.get("title", "Untitled")
+        author = chunk.get("author", "Unknown")
+        content = chunk.get("content", "")
 
         if not content:
             logger.warning(f"Skipping chunk {chunk_id}: no content")
@@ -271,17 +199,23 @@ def process_chunks_batch(
                 title=title,
                 author=author,
                 content=content,
-                prompt_manager=prompt_manager
+                prompt_manager=prompt_manager,
             )
 
-            cards.append({'chunk_id': chunk_id, 'knowledge_card': knowledge_card.to_dict()})
+            cards.append(
+                {"chunk_id": chunk_id, "knowledge_card": knowledge_card.to_dict()}
+            )
             processed += 1
 
             # Log progress every 10 chunks
             if (i + 1) % 10 == 0:
                 elapsed = time.time() - start_time
                 chunks_per_sec = (i + 1) / elapsed if elapsed > 0 else 0
-                eta = (total_chunks - (i + 1)) / chunks_per_sec if chunks_per_sec > 0 else 0
+                eta = (
+                    (total_chunks - (i + 1)) / chunks_per_sec
+                    if chunks_per_sec > 0
+                    else 0
+                )
 
                 logger.info(
                     f"Progress: {i + 1}/{total_chunks} chunks ({processed} succeeded, {failed} failed) | "
@@ -291,18 +225,18 @@ def process_chunks_batch(
         except Exception as e:
             logger.error(f"Failed to generate card for chunk {chunk_id}: {e}")
             failed += 1
-            errors.append({'chunk_id': chunk_id, 'error': str(e)})
+            errors.append({"chunk_id": chunk_id, "error": str(e)})
 
     duration = time.time() - start_time
 
     results = {
-        'processed': processed,
-        'failed': failed,
-        'cards': cards,
-        'errors': errors,
-        'duration': duration,
-        'cost_estimate': cost_estimate,
-        'chunks_per_second': processed / duration if duration > 0 else 0
+        "processed": processed,
+        "failed": failed,
+        "cards": cards,
+        "errors": errors,
+        "duration": duration,
+        "cost_estimate": cost_estimate,
+        "chunks_per_second": processed / duration if duration > 0 else 0,
     }
 
     logger.info(

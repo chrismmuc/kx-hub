@@ -6,23 +6,25 @@ Supports multiple LLM providers (Gemini, Claude) via abstraction layer.
 Story 2.1: Knowledge Card Generation (Epic 2)
 """
 
+import json
+import logging
 import os
 import sys
 import time
-import json
-import logging
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 # Add parent directory to path for llm module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from .schema import KnowledgeCard, validate_knowledge_card_response
 from .prompt_manager import PromptManager, estimate_cost
+from .schema import KnowledgeCard, validate_knowledge_card_response
 
 # LLM abstraction layer
 try:
-    from llm import get_client, GenerationConfig as LLMGenerationConfig, BaseLLMClient
+    from llm import BaseLLMClient, get_client
+    from llm import GenerationConfig as LLMGenerationConfig
+
     _HAS_LLM = True
 except ImportError:
     _HAS_LLM = False
@@ -30,8 +32,7 @@ except ImportError:
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -60,8 +61,7 @@ def get_llm_client() -> BaseLLMClient:
 
     if not _HAS_LLM:
         raise ImportError(
-            "LLM abstraction layer not available. "
-            "Ensure src/llm package is installed."
+            "LLM abstraction layer not available. Ensure src/llm package is installed."
         )
 
     if _llm_client is None:
@@ -88,7 +88,7 @@ def generate_knowledge_card(
     title: str,
     author: str,
     content: str,
-    prompt_manager: Optional[PromptManager] = None
+    prompt_manager: Optional[PromptManager] = None,
 ) -> KnowledgeCard:
     """
     Generate knowledge card for a single chunk using configured LLM.
@@ -120,15 +120,18 @@ def generate_knowledge_card(
     # Get LLM client (model selected via env var or default)
     client = get_llm_client()
 
-    # Generation config for JSON output
+    # Generation config for JSON output (thinking disabled for cost efficiency)
     config = LLMGenerationConfig(
         temperature=0.7,  # Balanced creativity for summarization
         top_p=0.95,
         top_k=40,
-        max_output_tokens=2048  # Ensure complete output
+        max_output_tokens=2048,  # Ensure complete output
+        enable_thinking=False,  # Disabled to avoid $3.50/1M token costs
     )
 
-    logger.debug(f"Generating knowledge card for chunk {chunk_id} using {client.model_id}")
+    logger.debug(
+        f"Generating knowledge card for chunk {chunk_id} using {client.model_id}"
+    )
 
     try:
         # Use generate_json for automatic JSON parsing and markdown stripping
@@ -156,8 +159,7 @@ def generate_knowledge_card(
 
 
 def process_chunks_batch(
-    chunks: List[Dict[str, Any]],
-    batch_size: int = DEFAULT_BATCH_SIZE
+    chunks: List[Dict[str, Any]], batch_size: int = DEFAULT_BATCH_SIZE
 ) -> Dict[str, Any]:
     """
     Process chunks in batches to generate knowledge cards.
@@ -190,17 +192,21 @@ def process_chunks_batch(
     prompt_manager = PromptManager()
 
     total_chunks = len(chunks)
-    logger.info(f"Starting batch processing: {total_chunks} chunks with batch_size={batch_size}")
+    logger.info(
+        f"Starting batch processing: {total_chunks} chunks with batch_size={batch_size}"
+    )
 
     # Estimate cost upfront
     cost_estimate = estimate_cost(total_chunks)
-    logger.info(f"Estimated cost: ${cost_estimate['total_cost']:.4f} for {total_chunks} chunks")
+    logger.info(
+        f"Estimated cost: ${cost_estimate['total_cost']:.4f} for {total_chunks} chunks"
+    )
 
     for i, chunk in enumerate(chunks):
-        chunk_id = chunk.get('chunk_id') or chunk.get('id')
-        title = chunk.get('title', 'Untitled')
-        author = chunk.get('author', 'Unknown')
-        content = chunk.get('content', '')
+        chunk_id = chunk.get("chunk_id") or chunk.get("id")
+        title = chunk.get("title", "Untitled")
+        author = chunk.get("author", "Unknown")
+        content = chunk.get("content", "")
 
         if not content:
             logger.warning(f"Skipping chunk {chunk_id}: no content")
@@ -215,7 +221,7 @@ def process_chunks_batch(
                 title=title,
                 author=author,
                 content=content,
-                prompt_manager=prompt_manager
+                prompt_manager=prompt_manager,
             )
 
             cards.append((chunk_id, knowledge_card))
@@ -225,7 +231,11 @@ def process_chunks_batch(
             if (i + 1) % 10 == 0:
                 elapsed = time.time() - start_time
                 chunks_per_sec = (i + 1) / elapsed if elapsed > 0 else 0
-                eta = (total_chunks - (i + 1)) / chunks_per_sec if chunks_per_sec > 0 else 0
+                eta = (
+                    (total_chunks - (i + 1)) / chunks_per_sec
+                    if chunks_per_sec > 0
+                    else 0
+                )
 
                 logger.info(
                     f"Progress: {i + 1}/{total_chunks} chunks ({processed} succeeded, {failed} failed) | "
@@ -240,13 +250,13 @@ def process_chunks_batch(
     duration = time.time() - start_time
 
     results = {
-        'processed': processed,
-        'failed': failed,
-        'cards': cards,
-        'errors': errors,
-        'duration': duration,
-        'cost_estimate': cost_estimate,
-        'chunks_per_second': processed / duration if duration > 0 else 0
+        "processed": processed,
+        "failed": failed,
+        "cards": cards,
+        "errors": errors,
+        "duration": duration,
+        "cost_estimate": cost_estimate,
+        "chunks_per_second": processed / duration if duration > 0 else 0,
     }
 
     logger.info(
