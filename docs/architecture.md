@@ -311,9 +311,15 @@ The daily pipeline processes new content through 4 sequential steps, orchestrate
 |------|---------------|-------|--------|----------|
 | 1. **Ingest** | `ingest-function` | Readwise/Reader API | GCS raw JSON + Pub/Sub trigger | - |
 | 2. **Normalize** | `normalize-function` | GCS raw JSON | GCS Markdown + Frontmatter | - |
-| 3. **Embed & Store** | `embed-function` | GCS Markdown | Firestore kb_items (with embeddings) | `gemini-embedding-001` |
+| 3. **Embed & Store** | `embed-function` | GCS Markdown | Firestore kb_items (with embeddings) + sources collection | `gemini-embedding-001` |
 | 4. **Knowledge Cards** | `knowledge-cards-function` | Firestore chunks (missing KC) | Firestore kb_items.knowledge_card | `gemini-2.0-flash` |
 | 5. **Relationships** | `relationships-function` | New chunk IDs from Step 3 | Firestore relationships collection | `gemini-2.0-flash` |
+
+**Source Management (Step 3):**
+- Each chunk is assigned a `source_id` derived from its title
+- Sources are automatically created in the `sources` collection if not existing
+- Existing sources are updated with new `chunk_ids`
+- Enables source-based querying and relationship tracking
 
 **Key Features:**
 - **Incremental Processing**: Only new/changed chunks are processed

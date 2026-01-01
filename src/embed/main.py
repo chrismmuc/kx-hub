@@ -13,13 +13,19 @@ This function:
 import hashlib
 import json
 import logging
-import time
-import yaml
 import os
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-from datetime import datetime, timezone, timedelta
+import time
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from google.api_core.exceptions import GoogleAPICallError, InternalServerError, NotFound, ResourceExhausted
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+import yaml
+from google.api_core.exceptions import (
+    GoogleAPICallError,
+    InternalServerError,
+    NotFound,
+    ResourceExhausted,
+)
 
 _HAS_STORAGE_LIB = True
 _HAS_FIRESTORE_LIB = True
@@ -28,7 +34,7 @@ _HAS_VERTEX_LIB = True
 _HAS_MATCHING_ENGINE_LIB = True
 
 try:
-    from google.cloud import storage, firestore, aiplatform
+    from google.cloud import aiplatform, firestore, storage
 except ImportError:  # pragma: no cover - allows tests to run without deps
     _HAS_STORAGE_LIB = False
     _HAS_FIRESTORE_LIB = False
@@ -44,8 +50,8 @@ except ImportError:  # pragma: no cover - allows tests to run without deps
     TextEmbeddingModel = None  # type: ignore[assignment]
 
 try:
-    from google.cloud.firestore_v1.vector import Vector
     from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+    from google.cloud.firestore_v1.vector import Vector
 except ImportError:  # pragma: no cover - allows tests to run without deps
     _HAS_MATCHING_ENGINE_LIB = False
     Vector = None  # type: ignore[assignment]
@@ -57,18 +63,22 @@ except ImportError:  # pragma: no cover - allows tests to run without deps
     Increment = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:  # pragma: no cover
-    from google.cloud import storage as storage_mod
-    from google.cloud import firestore as firestore_mod
     from google.cloud import aiplatform as aiplatform_mod
-    from vertexai.preview.language_models import TextEmbeddingModel as TextEmbeddingModelType
-    from google.cloud.aiplatform_v1.services.index_service import IndexServiceClient as IndexServiceClientType
+    from google.cloud import firestore as firestore_mod
+    from google.cloud import storage as storage_mod
+    from google.cloud.aiplatform_v1.services.index_service import (
+        IndexServiceClient as IndexServiceClientType,
+    )
+    from vertexai.preview.language_models import (
+        TextEmbeddingModel as TextEmbeddingModelType,
+    )
 
 # Configure structured logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 # Provide lightweight fallbacks when optional dependencies aren't available during tests.
 def _raise_missing_library(name: str) -> None:
@@ -78,12 +88,14 @@ def _raise_missing_library(name: str) -> None:
 if not _HAS_FIRESTORE_LIB:
     firestore = SimpleNamespace(  # type: ignore[assignment]
         SERVER_TIMESTAMP=object(),
-        Client=lambda *args, **kwargs: _raise_missing_library("google-cloud-firestore")
+        Client=lambda *args, **kwargs: _raise_missing_library("google-cloud-firestore"),
     )
 
 if not _HAS_AIPLATFORM_LIB:
     aiplatform = SimpleNamespace(  # type: ignore[assignment]
-        MatchingEngineIndexEndpoint=lambda *args, **kwargs: _raise_missing_library("google-cloud-aiplatform")
+        MatchingEngineIndexEndpoint=lambda *args, **kwargs: _raise_missing_library(
+            "google-cloud-aiplatform"
+        )
     )
 
 # Global GCP clients (lazy initialization)
@@ -92,14 +104,18 @@ _firestore_client = None
 _vertex_ai_model = None
 
 # Configuration
-GCP_PROJECT = os.environ.get('GCP_PROJECT', 'kx-hub')
-GCP_REGION = os.environ.get('GCP_REGION', 'europe-west4')
-MARKDOWN_BUCKET = os.environ.get('MARKDOWN_BUCKET', f'{GCP_PROJECT}-markdown-normalized')
-PIPELINE_BUCKET = os.environ.get('PIPELINE_BUCKET')
-PIPELINE_COLLECTION = os.environ.get('PIPELINE_COLLECTION', 'pipeline_items')
-PIPELINE_MANIFEST_PREFIX = os.environ.get('PIPELINE_MANIFEST_PREFIX', 'manifests')
+GCP_PROJECT = os.environ.get("GCP_PROJECT", "kx-hub")
+GCP_REGION = os.environ.get("GCP_REGION", "europe-west4")
+MARKDOWN_BUCKET = os.environ.get(
+    "MARKDOWN_BUCKET", f"{GCP_PROJECT}-markdown-normalized"
+)
+PIPELINE_BUCKET = os.environ.get("PIPELINE_BUCKET")
+PIPELINE_COLLECTION = os.environ.get("PIPELINE_COLLECTION", "pipeline_items")
+PIPELINE_MANIFEST_PREFIX = os.environ.get("PIPELINE_MANIFEST_PREFIX", "manifests")
 try:
-    EMBED_STALE_TIMEOUT_SECONDS = int(os.environ.get('EMBED_STALE_TIMEOUT_SECONDS', '900'))
+    EMBED_STALE_TIMEOUT_SECONDS = int(
+        os.environ.get("EMBED_STALE_TIMEOUT_SECONDS", "900")
+    )
 except ValueError:
     EMBED_STALE_TIMEOUT_SECONDS = 900
 STALE_PROCESSING_DELTA = timedelta(seconds=EMBED_STALE_TIMEOUT_SECONDS)
@@ -127,7 +143,9 @@ def get_storage_client():
     global _storage_client
     if _storage_client is None:
         if storage is None:
-            raise ImportError("google-cloud-storage is required to use get_storage_client")
+            raise ImportError(
+                "google-cloud-storage is required to use get_storage_client"
+            )
         _storage_client = storage.Client(project=GCP_PROJECT)
         logger.info("Initialized Cloud Storage client")
     return _storage_client
@@ -138,7 +156,9 @@ def get_firestore_client():
     global _firestore_client
     if _firestore_client is None:
         if not _HAS_FIRESTORE_LIB:
-            raise ImportError("google-cloud-firestore is required to use get_firestore_client")
+            raise ImportError(
+                "google-cloud-firestore is required to use get_firestore_client"
+            )
         _firestore_client = firestore.Client(project=GCP_PROJECT)
         logger.info("Initialized Firestore client")
     return _firestore_client
@@ -149,7 +169,9 @@ def get_vertex_ai_client():
     global _vertex_ai_model
     if _vertex_ai_model is None:
         if not (_HAS_AIPLATFORM_LIB and _HAS_VERTEX_LIB):
-            raise ImportError("google-cloud-aiplatform and vertexai libraries are required for embeddings")
+            raise ImportError(
+                "google-cloud-aiplatform and vertexai libraries are required for embeddings"
+            )
         aiplatform.init(project=GCP_PROJECT, location=GCP_REGION)
         _vertex_ai_model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")
         logger.info("Initialized Vertex AI embedding model")
@@ -210,6 +232,70 @@ def _compute_markdown_hash(markdown: str) -> str:
     return f"sha256:{hashlib.sha256(markdown.encode('utf-8')).hexdigest()}"
 
 
+def _generate_source_id(title: str) -> str:
+    """
+    Generate a normalized source_id from title.
+
+    Args:
+        title: Document/chunk title
+
+    Returns:
+        Lowercase, hyphenated source_id (max 60 chars)
+    """
+    import re
+
+    # Normalize: lowercase, replace non-alphanumeric with hyphens, strip edges
+    normalized = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    # Limit to 60 chars
+    return normalized[:60]
+
+
+def _ensure_source_exists(
+    source_id: str, title: str, author: str, chunk_id: str
+) -> None:
+    """
+    Ensure a source document exists in the sources collection.
+    Creates if not exists, updates chunk_ids list if exists.
+
+    Args:
+        source_id: Normalized source identifier
+        title: Source title
+        author: Source author
+        chunk_id: Chunk ID to add to the source
+    """
+    try:
+        db = get_firestore_client()
+        source_ref = db.collection("sources").document(source_id)
+        source_doc = source_ref.get()
+
+        if source_doc.exists:
+            # Update existing source - add chunk_id if not present
+            existing = source_doc.to_dict()
+            chunk_ids = existing.get("chunk_ids", [])
+            if chunk_id not in chunk_ids:
+                chunk_ids.append(chunk_id)
+                source_ref.update(
+                    {"chunk_ids": chunk_ids, "chunk_count": len(chunk_ids)}
+                )
+                logger.debug(f"Added chunk {chunk_id} to existing source {source_id}")
+        else:
+            # Create new source
+            source_data = {
+                "title": title,
+                "author": author,
+                "type": "article",  # Default type
+                "chunk_ids": [chunk_id],
+                "chunk_count": 1,
+                "created_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                "tags": [],
+            }
+            source_ref.set(source_data)
+            logger.info(f"Created new source: {source_id}")
+
+    except Exception as e:
+        logger.warning(f"Failed to ensure source {source_id} exists: {e}")
+
+
 def _increment_retry(existing: Dict[str, Any]) -> Any:
     if Increment is not None:
         return Increment(1)
@@ -231,10 +317,10 @@ def parse_markdown(content: str) -> Tuple[Dict[str, Any], str]:
     Raises:
         ValueError: If frontmatter is malformed or missing required fields
     """
-    if not content.startswith('---'):
+    if not content.startswith("---"):
         raise ValueError("No frontmatter found (must start with '---')")
 
-    parts = content.split('---', 2)
+    parts = content.split("---", 2)
     if len(parts) < 3:
         raise ValueError("Malformed frontmatter (missing closing '---')")
 
@@ -244,42 +330,51 @@ def parse_markdown(content: str) -> Tuple[Dict[str, Any], str]:
         raise ValueError(f"Invalid YAML frontmatter: {e}")
 
     # Check if this is a chunk (has chunk_id field)
-    is_chunk = 'chunk_id' in metadata
+    is_chunk = "chunk_id" in metadata
 
     if is_chunk:
         # Chunk format - validate chunk-specific fields
-        required_fields = ['chunk_id', 'doc_id', 'chunk_index', 'total_chunks', 'title', 'author']
+        required_fields = [
+            "chunk_id",
+            "doc_id",
+            "chunk_index",
+            "total_chunks",
+            "title",
+            "author",
+        ]
         for field in required_fields:
             if field not in metadata:
-                raise ValueError(f"Missing required chunk field in frontmatter: {field}")
+                raise ValueError(
+                    f"Missing required chunk field in frontmatter: {field}"
+                )
 
         # Use chunk_id as the item id
-        metadata['id'] = metadata['chunk_id']
-        metadata['parent_doc_id'] = metadata.get('doc_id')
+        metadata["id"] = metadata["chunk_id"]
+        metadata["parent_doc_id"] = metadata.get("doc_id")
     else:
         # Legacy document format - validate legacy fields
-        required_fields = ['id', 'title', 'author', 'created_at', 'updated_at']
+        required_fields = ["id", "title", "author", "created_at", "updated_at"]
         for field in required_fields:
             if field not in metadata:
                 raise ValueError(f"Missing required field in frontmatter: {field}")
 
     # Normalize optional fields
-    if 'url' not in metadata:
-        metadata['url'] = None
-    if 'tags' not in metadata:
-        metadata['tags'] = []
-    if 'source' not in metadata:
-        metadata['source'] = 'unknown'
-    if 'category' not in metadata:
-        metadata['category'] = 'unknown'
+    if "url" not in metadata:
+        metadata["url"] = None
+    if "tags" not in metadata:
+        metadata["tags"] = []
+    if "source" not in metadata:
+        metadata["source"] = "unknown"
+    if "category" not in metadata:
+        metadata["category"] = "unknown"
 
     # Normalize URL fields (Story 2.7: URL Link Storage)
-    if 'readwise_url' not in metadata:
-        metadata['readwise_url'] = metadata.get('url')  # Fallback to legacy url field
-    if 'source_url' not in metadata:
-        metadata['source_url'] = None
-    if 'highlight_url' not in metadata:
-        metadata['highlight_url'] = None
+    if "readwise_url" not in metadata:
+        metadata["readwise_url"] = metadata.get("url")  # Fallback to legacy url field
+    if "source_url" not in metadata:
+        metadata["source_url"] = None
+    if "highlight_url" not in metadata:
+        metadata["highlight_url"] = None
 
     markdown_content = parts[2].strip()
     return metadata, markdown_content
@@ -310,12 +405,16 @@ def generate_embedding(text: str) -> List[float]:
             # gemini-embedding-001 default is 3072 dimensions which exceeds Firestore limit
             embeddings = model.get_embeddings([text], output_dimensionality=768)
             embedding_vector = embeddings[0].values
-            logger.info(f"Generated embedding with {len(embedding_vector)} dimensions (type: {type(embedding_vector).__name__})")
+            logger.info(
+                f"Generated embedding with {len(embedding_vector)} dimensions (type: {type(embedding_vector).__name__})"
+            )
             return embedding_vector
 
         except ResourceExhausted as e:
             if attempt < MAX_RETRIES - 1:
-                logger.warning(f"Rate limit exceeded (attempt {attempt + 1}/{MAX_RETRIES}), retrying after {backoff}s")
+                logger.warning(
+                    f"Rate limit exceeded (attempt {attempt + 1}/{MAX_RETRIES}), retrying after {backoff}s"
+                )
                 time.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
@@ -324,7 +423,9 @@ def generate_embedding(text: str) -> List[float]:
 
         except InternalServerError as e:
             if attempt < MAX_RETRIES - 1:
-                logger.warning(f"Server error (attempt {attempt + 1}/{MAX_RETRIES}), retrying after {backoff}s")
+                logger.warning(
+                    f"Server error (attempt {attempt + 1}/{MAX_RETRIES}), retrying after {backoff}s"
+                )
                 time.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
@@ -346,7 +447,7 @@ def write_to_firestore(
     content_hash: str,
     run_id: str,
     embedding_status: str,
-    embedding_vector: Optional[List[float]] = None
+    embedding_vector: Optional[List[float]] = None,
 ) -> bool:
     """
     Write chunk metadata, content, and embedding to Firestore kb_items collection.
@@ -368,83 +469,103 @@ def write_to_firestore(
         db = get_firestore_client()
 
         # Check if this is a chunk
-        is_chunk = 'chunk_id' in metadata
+        is_chunk = "chunk_id" in metadata
 
         if is_chunk:
             # Chunk schema (Story 1.6)
             doc_data = {
-                'chunk_id': metadata['chunk_id'],
-                'parent_doc_id': metadata.get('parent_doc_id', metadata.get('doc_id')),
-                'chunk_index': metadata.get('chunk_index', 0),
-                'total_chunks': metadata.get('total_chunks', 1),
-                'title': metadata['title'],
-                'author': metadata['author'],
-                'source': metadata.get('source', 'unknown'),
-                'category': metadata.get('category', 'unknown'),
-                'tags': metadata.get('tags', []),
+                "chunk_id": metadata["chunk_id"],
+                "parent_doc_id": metadata.get("parent_doc_id", metadata.get("doc_id")),
+                "chunk_index": metadata.get("chunk_index", 0),
+                "total_chunks": metadata.get("total_chunks", 1),
+                "title": metadata["title"],
+                "author": metadata["author"],
+                "source": metadata.get("source", "unknown"),
+                "category": metadata.get("category", "unknown"),
+                "tags": metadata.get("tags", []),
                 # Story 2.7: URL Link Storage - add URL fields
-                'readwise_url': metadata.get('readwise_url'),
-                'source_url': metadata.get('source_url'),
-                'highlight_url': metadata.get('highlight_url'),
-                'content': content,  # NEW: Store full chunk content
-                'embedding_model': 'gemini-embedding-001',
-                'content_hash': content_hash,
-                'embedding_status': embedding_status,
-                'last_embedded_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-                'last_error': None,
-                'retry_count': 0,
-                'created_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-                'updated_at': getattr(firestore, "SERVER_TIMESTAMP", None)
+                "readwise_url": metadata.get("readwise_url"),
+                "source_url": metadata.get("source_url"),
+                "highlight_url": metadata.get("highlight_url"),
+                "content": content,  # NEW: Store full chunk content
+                "embedding_model": "gemini-embedding-001",
+                "content_hash": content_hash,
+                "embedding_status": embedding_status,
+                "last_embedded_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                "last_error": None,
+                "retry_count": 0,
+                "created_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                "updated_at": getattr(firestore, "SERVER_TIMESTAMP", None),
             }
 
             # Add chunk-specific fields if present
-            if 'token_count' in metadata:
-                doc_data['token_count'] = metadata['token_count']
-            if 'overlap_start' in metadata:
-                doc_data['overlap_start'] = metadata['overlap_start']
-            if 'overlap_end' in metadata:
-                doc_data['overlap_end'] = metadata['overlap_end']
+            if "token_count" in metadata:
+                doc_data["token_count"] = metadata["token_count"]
+            if "overlap_start" in metadata:
+                doc_data["overlap_start"] = metadata["overlap_start"]
+            if "overlap_end" in metadata:
+                doc_data["overlap_end"] = metadata["overlap_end"]
 
         else:
             # Legacy document schema (backward compatibility)
-            created_at_value = _parse_iso_datetime(metadata.get('created_at'))
-            updated_at_value = _parse_iso_datetime(metadata.get('updated_at'))
+            created_at_value = _parse_iso_datetime(metadata.get("created_at"))
+            updated_at_value = _parse_iso_datetime(metadata.get("updated_at"))
 
             doc_data = {
-                'title': metadata['title'],
-                'url': metadata.get('url'),
-                'tags': metadata.get('tags', []),
-                'authors': [metadata['author']],
-                'created_at': created_at_value if created_at_value else getattr(firestore, "SERVER_TIMESTAMP", None),
-                'updated_at': updated_at_value if updated_at_value else getattr(firestore, "SERVER_TIMESTAMP", None),
-                'content_hash': content_hash,
-                'embedding_status': embedding_status,
-                'last_embedded_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-                'last_error': None,
-                'last_run_id': run_id,
-                'cluster_id': [],
-                'similar_ids': [],
-                'scores': []
+                "title": metadata["title"],
+                "url": metadata.get("url"),
+                "tags": metadata.get("tags", []),
+                "authors": [metadata["author"]],
+                "created_at": created_at_value
+                if created_at_value
+                else getattr(firestore, "SERVER_TIMESTAMP", None),
+                "updated_at": updated_at_value
+                if updated_at_value
+                else getattr(firestore, "SERVER_TIMESTAMP", None),
+                "content_hash": content_hash,
+                "embedding_status": embedding_status,
+                "last_embedded_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                "last_error": None,
+                "last_run_id": run_id,
+                "cluster_id": [],
+                "similar_ids": [],
+                "scores": [],
             }
 
         # Add embedding vector if provided (using Firestore Vector type for vector search)
         if embedding_vector is not None:
             # Ensure embedding_vector is a list of floats (not numpy array or other type)
             vector_list = [float(x) for x in embedding_vector]
-            logger.info(f"Storing embedding vector with {len(vector_list)} dimensions for {metadata['id']}")
+            logger.info(
+                f"Storing embedding vector with {len(vector_list)} dimensions for {metadata['id']}"
+            )
 
             # Store as Firestore Vector for native vector search
             if _HAS_MATCHING_ENGINE_LIB and Vector is not None:
-                doc_data['embedding'] = Vector(vector_list)
+                doc_data["embedding"] = Vector(vector_list)
             else:
                 # Fallback: store as raw list
-                doc_data['embedding'] = vector_list
+                doc_data["embedding"] = vector_list
+
+        # Generate source_id and ensure source exists (for chunks)
+        if is_chunk:
+            source_id = _generate_source_id(metadata["title"])
+            doc_data["source_id"] = source_id
+            # Ensure source document exists and links this chunk
+            _ensure_source_exists(
+                source_id=source_id,
+                title=metadata["title"],
+                author=metadata["author"],
+                chunk_id=metadata["chunk_id"],
+            )
 
         # Write to kb_items collection with document ID = chunk_id or item_id
-        doc_ref = db.collection('kb_items').document(metadata['id'])
+        doc_ref = db.collection("kb_items").document(metadata["id"])
         doc_ref.set(doc_data, merge=True)
 
-        logger.info(f"Wrote {'chunk' if is_chunk else 'document'} {metadata['id']} to Firestore with embedding={embedding_vector is not None}")
+        logger.info(
+            f"Wrote {'chunk' if is_chunk else 'document'} {metadata['id']} to Firestore with embedding={embedding_vector is not None}, source_id={doc_data.get('source_id')}"
+        )
         return True
 
     except Exception as e:
@@ -465,9 +586,9 @@ def embed(request):
     logger.info("Embed function triggered")
 
     request_json = request.get_json(silent=True) or {}
-    run_id = request_json.get('run_id')
+    run_id = request_json.get("run_id")
     if not run_id:
-        return {'status': 'error', 'message': 'run_id is required'}, 400
+        return {"status": "error", "message": "run_id is required"}, 400
 
     # Ensure manifest exists so replays/invalid run_ids fail fast
     try:
@@ -475,36 +596,38 @@ def embed(request):
     except NotFound:
         message = f"Manifest not found for run_id {run_id}"
         logger.error(message)
-        return {'status': 'error', 'message': message}, 404
+        return {"status": "error", "message": message}, 404
     except Exception as exc:  # pragma: no cover - defensive
         logger.error(f"Failed to load manifest for run_id {run_id}: {exc}")
-        return {'status': 'error', 'message': str(exc)}, 500
+        return {"status": "error", "message": str(exc)}, 500
 
     try:
         storage_client = get_storage_client()
         pipeline_collection = get_pipeline_collection()
     except Exception as exc:
         logger.error(f"Failed to initialize clients: {exc}")
-        return {'status': 'error', 'message': str(exc)}, 500
+        return {"status": "error", "message": str(exc)}, 500
 
     try:
         candidate_snapshots = list(
-            pipeline_collection.where('embedding_status', 'in', ['pending', 'failed', 'processing']).stream()
+            pipeline_collection.where(
+                "embedding_status", "in", ["pending", "failed", "processing"]
+            ).stream()
         )
     except Exception as exc:
         logger.error(f"Failed to query pipeline_items: {exc}")
-        return {'status': 'error', 'message': str(exc)}, 500
+        return {"status": "error", "message": str(exc)}, 500
 
     stats = {
-        'status': 'success',
-        'run_id': run_id,
-        'manifest_items': len(manifest.get('items', [])),
-        'candidates': len(candidate_snapshots),
-        'processed': 0,
-        'skipped': 0,
-        'failed': 0,
-        'firestore_updates': 0,
-        'stale_resets': 0
+        "status": "success",
+        "run_id": run_id,
+        "manifest_items": len(manifest.get("items", [])),
+        "candidates": len(candidate_snapshots),
+        "processed": 0,
+        "skipped": 0,
+        "failed": 0,
+        "firestore_updates": 0,
+        "stale_resets": 0,
     }
 
     now = datetime.now(timezone.utc)
@@ -513,47 +636,59 @@ def embed(request):
     for snapshot in candidate_snapshots:
         doc_ref = snapshot.reference
         doc = snapshot.to_dict() or {}
-        item_id = doc.get('id', snapshot.id)
-        status = doc.get('embedding_status', 'pending')
-        manifest_run_id = doc.get('manifest_run_id')
-        last_transition = doc.get('last_transition_at')
+        item_id = doc.get("id", snapshot.id)
+        status = doc.get("embedding_status", "pending")
+        manifest_run_id = doc.get("manifest_run_id")
+        last_transition = doc.get("last_transition_at")
         is_stale_processing = (
-            status == 'processing'
+            status == "processing"
             and isinstance(last_transition, datetime)
             and last_transition.tzinfo is not None
             and last_transition < stale_cutoff
         )
 
-        if status == 'processing' and not is_stale_processing:
-            logger.info(f"Skipping {item_id}: currently being processed by another worker")
-            stats['skipped'] += 1
+        if status == "processing" and not is_stale_processing:
+            logger.info(
+                f"Skipping {item_id}: currently being processed by another worker"
+            )
+            stats["skipped"] += 1
             continue
 
-        if status == 'pending' and manifest_run_id not in (None, run_id):
-            logger.info(f"Skipping {item_id}: pending for run {manifest_run_id}, not {run_id}")
-            stats['skipped'] += 1
+        if status == "pending" and manifest_run_id not in (None, run_id):
+            logger.info(
+                f"Skipping {item_id}: pending for run {manifest_run_id}, not {run_id}"
+            )
+            stats["skipped"] += 1
             continue
 
         if is_stale_processing:
-            logger.warning(f"Detected stale processing item {item_id}; resetting to pending")
-            doc_ref.set({
-                'embedding_status': 'pending',
-                'last_error': 'Rescheduled after stale timeout',
-                'last_transition_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-                'retry_count': _increment_retry(doc)
-            }, merge=True)
-            doc['embedding_status'] = 'pending'
-            stats['stale_resets'] += 1
+            logger.warning(
+                f"Detected stale processing item {item_id}; resetting to pending"
+            )
+            doc_ref.set(
+                {
+                    "embedding_status": "pending",
+                    "last_error": "Rescheduled after stale timeout",
+                    "last_transition_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                    "retry_count": _increment_retry(doc),
+                },
+                merge=True,
+            )
+            doc["embedding_status"] = "pending"
+            stats["stale_resets"] += 1
 
         try:
             # Mark item as processing for this run
-            doc_ref.set({
-                'embedding_status': 'processing',
-                'last_transition_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-                'embedding_run_id': run_id
-            }, merge=True)
+            doc_ref.set(
+                {
+                    "embedding_status": "processing",
+                    "last_transition_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                    "embedding_run_id": run_id,
+                },
+                merge=True,
+            )
 
-            markdown_uri = doc.get('markdown_uri')
+            markdown_uri = doc.get("markdown_uri")
             if not markdown_uri:
                 raise ValueError("pipeline item missing markdown_uri")
 
@@ -563,15 +698,17 @@ def embed(request):
             metadata, markdown_content = parse_markdown(markdown_full)
 
             computed_hash = _compute_markdown_hash(markdown_full)
-            declared_hash = doc.get('content_hash')
+            declared_hash = doc.get("content_hash")
             if declared_hash != computed_hash:
-                logger.info(f"Content hash updated for {item_id}: {declared_hash} → {computed_hash}")
-                doc_ref.set({
-                    'content_hash': computed_hash,
-                    'manifest_run_id': run_id
-                }, merge=True)
+                logger.info(
+                    f"Content hash updated for {item_id}: {declared_hash} → {computed_hash}"
+                )
+                doc_ref.set(
+                    {"content_hash": computed_hash, "manifest_run_id": run_id},
+                    merge=True,
+                )
 
-            previous_embedded_hash = doc.get('embedded_content_hash')
+            previous_embedded_hash = doc.get("embedded_content_hash")
             needs_upsert = previous_embedded_hash != computed_hash
 
             text_to_embed = f"{metadata['title']}\n{metadata['author']}"
@@ -582,53 +719,67 @@ def embed(request):
                 embedding_vector = generate_embedding(text_to_embed)
 
                 # Store embedding directly in Firestore (replaces separate Vector Search upsert)
-                if not write_to_firestore(metadata, markdown_content, computed_hash, run_id, "complete", embedding_vector=embedding_vector):
+                if not write_to_firestore(
+                    metadata,
+                    markdown_content,
+                    computed_hash,
+                    run_id,
+                    "complete",
+                    embedding_vector=embedding_vector,
+                ):
                     raise RuntimeError("Failed to write embedding to Firestore")
-                stats['firestore_updates'] += 1
+                stats["firestore_updates"] += 1
             else:
-                logger.info(f"Skipping embedding generation for {item_id}; content hash unchanged")
+                logger.info(
+                    f"Skipping embedding generation for {item_id}; content hash unchanged"
+                )
                 # Still update metadata even if embedding unchanged
-                if not write_to_firestore(metadata, markdown_content, computed_hash, run_id, "complete"):
+                if not write_to_firestore(
+                    metadata, markdown_content, computed_hash, run_id, "complete"
+                ):
                     raise RuntimeError("Failed to update kb_items metadata")
-                stats['firestore_updates'] += 1
+                stats["firestore_updates"] += 1
 
             success_update = {
-                'embedding_status': 'complete',
-                'embedded_content_hash': computed_hash,
-                'content_hash': computed_hash,
-                'last_transition_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-                'last_error': None,
-                'retry_count': 0,
-                'manifest_run_id': run_id,
-                'embedding_run_id': run_id
+                "embedding_status": "complete",
+                "embedded_content_hash": computed_hash,
+                "content_hash": computed_hash,
+                "last_transition_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                "last_error": None,
+                "retry_count": 0,
+                "manifest_run_id": run_id,
+                "embedding_run_id": run_id,
             }
             if needs_upsert:
-                success_update['last_embedded_at'] = getattr(firestore, "SERVER_TIMESTAMP", None)
+                success_update["last_embedded_at"] = getattr(
+                    firestore, "SERVER_TIMESTAMP", None
+                )
 
             doc_ref.set(success_update, merge=True)
-            stats['processed'] += 1
+            stats["processed"] += 1
 
         except Exception as exc:  # pragma: no cover - integration heavy
             logger.error(f"Error embedding item {item_id}: {exc}")
             failure_update = {
-                'embedding_status': 'failed',
-                'last_error': str(exc),
-                'last_transition_at': getattr(firestore, "SERVER_TIMESTAMP", None),
-                'retry_count': _increment_retry(doc),
-                'manifest_run_id': run_id
+                "embedding_status": "failed",
+                "last_error": str(exc),
+                "last_transition_at": getattr(firestore, "SERVER_TIMESTAMP", None),
+                "retry_count": _increment_retry(doc),
+                "manifest_run_id": run_id,
             }
             doc_ref.set(failure_update, merge=True)
-            stats['failed'] += 1
+            stats["failed"] += 1
 
     logger.info(f"Embed processing complete: {stats}")
     return stats, 200
 
 
 # For local testing
-if __name__ == '__main__':
+if __name__ == "__main__":
+
     class MockRequest:
         def get_json(self, silent=False):
-            return {'bucket': 'kx-hub-markdown-normalized'}
+            return {"bucket": "kx-hub-markdown-normalized"}
 
     result = embed(MockRequest())
     print(result)

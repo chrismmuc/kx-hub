@@ -89,15 +89,35 @@ relationships/
 
 **Status:** ✅ Done
 
-**Summary:** Extract unique sources from existing chunks and create sources collection.
+**Summary:** Extract unique sources from existing chunks and create sources collection. New chunks get sources created automatically during embed step.
 
 **Tasks:**
-1. Parse `title` field from chunks to identify unique sources
-2. Create `sources/` collection with aggregated metadata
-3. Add `source_id` field to each chunk
-4. Remove `cluster_id` from chunks (or deprecate)
+1. ✅ Parse `title` field from chunks to identify unique sources
+2. ✅ Create `sources/` collection with aggregated metadata
+3. ✅ Add `source_id` field to each chunk
+4. ✅ Automatic source creation in embed function for new chunks
 
-**Migration Script:**
+**Automatic Source Creation (Embed Step):**
+
+The `embed-function` now automatically:
+1. Generates `source_id` from chunk title (normalized, hyphenated, max 60 chars)
+2. Creates source document in `sources` collection if not existing
+3. Updates existing source's `chunk_ids` list if source already exists
+4. Adds `source_id` field to chunk document in `kb_items`
+
+```python
+# In src/embed/main.py
+def _generate_source_id(title: str) -> str:
+    """Generate normalized source_id from title."""
+    normalized = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return normalized[:60]
+
+def _ensure_source_exists(source_id, title, author, chunk_id):
+    """Create/update source document in sources collection."""
+    # Creates new source or adds chunk_id to existing source
+```
+
+**Migration Script (one-time, for existing chunks):**
 ```python
 # Group chunks by title (= source)
 sources = {}
@@ -120,6 +140,7 @@ for source_id, data in sources.items():
 - All chunks linked to a source
 - ~50-100 unique sources expected
 - No orphan chunks
+- New chunks automatically get source_id and create/update sources
 
 ---
 
