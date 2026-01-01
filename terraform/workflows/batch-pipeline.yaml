@@ -165,55 +165,11 @@ main:
           text: '${"Knowledge cards function completed: " + string(knowledge_cards_result.body.generated) + " generated, " + string(knowledge_cards_result.body.updated) + " updated"}'
           severity: INFO
 
-    # Extract chunk IDs from embed result for clustering
-    - prepare_clustering_payload:
-        assign:
-          - chunk_ids_for_clustering: ${default(embed_result.body.chunk_ids, [])}
-
-    # Step 4: Call clustering function to assign semantic clusters
-    - call_clustering_function:
-        try:
-          call: http.post
-          args:
-            url: ${"https://europe-west4-" + project_id + ".cloudfunctions.net/clustering-function"}
-            auth:
-              type: OIDC
-            timeout: 300 # 5 minutes for delta processing
-            headers:
-              Content-Type: application/json
-            body:
-              run_id: ${run_id}
-              chunk_ids: ${chunk_ids_for_clustering}
-          result: clustering_result
-        retry:
-          predicate: ${http.default_retry_predicate}
-          max_retries: 2
-          backoff:
-            initial_delay: 3
-            max_delay: 60
-            multiplier: 2
-        except:
-          as: e
-          steps:
-            - log_clustering_error:
-                call: sys.log
-                args:
-                  text: Clustering function failed - check logs for details
-                  severity: ERROR
-            - fail_workflow_clustering:
-                raise: ${e}
-
-    - log_clustering_success:
-        call: sys.log
-        args:
-          text: '${"Clustering function completed: " + string(clustering_result.body.clusters_assigned) + " chunks assigned to clusters"}'
-          severity: INFO
-
     # Return success
+    # Note: Clustering step removed in Story 4.4 - replaced by source-based relationships
     - return_success:
         return:
           status: "success"
           normalize_result: ${normalize_result}
           embed_result: ${embed_result}
           knowledge_cards_result: ${knowledge_cards_result}
-          clustering_result: ${clustering_result}
