@@ -166,9 +166,15 @@ main:
           severity: INFO
 
     # Extract chunk IDs from embed result for relationship extraction
+    # Note: If embed function doesn't return chunk_ids, pass empty list
+    # The relationships function will then skip processing (no new chunks)
     - prepare_relationships_payload:
-        assign:
-          - chunk_ids_for_relationships: ${default(embed_result.body.chunk_ids, [])}
+        try:
+          assign:
+            - chunk_ids_for_relationships: ${embed_result.body.chunk_ids}
+        except:
+          assign:
+            - chunk_ids_for_relationships: []
 
     # Step 4: Call relationships function to extract cross-source relationships
     # Story 4.5: Incremental relationship updates

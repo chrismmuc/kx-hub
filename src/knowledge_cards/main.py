@@ -125,7 +125,15 @@ def generate_cards_handler(request):
         chunks = load_chunks_for_generation(limit=limit)
 
         if not chunks:
-            return {"status": "success", "message": "No chunks to process"}
+            return {
+                "status": "success",
+                "message": "No chunks to process",
+                "run_id": run_id,
+                "total_chunks": 0,
+                "generated": 0,
+                "updated": 0,
+                "failed": 0,
+            }
 
         # Process chunks
         results = process_chunks_batch(chunks, batch_size=batch_size)

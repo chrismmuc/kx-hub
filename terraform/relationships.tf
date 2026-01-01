@@ -105,12 +105,12 @@ resource "google_cloudfunctions2_function" "relationships_function" {
 }
 
 # Grant Cloud Workflows permission to invoke relationships function
-resource "google_cloudfunctions2_function_iam_member" "relationships_invoker" {
-  project        = google_cloudfunctions2_function.relationships_function.project
-  location       = google_cloudfunctions2_function.relationships_function.location
-  cloud_function = google_cloudfunctions2_function.relationships_function.name
-  role           = "roles/cloudfunctions.invoker"
-  member         = "serviceAccount:${google_service_account.workflow_sa.email}"
+# Gen2 functions run on Cloud Run, so we need run.invoker
+resource "google_cloud_run_service_iam_member" "relationships_function_workflow_invoker" {
+  location = google_cloudfunctions2_function.relationships_function.location
+  service  = google_cloudfunctions2_function.relationships_function.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.workflow_sa.email}"
 }
 
 # Output the function URL
