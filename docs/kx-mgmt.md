@@ -105,27 +105,176 @@ Die gängigsten AI-extrahierten Relationship Types:
 | Hand-kuratiert, klein | Kann Milliarden Assertions enthalten |
 | Formale Logik (OWL, RDF) | Flexiblere Strukturen |
 | Definiert *was möglich ist* | Enthält *was existiert* |
+| Stabil, Änderungen haben weitreichende Auswirkungen | Dynamisch, kontinuierliche Evolution |
 
-### Ontologie + LLM
+### Sind Ontologien noch relevant?
 
-Moderne Ansätze kombinieren beides:
+**Ja, aber mit veränderter Rolle.** Der Markt für Semantic Knowledge Graphs wächst von $1.61 Mrd (2023) auf prognostizierte $5.07 Mrd (2032) – 13.64% jährlich. Ontologien sind dabei die **strukturelle Grundlage**.
 
+> "Traditional KM disciplines including taxonomies, ontologies, and content tagging provide the necessary building blocks to make AI work."
+> — [Enterprise Knowledge: KM Trends 2024](https://enterprise-knowledge.com/top-knowledge-management-trends-2024/)
+
+**Wann Ontologien unverzichtbar sind:**
+
+| Kriterium | Ontologie nötig? | Begründung |
+|-----------|------------------|------------|
+| **Formales Reasoning erforderlich** | ✅ Ja | Nur Ontologien ermöglichen logische Inferenz |
+| **Regulatorische Compliance** | ✅ Ja | Pharma, Medizin, Finanzen brauchen formale Definitionen |
+| **Multi-System-Integration** | ✅ Ja | Standard-Vocabularies für Interoperabilität |
+| **Explorative Suche** | ❌ Nein | Vector Search/KG reicht |
+| **Personal Knowledge Management** | ❌ Nein | Overhead zu hoch |
+| **Schnelle Iteration** | ❌ Nein | Ontologien sind zu rigid |
+
+**Formale Reasoning-Fähigkeiten:**
+
+> "Ontologies are designed to support logical reasoning, enabling machines to infer new knowledge from existing definitions. For example, if an ontology defines that every employee is a person, and Alice is an employee, a reasoner can infer that Alice is also a person."
+> — [Blindata: Ontologies for Semantic Modeling](https://blindata.io/blog/2024/ontologies-for-semantic-modeling/)
+
+**Tools für Ontology Reasoning:**
+- **Pellet**, **FaCT++**, **HermiT** – Description Logic Reasoners
+- **OWL (Web Ontology Language)** – Standard für formale Ontologien
+- **RDF Schema** – Leichtgewichtiger als OWL
+
+### Hauptanwendungsfälle
+
+#### 1. Life Sciences & Pharma
+- **Gene Ontology (GO)**: Standard für Gen-Funktionen
+- **SNOMED CT**: Medizinische Terminologie
+- **Drug-Drug Interactions**: Formale Regeln für Wechselwirkungen
+
+#### 2. Enterprise Knowledge Management
+> "Developing an ontology is an important part of understanding what an organization has, how it can be brought together, and how it can be leveraged to support a successfully unified user experience."
+> — [Enterprise Knowledge](https://enterprise-knowledge.com/breaking-it-down-what-is-an-ontology/)
+
+**Typische Use Cases:**
+- Unified Search über heterogene Datenquellen
+- Konsistentes Tagging und Metadaten-Management
+- Recommendation Engines mit semantischem Verständnis
+- Chatbots mit Domain-Wissen
+
+#### 3. Semantic Web & Linked Data
+- Integration mit Wikidata, DBpedia, Schema.org
+- Maschinenlesbare Definitionen für Web-Inhalte
+
+#### 4. AI/ML Model Grounding
 > "Knowledge graphs that actually follow an ontology will have an LLM perform better than just a KG that is unharmonized."
 > — [Cognee Blog](https://www.cognee.ai/blog/deep-dives/ontology-ai-memory)
+
+**Beispiel:** Die [Artificial Intelligence Ontology (AIO)](https://journals.sagepub.com/doi/10.1177/15705838241304103) definiert AI-Konzepte formal für konsistente Diskussion.
+
+### Wie pflegt man Ontologien?
+
+#### Traditioneller Ansatz (manuell)
+
+**Aufwand:**
+- **Initiale Erstellung**: Wochen bis Monate mit Domain-Experten
+- **Laufende Pflege**: Kontinuierlich, bei jeder Domänenänderung
+- **Governance**: Änderungen müssen reviewed werden (weitreichende Auswirkungen)
+
+**Prozess:**
+```
+1. Use Case Workshops → Anforderungen definieren
+2. Minimum Viable Ontology (2-4 Wochen)
+3. Deployment für einzelnen Use Case
+4. Feedback sammeln, iterieren
+5. Erweitern basierend auf bewiesenem Wert
+```
+
+> "Deploy early versions for specific use cases. Build a Minimum Viable Ontology in 2-4 weeks, deploy for single use case, gather feedback and iterate."
+> — [SymbolicData: Ontology Engineering Guide](https://www.symbolicdata.org/ontology-engineering/)
+
+**Häufige Fehler:**
+- ❌ Eine Ontologie für alle Zwecke (verschiedene Use Cases brauchen verschiedene Perspektiven)
+- ❌ Zu detailliert starten (lieber minimal beginnen)
+- ❌ Ohne konkreten Use Case entwickeln
+
+#### LLM-unterstützte Pflege (modern)
+
+> "Rather than replacing human expertise, LLMs serve as intelligent assistants to accelerate ontology development."
+> — [Semantic Web Journal: LLMs for Ontology Engineering](https://www.semantic-web-journal.net/system/files/swj3864.pdf)
+
+**Was LLMs können:**
+
+| Task | LLM-Fähigkeit | Qualität |
+|------|---------------|----------|
+| **Ontology Seeding** | ✅ Gut | Initialer Entwurf aus Text |
+| **Term Typing** | ✅ Gut | Entities klassifizieren |
+| **Taxonomy Discovery** | ⚠️ Mittel | Hierarchien vorschlagen |
+| **Relationship Extraction** | ⚠️ Mittel | Konfidenz-Schwellen nötig |
+| **Mapping auf Standards** | ✅ Gut | Embedding-Similarity |
+| **Konsistenzprüfung** | ❌ Schlecht | Formale Reasoner besser |
+| **Vollständige Ersetzung** | ❌ Nicht möglich | Human Oversight erforderlich |
+
+**LLMs4OL Challenge (2024/2025):**
+- Jährlicher Wettbewerb für LLM-basierte Ontology Learning
+- Beste Ergebnisse: Hybrid-Pipelines (LLM + Domain-Embeddings + Fine-Tuning)
+- F1-Scores von 0.83-0.95 bei biomedizinischen Alignment-Tasks
+- **Aber:** 90% weniger LLM-Queries durch heuristische Vorfilterung nötig
+
+**Kritische Einschränkungen:**
+
+> "LLMs demonstrate outstanding capabilities, but they cannot consistently replace curated taxonomies. The accuracy of generated content is not guaranteed, necessitating human oversight."
+> — [LLMs4OL 2024 Overview](https://arxiv.org/abs/2409.10146)
+
+**Empfohlener Hybrid-Ansatz:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    LLM-Assisted Workflow                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. LLM generiert Kandidaten-Schema aus Dokumenten           │
+│                         ↓                                    │
+│  2. Domain-Experte reviewed & korrigiert (Human-in-Loop)     │
+│                         ↓                                    │
+│  3. Formaler Reasoner validiert Konsistenz                   │
+│                         ↓                                    │
+│  4. LLM schlägt Mappings zu Standard-Ontologien vor          │
+│                         ↓                                    │
+│  5. Periodisches Re-Alignment bei neuen Dokumenten           │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Ontologie + LLM: Synergie
+
+Moderne Ansätze kombinieren beides:
 
 **Vorteile der Kombination:**
 - **Konsistenz**: Ontologie definiert erlaubte Relationship-Types
 - **Interoperabilität**: Standard-Vocabularies (Wikidata, Schema.org)
 - **Reasoning**: Inferenz-Regeln können angewendet werden
+- **Bessere LLM-Performance**: Strukturierte Prompts mit Ontologie-Constraints
 
 **AI-Automatisierung:**
 - Schema-Induktion aus Text (95% Alignment mit manuellen Schemas möglich)
 - Automatisches Mapping auf Standard-Ontologien via Embedding-Similarity
+- Neuro-symbolische Frameworks: RELATE, OntoTune (2025)
+
+### Fazit: Wann Ontologien verwenden?
+
+| Situation | Empfehlung |
+|-----------|------------|
+| **Enterprise mit Compliance-Anforderungen** | ✅ Ontologie + KG |
+| **Multi-System-Integration** | ✅ Ontologie für Interoperabilität |
+| **Formales Reasoning nötig** | ✅ Ontologie unverzichtbar |
+| **Personal Knowledge Management** | ❌ Overhead zu hoch |
+| **Schnelle Prototypen** | ❌ Zu rigid |
+| **Kleine Teams ohne Domain-Experten** | ❌ Pflege-Aufwand zu hoch |
+
+**Für kx-hub:** Ontologien sind **nicht empfohlen**. Der Pflege-Aufwand steht in keinem Verhältnis zum Nutzen für einen Personal Knowledge Hub. Stattdessen: Einfache Relationship-Types (wie in Epic 4) mit LLM-Extraktion.
 
 **Referenzen:**
+- [Semantic Web Journal: LLMs for Ontology Engineering (PDF)](https://www.semantic-web-journal.net/system/files/swj3864.pdf)
+- [LLMs4OL Challenge 2024/2025](https://sites.google.com/view/llms4ol/)
+- [Enterprise Knowledge: What is an Ontology?](https://enterprise-knowledge.com/breaking-it-down-what-is-an-ontology/)
+- [Enterprise Knowledge: KM Trends 2024](https://enterprise-knowledge.com/top-knowledge-management-trends-2024/)
 - [Medium: Semantic Model vs Ontology vs Knowledge Graph](https://medium.com/@cassihunt/semantic-model-vs-ontology-vs-knowledge-graph-untangling-the-latest-data-modeling-terminology-12ce7506b455)
 - [Hedden: Ontologies vs Knowledge Graphs](https://www.hedden-information.com/ontologies-vs-knowledge-graphs/)
 - [Neo4j: Ontologies in Neo4j](https://neo4j.com/blog/ontologies-in-neo4j-semantics-and-knowledge-graphs/)
+- [Blindata: Ontologies for Semantic Modeling](https://blindata.io/blog/2024/ontologies-for-semantic-modeling/)
+- [FalkorDB: Ontologies as Knowledge Graph Schemas](https://www.falkordb.com/blog/understanding-ontologies-knowledge-graph-schemas/)
+- [SAGE: Artificial Intelligence Ontology](https://journals.sagepub.com/doi/10.1177/15705838241304103)
 
 ---
 
