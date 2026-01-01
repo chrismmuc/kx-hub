@@ -56,7 +56,7 @@
 
 **Goal:** Build connected knowledge network based on Sources (books/articles) with explicit relationships. Replace cluster abstraction.
 
-**Status:** Stories 4.1-4.4 Complete
+**Status:** Complete
 
 | Story | Description | Status |
 |-------|-------------|--------|
@@ -64,12 +64,13 @@
 | 4.2 | **Cross-Source Relationship Extraction** - LLM-based relationship discovery between sources | ✅ Done |
 | 4.3 | **MCP Source Tools** - `list_sources`, `get_source`, `search_within_source`, `get_contradictions` | ✅ Done |
 | 4.4 | **Cluster Deprecation** - Remove all cluster logic from MCP server, use sources instead | ✅ Done |
-| 4.5 | **Incremental Updates** - Auto-find relationships when new chunks ingested | 📋 Planned |
+| 4.5 | **Incremental Updates** - Auto-find relationships when new chunks ingested (pipeline integration) | ✅ Done |
 
 **Key Changes:**
 - Clusters replaced by Sources (books, articles) as first-class entities
 - Explicit typed relationships (`extends`, `supports`, `contradicts`)
 - 18 MCP tools (down from 22, removed cluster tools)
+- Automatic relationship extraction in daily pipeline
 
 See [epic4.md](epic4.md) for full details.
 

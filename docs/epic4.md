@@ -6,7 +6,7 @@
 
 **Dependencies:** Epic 2 (Knowledge Cards), Epic 3 (MCP Server)
 
-**Status:** Stories 4.1-4.4 Complete
+**Status:** ✅ Complete (all stories done)
 
 ---
 
@@ -237,17 +237,23 @@ get_evolution(concept: str) -> {
 
 ## Story 4.5: Incremental Relationship Updates
 
-**Status:** Planned
+**Status:** ✅ Done
 
 **Summary:** When new chunks are ingested, automatically find cross-source relationships.
 
-**Trigger:** After chunk embedding in daily pipeline
+**Trigger:** After knowledge-cards step in daily pipeline
 
-**Process:**
-1. Identify source for new chunk
-2. Find top 10 similar chunks from OTHER sources (embedding search)
-3. Extract relationships via LLM
-4. Flag notable connections (especially `contradicts`)
+**Implementation:**
+1. `functions/relationships/` - Cloud Function that processes new chunks
+2. For each new chunk, finds top 10 similar chunks from OTHER sources via Firestore vector search
+3. Extracts relationships via Gemini 2.0 Flash LLM
+4. Saves relationships to `relationships` collection in Firestore
+
+**Files:**
+- `functions/relationships/main.py` - Standalone Cloud Function
+- `terraform/relationships.tf` - Infrastructure
+- `terraform/workflows/batch-pipeline.yaml` - Pipeline integration
+- `src/relationships/` - CLI for manual full extraction (`python -m src.relationships.main`)
 
 ---
 
@@ -269,7 +275,7 @@ get_evolution(concept: str) -> {
 | 4.2 | Cross-Source Relationship Extraction | High | ✅ Done |
 | 4.3 | MCP Tools for Sources & Relationships | High | ✅ Done |
 | 4.4 | Cluster Deprecation | Medium | ✅ Done |
-| 4.5 | Incremental Updates | Medium | Planned |
+| 4.5 | Incremental Updates | Medium | ✅ Done |
 
 **Key Simplifications:**
 - No more cluster maintenance

@@ -165,11 +165,56 @@ main:
           text: '${"Knowledge cards function completed: " + string(knowledge_cards_result.body.generated) + " generated, " + string(knowledge_cards_result.body.updated) + " updated"}'
           severity: INFO
 
+    # Extract chunk IDs from embed result for relationship extraction
+    - prepare_relationships_payload:
+        assign:
+          - chunk_ids_for_relationships: ${default(embed_result.body.chunk_ids, [])}
+
+    # Step 4: Call relationships function to extract cross-source relationships
+    # Story 4.5: Incremental relationship updates
+    - call_relationships_function:
+        try:
+          call: http.post
+          args:
+            url: ${"https://europe-west4-" + project_id + ".cloudfunctions.net/relationships-function"}
+            auth:
+              type: OIDC
+            timeout: 540 # 9 minutes for LLM calls
+            headers:
+              Content-Type: application/json
+            body:
+              run_id: ${run_id}
+              chunk_ids: ${chunk_ids_for_relationships}
+          result: relationships_result
+        retry:
+          predicate: ${http.default_retry_predicate}
+          max_retries: 2
+          backoff:
+            initial_delay: 5
+            max_delay: 60
+            multiplier: 2
+        except:
+          as: e
+          steps:
+            - log_relationships_error:
+                call: sys.log
+                args:
+                  text: Relationships function failed - check logs for details
+                  severity: ERROR
+            - fail_workflow_relationships:
+                raise: ${e}
+
+    - log_relationships_success:
+        call: sys.log
+        args:
+          text: '${"Relationships function completed: " + string(relationships_result.body.relationships_saved) + " relationships saved"}'
+          severity: INFO
+
     # Return success
-    # Note: Clustering step removed in Story 4.4 - replaced by source-based relationships
     - return_success:
         return:
           status: "success"
           normalize_result: ${normalize_result}
           embed_result: ${embed_result}
           knowledge_cards_result: ${knowledge_cards_result}
+          relationships_result: ${relationships_result}

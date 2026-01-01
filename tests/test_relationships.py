@@ -8,12 +8,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.relationship_extraction.extractor import RelationshipExtractor
-from src.relationship_extraction.prompt_manager import (
+from src.relationships.extractor import RelationshipExtractor
+from src.relationships.prompt_manager import (
     PromptManager,
     create_relationship_prompt,
 )
-from src.relationship_extraction.schema import (
+from src.relationships.schema import (
     RELATIONSHIP_TYPES,
     Relationship,
     RelationType,
@@ -460,10 +460,10 @@ class TestRelationshipExtractor:
 class TestMainModule:
     """Tests for main.py functions."""
 
-    @patch("src.relationship_extraction.main.get_firestore_client")
+    @patch("src.relationships.main.get_firestore_client")
     def test_save_relationships_dry_run(self, mock_get_client):
         """Test dry run doesn't write to Firestore."""
-        from src.relationship_extraction.main import save_relationships
+        from src.relationships.main import save_relationships
 
         relationships = [
             Relationship(
@@ -482,10 +482,10 @@ class TestMainModule:
         assert result["failed"] == 0
         mock_get_client.assert_not_called()
 
-    @patch("src.relationship_extraction.main.get_firestore_client")
+    @patch("src.relationships.main.get_firestore_client")
     def test_save_relationships_empty_list(self, mock_get_client):
         """Test saving empty list."""
-        from src.relationship_extraction.main import save_relationships
+        from src.relationships.main import save_relationships
 
         result = save_relationships([], dry_run=False)
 

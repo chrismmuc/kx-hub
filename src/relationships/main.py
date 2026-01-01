@@ -2,11 +2,11 @@
 Cross-Source Relationship Extraction Pipeline
 
 Extracts relationships between chunks from DIFFERENT sources only.
-Epic 4, Story 4.2
+Epic 4, Story 4.2/4.5
 
 Usage:
-    python -m src.relationship_extraction.main --dry-run --limit 10
-    python -m src.relationship_extraction.main --parallel 10
+    python -m src.relationships.main --dry-run --limit 10
+    python -m src.relationships.main --parallel 10
 
 Environment Variables:
     GCP_PROJECT: Google Cloud project ID (default: kx-hub)
