@@ -91,8 +91,8 @@ flowchart LR
   CD[Claude Desktop]
   CD -->|MCP<br/>stdio| MCP[kx-hub MCP Server<br/>Python/stdio]
 
-  MCP -->|list_resources| FS[(Firestore<br/>kb_items + clusters + config)]
-  MCP -->|22 Tools| MCP_TOOLS["• Search (semantic, metadata, time)<br/>• Clusters (list, get, search, related)<br/>• Knowledge Cards<br/>• Recommendations (3.5/3.8/3.9)"]
+  MCP -->|list_resources| FS[(Firestore<br/>kb_items + sources + config)]
+  MCP -->|18 Tools| MCP_TOOLS["• Search (semantic, metadata, time)<br/>• Sources (list, get, search_within, relationships)<br/>• Knowledge Cards<br/>• Recommendations (3.5/3.8/3.9)"]
 
   MCP_TOOLS -->|Query embeddings| V_EMB[Vertex AI<br/>gemini-embedding-001]
   MCP_TOOLS -->|FIND_NEAREST| FS
@@ -106,39 +106,30 @@ flowchart LR
   MCP -->|JSON-RPC| CD
 ```
 
-### Query Tools (22 Total)
+### Query Tools (18 Total)
 
 The MCP server exposes the following tools to Claude:
 
 **Core Search Tools:**
 | Tool | Purpose |
 |------|---------|
-| `search_semantic` | Semantic vector search across all chunks |
-| `search_by_metadata` | Filter by author, tag, source |
-| `get_related_chunks` | Discover semantically similar chunks |
+| `search_kb` | Unified semantic search with optional filters |
+| `get_chunk` | Get chunk details with related chunks |
+| `get_recent` | Get recently added chunks |
 | `get_stats` | Knowledge base statistics |
 
-**Time-Based Tools:**
+**Source Tools (Story 4.3):**
 | Tool | Purpose |
 |------|---------|
-| `search_by_date_range` | Query by absolute date range |
-| `search_by_relative_time` | Query by period (yesterday, last_week, etc.) |
-| `get_reading_activity` | Reading activity summary |
-| `get_recently_added` | Most recently added chunks |
+| `list_sources` | List all sources (books, articles) with metadata |
+| `get_source` | Get source details with chunks and relationships |
+| `search_within_source` | Semantic search restricted to a source |
 
 **Knowledge Card Tools:**
 | Tool | Purpose |
 |------|---------|
 | `get_knowledge_card` | AI summary for a specific chunk |
 | `search_knowledge_cards` | Semantic search across summaries only |
-
-**Cluster Tools:**
-| Tool | Purpose |
-|------|---------|
-| `list_clusters` | List all semantic clusters |
-| `get_cluster` | Get cluster details with member chunks |
-| `search_within_cluster` | Semantic search restricted to a cluster |
-| `get_related_clusters` | Find conceptually related clusters |
 
 **Reading Recommendations (Stories 3.5, 3.8, 3.9):**
 | Tool | Purpose |
@@ -194,19 +185,19 @@ The MCP server uses the same Firestore `kb_items` collection populated by the da
 
 ### Overview
 
-AI-powered reading recommendations based on KB content. Analyzes user interests via clusters and recent reads, searches external sources via Tavily, and applies multi-factor ranking with deduplication.
+AI-powered reading recommendations based on KB content. Analyzes user interests via sources and recent reads, searches external sources via Tavily, and applies multi-factor ranking with deduplication.
 
 ### Architecture
 
 ```mermaid
 flowchart TB
   subgraph Input
-    KC[KB Clusters]
+    KS[KB Sources]
     RR[Recent Reads]
   end
 
   subgraph Query Generation
-    KC --> QG[Generate Search Queries]
+    KS --> QG[Generate Search Queries]
     RR --> QG
     QG -->|8 queries| TAVILY[Tavily Search API]
   end
@@ -230,7 +221,7 @@ flowchart TB
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| Query Generation | `recommendation_queries.py` | Smart queries from clusters/reads |
+| Query Generation | `recommendation_queries.py` | Smart queries from sources/reads |
 | Quality Filtering | `recommendation_filter.py` | Depth scoring, deduplication |
 | KB Deduplication | `recommendation_filter.py` | 4-layer: URL, title, author, embedding |
 | Multi-Factor Ranking | `recommendation_filter.py` | Weighted scoring with diversity |
@@ -304,112 +295,6 @@ Google Secret Manager:
 4. **Metadata Fetch**: Direct Firestore queries
 5. **Tool Response**: JSON results returned to Claude
    - Response time target: <1s (P95)
-
----
-
-## Clustering & UMAP Model Architecture
-
-### Overview
-
-The clustering system uses UMAP (Uniform Manifold Approximation and Projection) for dimensionality reduction combined with HDBSCAN for density-based clustering. To ensure consistency between initial clustering and delta (incremental) processing, the fitted UMAP model is persisted to Cloud Storage and reused for transforming new embeddings.
-
-### Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  SHARED CLUSTERING MODULE                        │
-│                 (src/clustering/clusterer.py)                    │
-├─────────────────────────────────────────────────────────────────┤
-│  fit_predict() - Initial Clustering                              │
-│  • UMAP: 768D → 5D                                               │
-│  • HDBSCAN: Density clustering                                   │
-│  • Store UMAP model & 5D centroids                               │
-│                                                                  │
-│  transform_and_assign() - Delta Clustering                       │
-│  • Load stored UMAP model                                        │
-│  • Transform new chunks: 768D → 5D                               │
-│  • Assign to nearest 5D centroid                                 │
-└─────────────────────────────────────────────────────────────────┘
-         ▲                                    ▲
-         │                                    │
-    ┌────┴─────┐                      ┌──────┴──────┐
-    │ Initial  │                      │   Cloud     │
-    │  Load    │                      │  Function   │
-    │ Script   │                      │   (Delta)   │
-    └──────────┘                      └─────────────┘
-```
-
-### UMAP Model Storage
-
-**Location:** `gs://{project-id}-pipeline/models/umap_model.pkl`
-
-**Metadata:** `gs://{project-id}-pipeline/models/umap_metadata.json`
-
-**Metadata Schema:**
-```json
-{
-  "version": "2025-11-03",
-  "created_at": "2025-11-03T21:43:12.671Z",
-  "umap_parameters": {
-    "n_components": 5,
-    "n_neighbors": 15,
-    "metric": "cosine",
-    "min_dist": 0.0,
-    "random_state": 42
-  },
-  "model_size_bytes": 2702925,
-  "storage_path": "gs://kx-hub-pipeline/models/umap_model.pkl"
-}
-```
-
-### Cluster Metadata Schema (Firestore)
-
-**Collection:** `clusters`
-
-**Document Structure:**
-```javascript
-{
-  "id": "cluster-0",
-  "name": "Gemini AI Features & Updates",
-  "description": "Content related to Gemini AI capabilities, features, and updates",
-  "size": 42,
-  "centroid_768d": Vector([...768]),  // Reference only (original space)
-  "centroid_5d": Vector([...5]),      // Active for assignments (UMAP space)
-  "umap_version": "2025-11-03",
-  "created_at": "2025-11-03T21:43:12Z",
-  "updated_at": "2025-11-03T21:43:12Z"
-}
-```
-
-### Consistency Approach
-
-**Problem:** Initial clustering uses UMAP + HDBSCAN (768D → 5D → clusters), but delta processing previously used 768D cosine distance, causing inconsistent cluster assignments.
-
-**Solution:**
-1. **Persist UMAP model** after initial clustering to Cloud Storage
-2. **Store both centroid types** in Firestore:
-   - `centroid_768d`: Reference only (original embedding space)
-   - `centroid_5d`: Active for assignments (UMAP-reduced space)
-3. **Delta processing** loads UMAP model and transforms new embeddings to 5D before assignment
-4. **Shared clustering module** eliminates code duplication between initial load and Cloud Function
-
-**Benefits:**
-- ✅ **Consistency**: Same embedding space for initial and delta clustering
-- ✅ **Performance**: 5D euclidean distance is 5x faster than 768D cosine (~1.4s vs ~7s)
-- ✅ **Accuracy**: New chunks assigned with same algorithm as initial clustering
-- ✅ **No code duplication**: Single `SemanticClusterer` class used by both paths
-
-### Performance Metrics
-
-| Operation | Time | Space |
-|-----------|------|-------|
-| UMAP fit (825 embeddings) | ~3.6s | 768D → 5D |
-| UMAP transform (10 new embeddings) | ~0.1s | 768D → 5D |
-| UMAP model storage | <1s | ~2.7 MB |
-| Delta processing (before) | ~7s | 768D cosine |
-| Delta processing (after) | ~1.4s | 5D euclidean |
-
-**Cost Impact:** +$0.001/month (model storage only)
 
 ---
 

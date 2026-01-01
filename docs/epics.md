@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2025-12-30
+**Last Updated:** 2026-01-01
 
 ---
 
@@ -22,18 +22,18 @@
 
 ---
 
-## Epic 2: Knowledge Cards & Clustering ✅
+## Epic 2: Knowledge Cards ✅
 
-**Goal:** AI-powered summaries and automatic topic clustering.
+**Goal:** AI-powered summaries per chunk.
 
 **Status:** Complete
 
 | Story | Description | Status |
 |-------|-------------|--------|
 | 2.1 | **Knowledge Cards** - Gemini Flash generates summaries, key takeaways, related topics per chunk | ✅ Done |
-| 2.2 | **Semantic Clustering** - UMAP dimensionality reduction + HDBSCAN clustering (38 auto-discovered topics) | ✅ Done |
-| 2.6 | **MCP Card Tools** - `get_cluster`, `list_clusters`, `search_within_cluster` tools for Claude | ✅ Done |
 | 2.7 | **URL Backfill** - Extract and store source URLs from highlights, backfill existing 800+ chunks | ✅ Done |
+
+*Note: Clustering (Stories 2.2, 2.6) deprecated in Epic 4.4 - replaced by source-based organization.*
 
 ---
 
@@ -47,25 +47,31 @@
 |-------|-------------|--------|
 | 3.1 | **Cloud Run Deployment** - Deploy MCP server to Cloud Run with SSE transport for remote access | ✅ Done |
 | 3.1.1 | **OAuth 2.1 Authentication** - Secure authentication for Claude Mobile/Web with token refresh | ✅ Done |
-| 3.4 | **Cluster Relationships** - Discover and store relationships between topic clusters (cosine similarity) | ✅ Done |
+| 3.4 | **Source Relationships** - Discover and store relationships between sources (moved to Epic 4) | ✅ Done |
 | 3.5 | **Reading Recommendations** - AI-powered article recommendations via Tavily search based on interests | ✅ Done |
 
 ---
 
-## Epic 4: Knowledge Graph 🚧
+## Epic 4: Source-Based Knowledge Graph ✅
 
-**Goal:** Entity & relation extraction for multi-hop queries and contradiction detection.
+**Goal:** Build connected knowledge network based on Sources (books/articles) with explicit relationships. Replace cluster abstraction.
 
-**Status:** In Progress
+**Status:** Stories 4.1-4.4 Complete
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 4.1 | **Entity Extraction** - Extract named entities (people, concepts, technologies) from chunks via LLM | 📋 Planned |
-| 4.2 | **Relation Extraction** - Identify relationships between entities (influences, contradicts, related_to) | 📋 Planned |
-| 4.3 | **Graph Query Tools** - MCP tools for entity lookup, path finding, neighborhood exploration | 📋 Planned |
-| 4.4 | **Proactive Connections** - Surface unexpected connections and contradictions during search | 📋 Planned |
+| 4.1 | **Source Extraction & Migration** - Extract sources from chunks, create sources collection | ✅ Done |
+| 4.2 | **Cross-Source Relationship Extraction** - LLM-based relationship discovery between sources | ✅ Done |
+| 4.3 | **MCP Source Tools** - `list_sources`, `get_source`, `search_within_source`, `get_contradictions` | ✅ Done |
+| 4.4 | **Cluster Deprecation** - Remove all cluster logic from MCP server, use sources instead | ✅ Done |
+| 4.5 | **Incremental Updates** - Auto-find relationships when new chunks ingested | 📋 Planned |
 
-**Next Step:** Story 4.1 - Run entity type discovery on sample chunks
+**Key Changes:**
+- Clusters replaced by Sources (books, articles) as first-class entities
+- Explicit typed relationships (`extends`, `supports`, `contradicts`)
+- 18 MCP tools (down from 22, removed cluster tools)
+
+See [epic4.md](epic4.md) for full details.
 
 ---
 

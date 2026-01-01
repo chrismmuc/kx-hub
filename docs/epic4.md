@@ -6,7 +6,7 @@
 
 **Dependencies:** Epic 2 (Knowledge Cards), Epic 3 (MCP Server)
 
-**Status:** In Progress
+**Status:** Stories 4.1-4.4 Complete
 
 ---
 
@@ -87,7 +87,7 @@ relationships/
 
 ## Story 4.1: Source Extraction & Migration
 
-**Status:** Planned
+**Status:** ✅ Done
 
 **Summary:** Extract unique sources from existing chunks and create sources collection.
 
@@ -125,7 +125,7 @@ for source_id, data in sources.items():
 
 ## Story 4.2: Cross-Source Relationship Extraction
 
-**Status:** In Progress (code exists, needs refactoring)
+**Status:** ✅ Done
 
 **Summary:** Extract relationships between chunks from **different** sources only.
 
@@ -162,9 +162,9 @@ for source_id, data in sources.items():
 
 ---
 
-## Story 4.3: MCP Tools for Relationship Queries
+## Story 4.3: MCP Tools for Source & Relationship Queries
 
-**Status:** Planned
+**Status:** ✅ Done
 
 **Summary:** Expose relationships via MCP tools.
 
@@ -209,16 +209,19 @@ get_evolution(concept: str) -> {
 
 ## Story 4.4: Cluster Deprecation
 
-**Status:** Planned
+**Status:** ✅ Done
 
 **Summary:** Remove cluster-related code and data after relationship migration.
 
-**Tasks:**
-1. Remove `cluster_id` field from chunks
-2. Delete `clusters/` collection
-3. Remove clustering code from pipeline
-4. Update MCP tools to use source-based queries instead of cluster-based
-5. Archive clustering code (don't delete, might be useful later)
+**Completed Tasks:**
+1. ✅ Removed cluster tools from MCP server (`list_clusters`, `get_cluster`, `search_within_cluster`, `get_related_clusters`)
+2. ✅ Removed `cluster_ids` parameter from `get_reading_recommendations`
+3. ✅ Replaced `_format_cluster_info` with `_format_source_info` in tools.py
+4. ✅ Removed cluster functions from `firestore_client.py`
+5. ✅ Removed cluster formatters from `resources.py`
+6. ✅ Updated `recommendation_queries.py` to use sources instead of clusters
+7. ✅ Deleted `test_cluster_relationships.py` and updated remaining tests
+8. ✅ All 268 tests pass
 
 **MCP Tool Changes:**
 | Old | New |
@@ -226,6 +229,9 @@ get_evolution(concept: str) -> {
 | `list_clusters` | `list_sources` |
 | `get_cluster` | `get_source` |
 | `search_within_cluster` | `search_within_source` |
+| `get_related_clusters` | (removed, use `get_source` with relationships) |
+
+**Note:** Clustering code in `src/clustering/` is archived but not actively used by MCP server.
 
 ---
 
@@ -259,10 +265,10 @@ get_evolution(concept: str) -> {
 
 | Story | Description | Priority | Status |
 |-------|-------------|----------|--------|
-| 4.1 | Source Extraction & Migration | High | Planned |
-| 4.2 | Cross-Source Relationship Extraction | High | In Progress |
-| 4.3 | MCP Tools for Relationships | High | Planned |
-| 4.4 | Cluster Deprecation | Medium | Planned |
+| 4.1 | Source Extraction & Migration | High | ✅ Done |
+| 4.2 | Cross-Source Relationship Extraction | High | ✅ Done |
+| 4.3 | MCP Tools for Sources & Relationships | High | ✅ Done |
+| 4.4 | Cluster Deprecation | Medium | ✅ Done |
 | 4.5 | Incremental Updates | Medium | Planned |
 
 **Key Simplifications:**

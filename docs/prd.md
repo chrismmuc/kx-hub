@@ -1,14 +1,14 @@
 # PRD (V4) – Personal AI Knowledge Base (Google Cloud + Vertex AI)
 
 ## 1. Goal & Value Proposition
-- **Goal**: Daily processing of Readwise/Reader highlights/articles, automatic **semantic processing**, **clustering/linking**, **TL;DR cards**, **idea synthesis**, **on-demand query retrieval**, export to **GitHub → Obsidian**, plus a **weekly email digest** with AI-powered recommendations and **intelligent reading synthesis**.
+- **Goal**: Daily processing of Readwise/Reader highlights/articles, automatic **semantic processing**, **source-based linking**, **TL;DR cards**, **idea synthesis**, **on-demand query retrieval**, export to **GitHub → Obsidian**, plus a **weekly email digest** with AI-powered recommendations and **intelligent reading synthesis**.
 - **Non-Goals (V1)**: Team multi-user, Web UI (CLI/API only).
 
 ## 2. Core Use Cases
 1. Daily ingest of new articles/highlights via API.
-2. Semantic similarity & clustering.
+2. Semantic similarity & source-based relationships.
 3. Knowledge Cards (short TL;DR + takeaways).
-4. Idea synthesis per cluster/topic.
+4. Idea synthesis per source/topic.
 5. Export (Markdown + graph.json) → GitHub → Obsidian Sync.
 6. Email digest (new items, resurfacings, synthesis of the week).
 7. **Query-Driven Retrieval**: Natural Language Query → semantic search → ranked results with relevant articles/highlights/book sections.
@@ -41,8 +41,9 @@
 10) Ranked Results → **Return**: Articles/highlights with context + Knowledge Cards
 
 ## 5. Data Model (Brief)
-**Firestore `kb_items`**: Document ID = item_id, fields: title, readwise_url, source_url, highlight_url, tags, authors, created_at, updated_at, cluster_id[], similar_ids[], scores[], knowledge_card {summary, takeaways}.
-**Firestore `kb_clusters`**: Document ID = cluster_id, fields: label, members[], parent_cluster?, related_clusters[], label_version.
+**Firestore `kb_items`**: Document ID = chunk_id, fields: title, readwise_url, source_url, highlight_url, tags, authors, created_at, updated_at, source_id, knowledge_card {summary, takeaways}.
+**Firestore `sources`**: Document ID = source_id, fields: title, author, type (book/article), chunk_ids[], chunk_count, created_at, tags[].
+**Firestore `relationships`**: Source-to-source and chunk-to-chunk relationships with type (extends, supports, contradicts), confidence, explanation.
 **Cloud Storage**: `/raw/*.json`, `/markdown/notes/{id}.md`, `/cards/{id}.md`, `/graphs/graph.json`.
 
 ## 6. Configuration
@@ -95,11 +96,11 @@ See [epics.md](./epics.md) for detailed breakdown of all epics and stories.
 | Epic | Description | Status |
 |------|-------------|--------|
 | **Epic 1** | Core Batch Processing Pipeline & KB Infrastructure | Complete |
-| **Epic 2** | Enhanced Knowledge Graph & Clustering | Complete |
-| **Epic 3** | Knowledge Graph Enhancement & Optimization | Active |
-| **Epic 4** | Knowledge Digest & Email Summaries | Planned |
-| **Epic 5** | AI-Powered Blogging Engine | Planned |
-| **Epic 6** | User Experience & Discoverability | Decision Pending |
+| **Epic 2** | Knowledge Cards | Complete |
+| **Epic 3** | Remote Access & Recommendations | Complete |
+| **Epic 4** | Source-Based Knowledge Graph | Complete (4.1-4.4) |
+| **Epic 5** | Knowledge Digest & Email Summaries | Planned |
+| **Epic 6** | AI-Powered Blogging Engine | Planned |
 
 ### Epic 4: Knowledge Digest & Email Summaries
 
@@ -128,7 +129,7 @@ See [epics.md](./epics.md) for detailed breakdown of all epics and stories.
 **Goal:** Build an intelligent blogging assistant that transforms Knowledge Base content into polished blog articles. The engine helps identify core ideas, generates article structures, creates drafts with proper referencing, and supports iterative article development—enabling a workflow from knowledge synthesis to published content in Obsidian.
 
 **Key Capabilities:**
-- **Blog Idea Extraction**: Identify article-worthy topics from KB clusters
+- **Blog Idea Extraction**: Identify article-worthy topics from KB sources
 - **Outline Generation**: Create structured article frameworks with source references
 - **AI-Assisted Drafting**: Generate polished prose with citations and consistent voice
 - **Article Development Log**: Track progress across multiple sessions (idea → published)
