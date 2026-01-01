@@ -17,18 +17,30 @@ from typing import Any, Dict, List, Optional
 # Add parent directory to path for llm module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from .prompt_manager import PromptManager, estimate_cost
-from .schema import KnowledgeCard, validate_knowledge_card_response
-
-# LLM abstraction layer
+# Support both package imports (local/tests) and flat imports (Cloud Functions)
 try:
-    from llm import BaseLLMClient, get_client
-    from llm import GenerationConfig as LLMGenerationConfig
+    from .prompt_manager import PromptManager, estimate_cost
+    from .schema import KnowledgeCard, validate_knowledge_card_response
+except ImportError:
+    from prompt_manager import PromptManager, estimate_cost
+    from schema import KnowledgeCard, validate_knowledge_card_response
+
+# LLM abstraction layer (kx_llm package from Artifact Registry)
+try:
+    from kx_llm import BaseLLMClient, get_client
+    from kx_llm import GenerationConfig as LLMGenerationConfig
 
     _HAS_LLM = True
 except ImportError:
-    _HAS_LLM = False
-    BaseLLMClient = None
+    # Fallback to local llm module for development
+    try:
+        from llm import BaseLLMClient, get_client
+        from llm import GenerationConfig as LLMGenerationConfig
+
+        _HAS_LLM = True
+    except ImportError:
+        _HAS_LLM = False
+        BaseLLMClient = None
 
 # Configure logging
 logging.basicConfig(

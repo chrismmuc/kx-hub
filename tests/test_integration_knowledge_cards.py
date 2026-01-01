@@ -9,12 +9,12 @@ import json
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
-from src.knowledge_cards.generator import generate_knowledge_card, process_chunks_batch
-from src.knowledge_cards.main import (
+from src.knowledge_cards.cli import (
     load_all_chunks,
     run_pipeline,
     update_firestore_with_cards,
 )
+from src.knowledge_cards.generator import generate_knowledge_card, process_chunks_batch
 from src.knowledge_cards.schema import KnowledgeCard
 
 
@@ -177,7 +177,7 @@ class TestFirestoreIntegration(unittest.TestCase):
             ),
         ]
 
-    @patch("src.knowledge_cards.main.get_firestore_client")
+    @patch("src.knowledge_cards.cli.get_firestore_client")
     def test_load_all_chunks(self, mock_get_client):
         """Test loading chunks from Firestore"""
         # Mock Firestore client
@@ -213,7 +213,7 @@ class TestFirestoreIntegration(unittest.TestCase):
         self.assertEqual(chunks[0]["id"], "chunk-1")
         self.assertEqual(chunks[1]["id"], "chunk-2")
 
-    @patch("src.knowledge_cards.main.get_firestore_client")
+    @patch("src.knowledge_cards.cli.get_firestore_client")
     def test_update_firestore_with_cards(self, mock_get_client):
         """Test updating Firestore with knowledge cards (AC #6)"""
         # Mock Firestore client

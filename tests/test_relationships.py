@@ -460,10 +460,10 @@ class TestRelationshipExtractor:
 class TestMainModule:
     """Tests for main.py functions."""
 
-    @patch("src.relationships.main.get_firestore_client")
+    @patch("src.relationships.cli.get_firestore_client")
     def test_save_relationships_dry_run(self, mock_get_client):
         """Test dry run doesn't write to Firestore."""
-        from src.relationships.main import save_relationships
+        from src.relationships.cli import save_relationships
 
         relationships = [
             Relationship(
@@ -482,10 +482,10 @@ class TestMainModule:
         assert result["failed"] == 0
         mock_get_client.assert_not_called()
 
-    @patch("src.relationships.main.get_firestore_client")
+    @patch("src.relationships.cli.get_firestore_client")
     def test_save_relationships_empty_list(self, mock_get_client):
         """Test saving empty list."""
-        from src.relationships.main import save_relationships
+        from src.relationships.cli import save_relationships
 
         result = save_relationships([], dry_run=False)
 

@@ -45,7 +45,7 @@ resource "google_project_iam_member" "relationships_sa_secret_accessor" {
 # Archive the source code for the Relationships Cloud Function
 data "archive_file" "relationships_source" {
   type        = "zip"
-  source_dir  = "../functions/relationships"
+  source_dir  = "../src/relationships"
   output_path = "/tmp/relationships_source.zip"
   excludes = [
     "__pycache__",

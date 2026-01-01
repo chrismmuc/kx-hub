@@ -1,115 +1,151 @@
 """
-Cross-Source Relationship Extraction Pipeline
+Incremental Relationship Extraction Cloud Function
 
-Extracts relationships between chunks from DIFFERENT sources only.
-Epic 4, Story 4.2/4.5
+Story 4.5: When new chunks are ingested, find cross-source relationships.
 
-Usage:
-    python -m src.relationships.main --dry-run --limit 10
-    python -m src.relationships.main --parallel 10
+Triggered after embedding step in daily pipeline.
+For each new chunk, finds similar chunks from OTHER sources and
+extracts relationships via LLM.
 
 Environment Variables:
-    GCP_PROJECT: Google Cloud project ID (default: kx-hub)
+    GCP_PROJECT: Google Cloud project ID
+    GCP_REGION: GCP region for Vertex AI
     SIMILARITY_THRESHOLD: Min similarity for pairs (default: 0.80)
-    CONFIDENCE_THRESHOLD: Min confidence for relationships (default: 0.7)
+    CONFIDENCE_THRESHOLD: Min LLM confidence (default: 0.7)
+    MAX_SIMILAR_CHUNKS: Max similar chunks to check per new chunk (default: 10)
 """
 
-import argparse
-import asyncio
+import json
 import logging
 import os
-import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import re
+from dataclasses import dataclass, field
 from datetime import datetime
-from itertools import combinations
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
+import functions_framework
 import numpy as np
-
-from .extractor import RelationshipExtractor
-from .schema import Relationship
+from flask import Request
+from google.cloud import firestore
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
 GCP_PROJECT = os.environ.get("GCP_PROJECT", "kx-hub")
+GCP_REGION = os.environ.get("GCP_REGION", "europe-west4")
 CHUNKS_COLLECTION = os.environ.get("FIRESTORE_COLLECTION", "kb_items")
-SOURCES_COLLECTION = "sources"
 RELATIONSHIPS_COLLECTION = "relationships"
 
-# Thresholds - higher default for cross-source (quality over quantity)
 SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", "0.80"))
-CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.8"))
+CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.7"))
+MAX_SIMILAR_CHUNKS = int(os.environ.get("MAX_SIMILAR_CHUNKS", "10"))
 
-# Batch size for Firestore writes
-BATCH_SIZE = 100
+# Valid relationship types
+RELATIONSHIP_TYPES = [
+    "relates_to",
+    "extends",
+    "supports",
+    "contradicts",
+    "applies_to",
+    "none",
+]
 
-# Default parallelism
-DEFAULT_PARALLEL = 5
+# Embedded prompt template
+RELATIONSHIP_PROMPT = """Analyze the relationship between these two knowledge chunks from my personal knowledge base.
 
-# Global Firestore client
+## Chunk A: {source_title}
+{source_summary}
+
+## Chunk B: {target_title}
+{target_summary}
+
+## Task
+Determine if there is a meaningful semantic relationship between these chunks.
+
+## Relationship Types
+Choose ONE of these relationship types:
+- **relates_to**: General thematic connection (similar topics, concepts, or domains)
+- **extends**: Chunk B builds upon, develops, or evolves the ideas in Chunk A
+- **supports**: Chunk B provides evidence, examples, or confirmation for Chunk A
+- **contradicts**: Chunk B conflicts with, challenges, or presents an opposing view to Chunk A
+- **applies_to**: Chunk B describes a practical application or implementation of concepts from Chunk A
+- **none**: No meaningful relationship exists between these chunks
+
+## Response Format
+Return ONLY a JSON object with these fields:
+- "type": One of the relationship types above
+- "confidence": Your confidence in this relationship (0.0 to 1.0)
+- "explanation": Brief explanation (1-2 sentences) of why this relationship exists
+
+Example response:
+{{"type": "extends", "confidence": 0.85, "explanation": "Chunk B elaborates on the productivity framework introduced in Chunk A with specific implementation strategies."}}
+
+Important:
+- Only identify relationships with confidence >= 0.5
+- If no clear relationship exists, return type "none"
+- Focus on conceptual/semantic relationships, not surface-level keyword matches
+"""
+
+# Global clients
 _firestore_client = None
+_vertex_model = None
 
 
-def get_firestore_client():
-    """Get or create Firestore client instance."""
+def get_firestore_client() -> firestore.Client:
+    """Get or create Firestore client."""
     global _firestore_client
-
     if _firestore_client is None:
-        from google.cloud import firestore
-
         _firestore_client = firestore.Client(project=GCP_PROJECT)
-        logger.info(f"Initialized Firestore client for project: {GCP_PROJECT}")
-
     return _firestore_client
 
 
-def load_existing_pairs() -> set:
-    """Load existing relationship pairs from Firestore to skip duplicates."""
-    db = get_firestore_client()
-    existing = set()
+def get_vertex_model():
+    """Get or create Vertex AI model."""
+    global _vertex_model
+    if _vertex_model is None:
+        import vertexai
+        from vertexai.generative_models import GenerativeModel
 
-    for doc in db.collection(RELATIONSHIPS_COLLECTION).stream():
+        vertexai.init(project=GCP_PROJECT, location=GCP_REGION)
+        _vertex_model = GenerativeModel("gemini-2.0-flash")
+        logger.info("Initialized Vertex AI model: gemini-2.0-flash")
+    return _vertex_model
+
+
+@dataclass
+class Relationship:
+    """Represents a relationship between two chunks."""
+
+    source_chunk_id: str
+    target_chunk_id: str
+    type: str
+    confidence: float
+    explanation: str
+    source_context: str
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "source_chunk_id": self.source_chunk_id,
+            "target_chunk_id": self.target_chunk_id,
+            "type": self.type,
+            "confidence": self.confidence,
+            "explanation": self.explanation,
+            "source_context": self.source_context,
+            "created_at": self.created_at,
+        }
+
+
+def get_chunk_by_id(db: firestore.Client, chunk_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch a single chunk by ID."""
+    doc = db.collection(CHUNKS_COLLECTION).document(chunk_id).get()
+    if doc.exists:
         data = doc.to_dict()
-        pair = (data.get("source_chunk_id"), data.get("target_chunk_id"))
-        existing.add(pair)
-
-    logger.info(f"Found {len(existing)} existing relationships to skip")
-    return existing
-
-
-def load_chunks_by_source() -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Load all chunks grouped by source_id.
-
-    Returns:
-        Dictionary mapping source_id -> list of chunks
-    """
-    db = get_firestore_client()
-    collection_ref = db.collection(CHUNKS_COLLECTION)
-
-    sources: Dict[str, List[Dict[str, Any]]] = {}
-
-    for doc in collection_ref.stream():
-        chunk_data = doc.to_dict()
-        chunk_data["id"] = doc.id
-
-        source_id = chunk_data.get("source_id")
-        if not source_id:
-            continue
-
-        if source_id not in sources:
-            sources[source_id] = []
-        sources[source_id].append(chunk_data)
-
-    logger.info(
-        f"Loaded {sum(len(c) for c in sources.values())} chunks from {len(sources)} sources"
-    )
-    return sources
+        data["id"] = doc.id
+        return data
+    return None
 
 
 def compute_similarity(embedding_a: List[float], embedding_b: List[float]) -> float:
@@ -127,343 +163,316 @@ def compute_similarity(embedding_a: List[float], embedding_b: List[float]) -> fl
     return float(dot_product / (norm_a * norm_b))
 
 
-def find_cross_source_pairs(
-    sources: Dict[str, List[Dict[str, Any]]],
-    similarity_threshold: float,
-    limit: Optional[int] = None,
-) -> List[Tuple[Dict[str, Any], Dict[str, Any], float]]:
+def find_similar_cross_source_chunks(
+    db: firestore.Client,
+    chunk: Dict[str, Any],
+    limit: int = MAX_SIMILAR_CHUNKS,
+) -> List[Dict[str, Any]]:
     """
-    Find all chunk pairs from different sources above similarity threshold.
-
-    Args:
-        sources: Dictionary mapping source_id -> chunks
-        similarity_threshold: Minimum cosine similarity
-        limit: Optional limit on number of pairs
-
-    Returns:
-        List of (chunk_a, chunk_b, similarity) tuples
+    Find chunks from OTHER sources similar to the given chunk.
+    Uses Firestore vector search to find nearest neighbors.
     """
-    pairs = []
-    source_ids = list(sources.keys())
+    embedding = chunk.get("embedding")
+    source_id = chunk.get("source_id")
 
-    logger.info(f"Finding cross-source pairs from {len(source_ids)} sources...")
+    if not embedding or not source_id:
+        logger.warning(f"Chunk {chunk.get('id')} missing embedding or source_id")
+        return []
 
-    # Compare all source pairs
-    total_comparisons = 0
-    for source_a, source_b in combinations(source_ids, 2):
-        chunks_a = sources[source_a]
-        chunks_b = sources[source_b]
+    from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+    from google.cloud.firestore_v1.vector import Vector
 
-        for chunk_a in chunks_a:
-            if not chunk_a.get("embedding"):
+    collection_ref = db.collection(CHUNKS_COLLECTION)
+    query_limit = limit * 3  # Query more since we filter out same-source
+
+    try:
+        vector_query = collection_ref.find_nearest(
+            vector_field="embedding",
+            query_vector=Vector(embedding),
+            distance_measure=DistanceMeasure.COSINE,
+            limit=query_limit,
+        )
+
+        results = []
+        for doc in vector_query.stream():
+            data = doc.to_dict()
+            data["id"] = doc.id
+
+            # Skip same source and self
+            if data.get("source_id") == source_id:
+                continue
+            if data["id"] == chunk.get("id"):
                 continue
 
-            for chunk_b in chunks_b:
-                if not chunk_b.get("embedding"):
-                    continue
+            # Compute actual similarity
+            other_embedding = data.get("embedding")
+            if other_embedding:
+                similarity = compute_similarity(embedding, other_embedding)
+                if similarity >= SIMILARITY_THRESHOLD:
+                    data["_similarity"] = similarity
+                    results.append(data)
 
-                total_comparisons += 1
-                sim = compute_similarity(chunk_a["embedding"], chunk_b["embedding"])
+            if len(results) >= limit:
+                break
 
-                if sim >= similarity_threshold:
-                    pairs.append((chunk_a, chunk_b, sim))
-
-                    if limit and len(pairs) >= limit:
-                        logger.info(f"Reached limit of {limit} pairs")
-                        return pairs
-
-    # Sort by similarity (highest first)
-    pairs.sort(key=lambda x: x[2], reverse=True)
-
-    logger.info(
-        f"Found {len(pairs)} cross-source pairs above {similarity_threshold} "
-        f"(from {total_comparisons:,} comparisons)"
-    )
-
-    return pairs
-
-
-def save_relationships(
-    relationships: List[Relationship],
-    dry_run: bool = False,
-) -> Dict[str, int]:
-    """Save relationships to Firestore."""
-    if not relationships:
-        return {"saved": 0, "failed": 0}
-
-    if dry_run:
-        logger.info(f"DRY RUN: Would save {len(relationships)} relationships")
-        return {"saved": len(relationships), "failed": 0}
-
-    db = get_firestore_client()
-    collection_ref = db.collection(RELATIONSHIPS_COLLECTION)
-
-    saved = 0
-    failed = 0
-
-    for i in range(0, len(relationships), BATCH_SIZE):
-        batch = db.batch()
-        batch_rels = relationships[i : i + BATCH_SIZE]
-
-        for rel in batch_rels:
-            try:
-                doc_ref = collection_ref.document()
-                batch.set(doc_ref, rel.to_dict())
-                saved += 1
-            except Exception as e:
-                logger.error(f"Failed to prepare relationship: {e}")
-                failed += 1
-
-        try:
-            batch.commit()
-            logger.info(
-                f"Saved batch {i // BATCH_SIZE + 1}: {len(batch_rels)} relationships"
-            )
-        except Exception as e:
-            logger.error(f"Batch write failed: {e}")
-            failed += len(batch_rels)
-            saved -= len(batch_rels)
-
-    return {"saved": saved, "failed": failed}
-
-
-def process_pair(
-    extractor: RelationshipExtractor,
-    chunk_a: Dict[str, Any],
-    chunk_b: Dict[str, Any],
-    pair_index: int,
-    total_pairs: int,
-) -> Optional[Relationship]:
-    """Process a single chunk pair and extract relationship."""
-    try:
-        # Use source_id as context instead of cluster_id
-        source_a = chunk_a.get("source_id", "unknown")
-        source_b = chunk_b.get("source_id", "unknown")
-        context = f"{source_a}--{source_b}"
-
-        rel = extractor.extract_relationship(chunk_a, chunk_b, context)
-
-        if rel:
-            logger.debug(
-                f"[{pair_index}/{total_pairs}] Found: {rel.type} "
-                f"(confidence: {rel.confidence:.2f})"
-            )
-
-        return rel
+        results.sort(key=lambda x: x.get("_similarity", 0), reverse=True)
+        return results[:limit]
 
     except Exception as e:
-        logger.warning(f"[{pair_index}/{total_pairs}] Error: {e}")
+        logger.error(f"Vector search failed: {e}")
+        return []
+
+
+def relationship_exists(db: firestore.Client, chunk_a_id: str, chunk_b_id: str) -> bool:
+    """Check if relationship already exists between two chunks."""
+    query1 = (
+        db.collection(RELATIONSHIPS_COLLECTION)
+        .where("source_chunk_id", "==", chunk_a_id)
+        .where("target_chunk_id", "==", chunk_b_id)
+        .limit(1)
+    )
+
+    query2 = (
+        db.collection(RELATIONSHIPS_COLLECTION)
+        .where("source_chunk_id", "==", chunk_b_id)
+        .where("target_chunk_id", "==", chunk_a_id)
+        .limit(1)
+    )
+
+    for doc in query1.stream():
+        return True
+    for doc in query2.stream():
+        return True
+
+    return False
+
+
+def get_chunk_summary(chunk: Dict[str, Any]) -> str:
+    """Extract summary from chunk's knowledge card or content."""
+    kc = chunk.get("knowledge_card", {})
+    if isinstance(kc, dict) and kc.get("summary"):
+        return kc["summary"]
+
+    content = chunk.get("content", "")
+    if len(content) > 500:
+        content = content[:500] + "..."
+    return content
+
+
+def extract_json_from_response(text: str) -> Optional[Dict[str, Any]]:
+    """Extract JSON from LLM response text."""
+    # Try direct JSON parse
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find JSON in markdown code block
+    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Try to find raw JSON object
+    json_match = re.search(r'\{[^{}]*"type"[^{}]*\}', text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def extract_relationship(
+    chunk_a: Dict[str, Any],
+    chunk_b: Dict[str, Any],
+    source_context: str,
+) -> Optional[Relationship]:
+    """Extract relationship between two chunks using LLM."""
+    source_id = chunk_a.get("id")
+    target_id = chunk_b.get("id")
+
+    if not source_id or not target_id:
+        return None
+
+    # Format prompt
+    prompt = RELATIONSHIP_PROMPT.format(
+        source_title=chunk_a.get("title", "Unknown"),
+        source_summary=get_chunk_summary(chunk_a),
+        target_title=chunk_b.get("title", "Unknown"),
+        target_summary=get_chunk_summary(chunk_b),
+    )
+
+    try:
+        model = get_vertex_model()
+        response = model.generate_content(prompt)
+
+        if not response or not response.text:
+            logger.warning("Empty LLM response")
+            return None
+
+        # Parse JSON from response
+        result = extract_json_from_response(response.text)
+        if not result:
+            logger.warning(f"Could not parse JSON from response: {response.text[:200]}")
+            return None
+
+        rel_type = result.get("type", "none")
+        confidence = float(result.get("confidence", 0))
+        explanation = result.get("explanation", "")
+
+        # Validate
+        if rel_type not in RELATIONSHIP_TYPES:
+            logger.warning(f"Invalid relationship type: {rel_type}")
+            return None
+
+        if rel_type == "none":
+            return None
+
+        if confidence < CONFIDENCE_THRESHOLD:
+            logger.debug(
+                f"Confidence {confidence} below threshold {CONFIDENCE_THRESHOLD}"
+            )
+            return None
+
+        return Relationship(
+            source_chunk_id=source_id,
+            target_chunk_id=target_id,
+            type=rel_type,
+            confidence=confidence,
+            explanation=explanation,
+            source_context=source_context,
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to extract relationship: {e}")
         return None
 
 
-def process_pairs_sequential(
-    extractor: RelationshipExtractor,
-    pairs: List[Tuple[Dict[str, Any], Dict[str, Any], float]],
-) -> List[Relationship]:
-    """Process pairs sequentially."""
-    relationships = []
-
-    for i, (chunk_a, chunk_b, sim) in enumerate(pairs):
-        if (i + 1) % 10 == 0 or i == 0:
-            logger.info(f"Processing pair {i + 1}/{len(pairs)}...")
-
-        rel = process_pair(extractor, chunk_a, chunk_b, i + 1, len(pairs))
-        if rel:
-            relationships.append(rel)
-
-    return relationships
+def save_relationship(db: firestore.Client, relationship: Relationship) -> bool:
+    """Save a single relationship to Firestore."""
+    try:
+        db.collection(RELATIONSHIPS_COLLECTION).add(relationship.to_dict())
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save relationship: {e}")
+        return False
 
 
-def process_pairs_parallel(
-    extractor: RelationshipExtractor,
-    pairs: List[Tuple[Dict[str, Any], Dict[str, Any], float]],
-    max_workers: int = DEFAULT_PARALLEL,
-) -> List[Relationship]:
-    """Process pairs in parallel using ThreadPoolExecutor."""
-    relationships = []
-    total = len(pairs)
-    completed = 0
+def process_new_chunks(chunk_ids: List[str]) -> Dict[str, Any]:
+    """Process new chunks and extract cross-source relationships."""
+    db = get_firestore_client()
 
-    logger.info(f"Processing {total} pairs with {max_workers} parallel workers...")
+    stats = {
+        "chunks_processed": 0,
+        "pairs_checked": 0,
+        "relationships_found": 0,
+        "relationships_saved": 0,
+        "skipped_existing": 0,
+        "errors": 0,
+    }
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        futures = {
-            executor.submit(process_pair, extractor, chunk_a, chunk_b, i + 1, total): i
-            for i, (chunk_a, chunk_b, sim) in enumerate(pairs)
-        }
+    for chunk_id in chunk_ids:
+        try:
+            chunk = get_chunk_by_id(db, chunk_id)
+            if not chunk:
+                logger.warning(f"Chunk not found: {chunk_id}")
+                continue
 
-        # Collect results as they complete
-        for future in as_completed(futures):
-            completed += 1
+            stats["chunks_processed"] += 1
+            source_id = chunk.get("source_id", "unknown")
 
-            if completed % 20 == 0:
-                logger.info(f"Completed {completed}/{total} pairs...")
+            similar_chunks = find_similar_cross_source_chunks(db, chunk)
 
-            try:
-                rel = future.result()
-                if rel:
-                    relationships.append(rel)
-            except Exception as e:
-                logger.warning(f"Future failed: {e}")
+            logger.info(
+                f"Chunk {chunk_id} (source: {source_id}): "
+                f"found {len(similar_chunks)} similar cross-source chunks"
+            )
 
-    return relationships
+            for similar in similar_chunks:
+                stats["pairs_checked"] += 1
+
+                if relationship_exists(db, chunk_id, similar["id"]):
+                    stats["skipped_existing"] += 1
+                    continue
+
+                context = f"{source_id}--{similar.get('source_id', 'unknown')}"
+
+                try:
+                    relationship = extract_relationship(chunk, similar, context)
+
+                    if relationship:
+                        stats["relationships_found"] += 1
+
+                        if save_relationship(db, relationship):
+                            stats["relationships_saved"] += 1
+                            logger.info(
+                                f"Saved: {chunk_id} --{relationship.type}--> "
+                                f"{similar['id']} (conf: {relationship.confidence:.2f})"
+                            )
+
+                except Exception as e:
+                    logger.warning(f"Extraction failed for pair: {e}")
+                    stats["errors"] += 1
+
+        except Exception as e:
+            logger.error(f"Error processing chunk {chunk_id}: {e}")
+            stats["errors"] += 1
+
+    return stats
 
 
-def run_extraction(
-    dry_run: bool = False,
-    limit: Optional[int] = None,
-    similarity_threshold: float = SIMILARITY_THRESHOLD,
-    confidence_threshold: float = CONFIDENCE_THRESHOLD,
-    parallel: int = 0,
-) -> Dict[str, Any]:
+@functions_framework.http
+def extract_relationships(request: Request):
     """
-    Run cross-source relationship extraction.
+    HTTP Cloud Function entry point.
 
-    Args:
-        dry_run: If True, don't write to Firestore
-        limit: Optional limit on pairs to process
-        similarity_threshold: Minimum embedding similarity
-        confidence_threshold: Minimum LLM confidence
-        parallel: Number of parallel workers (0 = sequential)
-
-    Returns:
-        Pipeline results
+    Expected JSON body:
+    {
+        "run_id": "2024-01-01-abc123",
+        "chunk_ids": ["chunk-001", "chunk-002", ...]
+    }
     """
     start_time = datetime.now()
 
-    logger.info("=" * 70)
-    logger.info("Cross-Source Relationship Extraction")
-    logger.info(f"Similarity threshold: {similarity_threshold}")
-    logger.info(f"Confidence threshold: {confidence_threshold}")
-    logger.info(f"Parallel workers: {parallel or 'sequential'}")
-    logger.info(f"Dry run: {dry_run}")
-    logger.info("=" * 70)
-
-    # Load existing pairs to skip
-    existing_pairs = load_existing_pairs()
-
-    # Load chunks by source
-    sources = load_chunks_by_source()
-
-    # Find cross-source pairs
-    all_pairs = find_cross_source_pairs(sources, similarity_threshold, limit)
-
-    # Filter out already processed pairs
-    pairs = [
-        (a, b, sim)
-        for a, b, sim in all_pairs
-        if (a["id"], b["id"]) not in existing_pairs
-        and (b["id"], a["id"]) not in existing_pairs
-    ]
-
-    skipped = len(all_pairs) - len(pairs)
-    if skipped > 0:
-        logger.info(
-            f"Skipping {skipped} already processed pairs, {len(pairs)} remaining"
-        )
-
-    if not pairs:
-        logger.info("No pairs found above threshold")
-        return {
-            "sources": len(sources),
-            "pairs": 0,
-            "relationships": 0,
-            "duration": 0,
-        }
-
-    # Initialize extractor
-    extractor = RelationshipExtractor(
-        similarity_threshold=similarity_threshold,
-        confidence_threshold=confidence_threshold,
-    )
-
-    # Process pairs
-    if parallel > 0:
-        relationships = process_pairs_parallel(extractor, pairs, parallel)
-    else:
-        relationships = process_pairs_sequential(extractor, pairs)
-
-    # Save relationships
-    save_result = save_relationships(relationships, dry_run)
-
-    duration = (datetime.now() - start_time).total_seconds()
-
-    # Summary
-    logger.info("\n" + "=" * 70)
-    logger.info("Extraction Complete")
-    logger.info(f"Sources: {len(sources)}")
-    logger.info(f"Cross-source pairs processed: {len(pairs)}")
-    logger.info(f"Relationships extracted: {len(relationships)}")
-    logger.info(f"Saved: {save_result['saved']}")
-    logger.info(f"Failed: {save_result['failed']}")
-    logger.info(f"Duration: {duration:.1f}s")
-    if len(pairs) > 0:
-        logger.info(f"Avg time per pair: {duration / len(pairs):.2f}s")
-    logger.info("=" * 70)
-
-    return {
-        "sources": len(sources),
-        "pairs": len(pairs),
-        "relationships": len(relationships),
-        "saved": save_result["saved"],
-        "failed": save_result["failed"],
-        "duration": duration,
-    }
-
-
-def main():
-    """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="Extract cross-source relationships between chunks"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Extract but don't save to Firestore"
-    )
-    parser.add_argument("--limit", type=int, help="Limit number of pairs to process")
-    parser.add_argument(
-        "--similarity-threshold",
-        type=float,
-        default=SIMILARITY_THRESHOLD,
-        help=f"Min embedding similarity (default: {SIMILARITY_THRESHOLD})",
-    )
-    parser.add_argument(
-        "--confidence-threshold",
-        type=float,
-        default=CONFIDENCE_THRESHOLD,
-        help=f"Min LLM confidence (default: {CONFIDENCE_THRESHOLD})",
-    )
-    parser.add_argument(
-        "--parallel",
-        type=int,
-        default=0,
-        help="Number of parallel workers (default: 0 = sequential)",
-    )
-    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
-
-    args = parser.parse_args()
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-
     try:
-        result = run_extraction(
-            dry_run=args.dry_run,
-            limit=args.limit,
-            similarity_threshold=args.similarity_threshold,
-            confidence_threshold=args.confidence_threshold,
-            parallel=args.parallel,
-        )
+        request_json = request.get_json(silent=True) or {}
+        run_id = request_json.get("run_id", "unknown")
+        chunk_ids = request_json.get("chunk_ids", [])
 
-        if result.get("failed", 0) > 0:
-            sys.exit(1)
+        logger.info(f"Starting relationship extraction for run_id: {run_id}")
+        logger.info(f"Processing {len(chunk_ids)} new chunks")
 
-        sys.exit(0)
+        if not chunk_ids:
+            logger.info("No chunk_ids provided, skipping extraction")
+            return {
+                "status": "skipped",
+                "run_id": run_id,
+                "message": "No new chunks to process",
+                "relationships_saved": 0,
+            }, 200
+
+        stats = process_new_chunks(chunk_ids)
+
+        duration = (datetime.now() - start_time).total_seconds()
+
+        logger.info(f"Extraction complete in {duration:.1f}s")
+        logger.info(f"Stats: {stats}")
+
+        return {
+            "status": "success",
+            "run_id": run_id,
+            "duration_seconds": duration,
+            **stats,
+        }, 200
 
     except Exception as e:
-        logger.exception(f"Pipeline failed: {e}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+        logger.exception(f"Relationship extraction failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "relationships_saved": 0,
+        }, 500

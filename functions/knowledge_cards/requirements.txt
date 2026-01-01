@@ -1,5 +1,0 @@
-google-cloud-firestore>=2.22.0
-functions-framework>=3.10.0
---index-url https://europe-west4-python.pkg.dev/kx-hub/kx-packages/simple/
---extra-index-url https://pypi.org/simple/
-kx-llm>=0.1.0

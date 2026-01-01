@@ -1,5 +1,6 @@
+--extra-index-url https://europe-west4-python.pkg.dev/kx-hub/kx-packages/simple/
 google-cloud-firestore>=2.22.0
 google-cloud-aiplatform>=1.130.0
 functions-framework>=3.10.0
-# LLM abstraction layer - supports Claude via Vertex AI
-anthropic[vertex]>=0.75.0
+# LLM abstraction layer from Artifact Registry
+kx-llm>=0.1.0

@@ -45,7 +45,7 @@ resource "google_project_iam_member" "knowledge_cards_sa_artifact_registry_reade
 # Archive the source code for the Knowledge Cards Cloud Function
 data "archive_file" "knowledge_cards_source" {
   type        = "zip"
-  source_dir  = "../functions/knowledge_cards"
+  source_dir  = "../src/knowledge_cards"
   output_path = "/tmp/knowledge_cards_source.zip"
   excludes = [
     "__pycache__",
@@ -69,7 +69,7 @@ resource "google_cloudfunctions2_function" "knowledge_cards_function" {
 
   build_config {
     runtime     = "python311"
-    entry_point = "generate_cards_handler" # Entry point in cloud_function.py
+    entry_point = "generate_cards_handler"
     source {
       storage_source {
         bucket = google_storage_bucket.function_source.name
