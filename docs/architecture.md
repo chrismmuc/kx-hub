@@ -1,10 +1,38 @@
 # Architecture – Google Cloud + Vertex AI (MVP)
 
-**Last Updated:** 2025-12-12
+**Last Updated:** 2026-01-01
 
 ## Overview
 
 The system uses Google Cloud Serverless components and Vertex AI to create a simple, scalable, and cost-effective solution for processing and querying knowledge data.
+
+---
+
+## Project Structure
+
+```
+src/
+├── mcp_server/        # MCP server for Claude Desktop (Cloud Run)
+├── ingest/            # Readwise/Reader API ingestion (Cloud Function)
+├── normalize/         # JSON → Markdown normalization (Cloud Function)
+├── embed/             # Embedding generation + storage (Cloud Function)
+├── knowledge_cards/   # AI summaries via Gemini (Cloud Function)
+│   ├── main.py        # Cloud Function entry point
+│   ├── cli.py         # CLI for manual execution
+│   ├── generator.py   # Core generation logic
+│   └── schema.py      # KnowledgeCard dataclass
+├── relationships/     # Cross-source relationship extraction (Cloud Function)
+│   ├── main.py        # Cloud Function entry point
+│   ├── cli.py         # CLI for full re-extraction
+│   ├── extractor.py   # LLM-based extraction
+│   └── schema.py      # Relationship dataclass
+└── llm/               # Shared LLM abstraction (kx-llm package)
+
+terraform/
+├── *.tf               # Infrastructure definitions
+└── workflows/
+    └── batch-pipeline.yaml  # Cloud Workflows orchestration
+```
 
 ---
 
@@ -22,29 +50,23 @@ flowchart TB
 
   PS_TOPIC --> WF[Cloud Workflows: Pipeline]
 
-  WF --> F2[Cloud Function: Normalize/Markdown + URLs]
+  WF --> F2[Cloud Function: Normalize]
   F2 --> GCS_MD[(Cloud Storage: markdown-normalized)]
 
-  WF --> F3[Cloud Function: Embed & Store + URLs]
+  WF --> F3[Cloud Function: Embed & Store]
   F3 -->|gemini-embedding-001| V_EMB[Vertex AI: Embeddings API]
   V_EMB --> F3
-  F3 --> FS_KB[(Firestore: kb_items with URLs)]
+  F3 --> FS_KB[(Firestore: kb_items)]
+  F3 -->|chunk_ids| WF
 
   WF --> F4[Cloud Function: Knowledge Cards]
-  F4 -->|Gemini 2.5 Flash| V_GEN[Vertex AI: Generative AI]
+  F4 -->|Gemini 2.0 Flash| V_GEN[Vertex AI: Generative AI]
   F4 --> FS_KB
 
-  WF --> F5[Cloud Function: Cluster & Link]
-  F5 --> FS_KB
-  F5 --> GCS_GRAPH[(Cloud Storage: graph.json)]
-
-  WF --> F6[Cloud Function: Export → GitHub]
-  GCS_MD --> F6
-  GCS_GRAPH --> F6
-
-  WF --> F7[Cloud Function: Email Digest]
-  FS_KB --> F7
-  F7 --> SENDGRID[SendGrid API]
+  WF --> F5[Cloud Function: Relationships]
+  F5 -->|Gemini 2.0 Flash| V_GEN
+  F5 -->|new chunk_ids| FS_KB
+  F5 --> FS_REL[(Firestore: relationships)]
 ```
 
 ### On-Demand Query Flow (User-Initiated)
@@ -270,13 +292,38 @@ Google Secret Manager:
 
 ### Batch Pipeline (Cloud Workflows Orchestration)
 
-1. **Ingest**: Pub/Sub (daily 2am) → Cloud Function Ingest → GCS raw JSON
-2. **Normalize**: Cloud Workflow → Cloud Function Normalize → GCS Markdown (+ Frontmatter)
-3. **Embed & Store**: Cloud Function → Vertex AI Embeddings API → Firestore kb_items (with embeddings)
-4. **Knowledge Cards**: Cloud Function (Gemini 2.5 Flash) → Firestore kb_items.knowledge_card field
-5. **Cluster & Link**: Cloud Function Cluster & Link → Firestore + GCS graph.json
-6. **Export**: Cloud Function Export → GitHub Commit/PR
-7. **Digest**: Cloud Function Email (weekly on Mondays) → SendGrid
+The daily pipeline processes new content through 4 sequential steps, orchestrated by Cloud Workflows:
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Ingest    │────>│  Normalize  │────>│    Embed    │────>│  Knowledge  │
+│  (trigger)  │     │             │     │   & Store   │     │    Cards    │
+└─────────────┘     └─────────────┘     └─────────────┘     └──────┬──────┘
+                                                                    │
+                                                                    v
+                                                            ┌─────────────┐
+                                                            │Relationships│
+                                                            │ (incremental)│
+                                                            └─────────────┘
+```
+
+| Step | Cloud Function | Input | Output | AI Model |
+|------|---------------|-------|--------|----------|
+| 1. **Ingest** | `ingest-function` | Readwise/Reader API | GCS raw JSON + Pub/Sub trigger | - |
+| 2. **Normalize** | `normalize-function` | GCS raw JSON | GCS Markdown + Frontmatter | - |
+| 3. **Embed & Store** | `embed-function` | GCS Markdown | Firestore kb_items (with embeddings) | `gemini-embedding-001` |
+| 4. **Knowledge Cards** | `knowledge-cards-function` | Firestore chunks (missing KC) | Firestore kb_items.knowledge_card | `gemini-2.0-flash` |
+| 5. **Relationships** | `relationships-function` | New chunk IDs from Step 3 | Firestore relationships collection | `gemini-2.0-flash` |
+
+**Key Features:**
+- **Incremental Processing**: Only new/changed chunks are processed
+- **Automatic Triggers**: Ingest publishes to Pub/Sub, Workflow orchestrates remaining steps
+- **Error Handling**: Each step has retry logic with exponential backoff
+- **Cross-Source Relationships**: Step 5 finds semantic connections between chunks from different sources
+
+**Future Steps (Planned):**
+- **Export**: Cloud Function Export → GitHub Commit/PR
+- **Digest**: Cloud Function Email (weekly on Mondays) → SendGrid
 
 ### Query Flow (Synchronous API)
 
