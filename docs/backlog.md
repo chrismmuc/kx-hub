@@ -324,6 +324,10 @@ This document contains planned but not-yet-implemented stories and epics.
 2. Add `detail_hint` field to each result pointing to `get_chunk`
 3. Update tool description to guide Claude on two-step pattern
 4. Keep `include_content=true` option for backwards compatibility
+5. Fix `get_source_by_id` N+1 query problem:
+   - Current: 20 sequential `get_chunk_by_id()` calls (20 Firestore reads)
+   - Fix: Use `db.get_all(chunk_refs)` for batch read (1 Firestore read)
+   - Also: Return full Knowledge Card (summary + takeaways), not just summary
 
 **Example Response:**
 ```json
@@ -348,8 +352,9 @@ This document contains planned but not-yet-implemented stories and epics.
 - Claude uses two-step pattern (search → get_chunk) when needed
 - No quality degradation for synthesis tasks
 - Faster response times
+- `get_source` latency reduced by ~10x (1 batch read vs 20 sequential)
 
-**Estimated Effort:** 3-4 hours
+**Estimated Effort:** 4-5 hours
 
 **Business Value:**
 - Maximizes ROI on knowledge card generation costs
