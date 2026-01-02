@@ -314,30 +314,42 @@ This document contains planned but not-yet-implemented stories and epics.
 - Investment in card generation doesn't guarantee ROI
 
 **Key Features:**
-- **MCP Server Instructions:** Add `instructions` field to MCP server metadata
-- **Usage Guidance:** Tell Claude to use `summary` for quick orientation, `takeaways` for key points
-- **Full Content Trigger:** Only read full `content` when depth is needed
-- **Response Pattern:** Encourage Claude to cite takeaways in responses
+- **Cards-Only Default:** `search_kb` returns only Knowledge Cards, no `full_content`
+- **Hint for Details:** Each result includes hint: `"Use get_chunk('chunk_id') for full content"`
+- **On-Demand Loading:** Claude calls `get_chunk` only when quotes/context needed
+- **Token Reduction:** ~5-6x fewer tokens per search (1.5K vs 8K for 10 results)
 
 **Technical Approach:**
-- Option A: Add `instructions` to MCP server info response
-- Option B: Enhance tool descriptions with usage patterns
-- Option C: Add `usage_hint` field to each response containing knowledge_card
+1. Modify `search_kb` to use `search_cards_only` format as default
+2. Add `detail_hint` field to each result pointing to `get_chunk`
+3. Update tool description to guide Claude on two-step pattern
+4. Keep `include_content=true` option for backwards compatibility
 
-**Example Instruction:**
-```
-When results include knowledge_card:
-- Use 'summary' for quick orientation (1-2 sentences)
-- Use 'takeaways' for actionable insights (3-5 points)
-- Only read full 'content' when user needs detailed quotes or context
+**Example Response:**
+```json
+{
+  "results": [
+    {
+      "chunk_id": "abc123",
+      "title": "Deep Work",
+      "author": "Cal Newport",
+      "knowledge_card": {
+        "summary": "Focus is a skill that must be trained...",
+        "takeaways": ["Shallow work is seductive but unproductive", "..."]
+      },
+      "detail_hint": "Use get_chunk('abc123') for full content and related chunks"
+    }
+  ]
+}
 ```
 
 **Success Metrics:**
-- Claude references takeaways in synthesized responses
-- Faster response times (less content to process)
-- Knowledge card investment shows measurable ROI
+- ~5x token reduction in search responses
+- Claude uses two-step pattern (search → get_chunk) when needed
+- No quality degradation for synthesis tasks
+- Faster response times
 
-**Estimated Effort:** 2-4 hours
+**Estimated Effort:** 3-4 hours
 
 **Business Value:**
 - Maximizes ROI on knowledge card generation costs
