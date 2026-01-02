@@ -301,6 +301,51 @@ This document contains planned but not-yet-implemented stories and epics.
 
 ---
 
+### Story 3.10: Knowledge Card Usage Instructions for Claude
+
+**Status:** Backlog
+
+**Summary:** Add MCP server instructions that guide Claude to actively use Knowledge Cards for faster comprehension and response quality. Currently, Knowledge Cards are included in responses but Claude has no guidance to prioritize them.
+
+**Problem:**
+- Knowledge Cards cost ~$0.004-0.008/chunk to generate (Gemini Flash)
+- Cards are included in every MCP response (`knowledge_card.summary`, `takeaways`)
+- But Claude has no instruction to use them - may ignore and read full `content` instead
+- Investment in card generation doesn't guarantee ROI
+
+**Key Features:**
+- **MCP Server Instructions:** Add `instructions` field to MCP server metadata
+- **Usage Guidance:** Tell Claude to use `summary` for quick orientation, `takeaways` for key points
+- **Full Content Trigger:** Only read full `content` when depth is needed
+- **Response Pattern:** Encourage Claude to cite takeaways in responses
+
+**Technical Approach:**
+- Option A: Add `instructions` to MCP server info response
+- Option B: Enhance tool descriptions with usage patterns
+- Option C: Add `usage_hint` field to each response containing knowledge_card
+
+**Example Instruction:**
+```
+When results include knowledge_card:
+- Use 'summary' for quick orientation (1-2 sentences)
+- Use 'takeaways' for actionable insights (3-5 points)
+- Only read full 'content' when user needs detailed quotes or context
+```
+
+**Success Metrics:**
+- Claude references takeaways in synthesized responses
+- Faster response times (less content to process)
+- Knowledge card investment shows measurable ROI
+
+**Estimated Effort:** 2-4 hours
+
+**Business Value:**
+- Maximizes ROI on knowledge card generation costs
+- Improves Claude response quality and speed
+- Better user experience with synthesized answers
+
+---
+
 ## Epic 4: MCP Tool Consolidation
 
 **Goal:** Reduce MCP tool count from 21 to 8 through smart consolidation, decreasing token overhead by ~60% and improving AI tool selection accuracy.
