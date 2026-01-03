@@ -301,6 +301,68 @@ This document contains planned but not-yet-implemented stories and epics.
 
 ---
 
+### Story 3.10: Knowledge Card Usage Instructions for Claude
+
+**Status:** Backlog
+
+**Summary:** Add MCP server instructions that guide Claude to actively use Knowledge Cards for faster comprehension and response quality. Currently, Knowledge Cards are included in responses but Claude has no guidance to prioritize them.
+
+**Problem:**
+- Knowledge Cards cost ~$0.004-0.008/chunk to generate (Gemini Flash)
+- Cards are included in every MCP response (`knowledge_card.summary`, `takeaways`)
+- But Claude has no instruction to use them - may ignore and read full `content` instead
+- Investment in card generation doesn't guarantee ROI
+
+**Key Features:**
+- **Cards-Only Default:** `search_kb` returns only Knowledge Cards, no `full_content`
+- **Hint for Details:** Each result includes hint: `"Use get_chunk('chunk_id') for full content"`
+- **On-Demand Loading:** Claude calls `get_chunk` only when quotes/context needed
+- **Token Reduction:** ~5-6x fewer tokens per search (1.5K vs 8K for 10 results)
+
+**Technical Approach:**
+1. Modify `search_kb` to use `search_cards_only` format as default
+2. Add `detail_hint` field to each result pointing to `get_chunk`
+3. Update tool description to guide Claude on two-step pattern
+4. Keep `include_content=true` option for backwards compatibility
+5. Fix `get_source_by_id` N+1 query problem:
+   - Current: 20 sequential `get_chunk_by_id()` calls (20 Firestore reads)
+   - Fix: Use `db.get_all(chunk_refs)` for batch read (1 Firestore read)
+   - Also: Return full Knowledge Card (summary + takeaways), not just summary
+
+**Example Response:**
+```json
+{
+  "results": [
+    {
+      "chunk_id": "abc123",
+      "title": "Deep Work",
+      "author": "Cal Newport",
+      "knowledge_card": {
+        "summary": "Focus is a skill that must be trained...",
+        "takeaways": ["Shallow work is seductive but unproductive", "..."]
+      },
+      "detail_hint": "Use get_chunk('abc123') for full content and related chunks"
+    }
+  ]
+}
+```
+
+**Success Metrics:**
+- ~5x token reduction in search responses
+- Claude uses two-step pattern (search → get_chunk) when needed
+- No quality degradation for synthesis tasks
+- Faster response times
+- `get_source` latency reduced by ~10x (1 batch read vs 20 sequential)
+
+**Estimated Effort:** 4-5 hours
+
+**Business Value:**
+- Maximizes ROI on knowledge card generation costs
+- Improves Claude response quality and speed
+- Better user experience with synthesized answers
+
+---
+
 ## Epic 4: MCP Tool Consolidation
 
 **Goal:** Reduce MCP tool count from 21 to 8 through smart consolidation, decreasing token overhead by ~60% and improving AI tool selection accuracy.
