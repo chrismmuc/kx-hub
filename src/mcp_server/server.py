@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 # Add current directory for imports
@@ -462,7 +462,8 @@ async def mcp_endpoint(request: Request):
                 )
 
         elif method == "notifications/initialized":
-            return JSONResponse(status_code=204, content=None)
+            # 204 No Content must have no body - use Response instead of JSONResponse
+            return Response(status_code=204)
 
         else:
             return JSONResponse(
