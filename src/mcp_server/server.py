@@ -41,7 +41,15 @@ oauth_server = OAuthServer()
 TOOL_DEFINITIONS = [
     {
         "name": "search_kb",
-        "description": "Unified knowledge base search with flexible filtering. Combines semantic search with metadata, time, and knowledge card filters.",
+        "description": """Unified knowledge base search with flexible filtering.
+
+Returns Knowledge Cards by default for fast comprehension (~5x fewer tokens).
+Each result includes a detail_hint - use get_chunk(chunk_id) when you need:
+- Full original content or exact quotes
+- Related chunks via vector similarity
+- Complete context for deep analysis
+
+Two-step pattern: search_kb → scan cards → get_chunk for details.""",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -51,7 +59,7 @@ TOOL_DEFINITIONS = [
                 },
                 "filters": {
                     "type": "object",
-                    "description": "Optional filters to narrow results",
+                    "description": "Optional filters: cluster_id, tags, author, source, date_range, period, include_content (default false)",
                 },
                 "limit": {
                     "type": "integer",

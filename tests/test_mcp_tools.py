@@ -210,7 +210,10 @@ class TestSearchKBUnified(unittest.TestCase):
     @patch("mcp_server.tools.embeddings.generate_query_embedding")
     @patch("mcp_server.tools.firestore_client.find_nearest")
     def test_search_kb_semantic_only(self, mock_find_nearest, mock_generate_embedding):
-        """Test search_kb with query only (semantic search mode)."""
+        """Test search_kb with query only (semantic search mode).
+
+        Story 3.10: Default returns knowledge cards only, not full content.
+        """
         # Mock embedding generation
         mock_generate_embedding.return_value = [0.1] * 768
 
@@ -248,6 +251,12 @@ class TestSearchKBUnified(unittest.TestCase):
         self.assertEqual(
             result["results"][0]["knowledge_card"]["summary"], "Test summary"
         )
+
+        # Story 3.10: Verify cards-only default (no full_content, has detail_hint)
+        self.assertNotIn("full_content", result["results"][0])
+        self.assertNotIn("snippet", result["results"][0])
+        self.assertIn("detail_hint", result["results"][0])
+        self.assertIn("get_chunk", result["results"][0]["detail_hint"])
 
         # Verify mocks called
         mock_generate_embedding.assert_called_once_with("test query")
@@ -339,10 +348,13 @@ class TestSearchKBUnified(unittest.TestCase):
 
     @patch("mcp_server.tools.embeddings.generate_query_embedding")
     @patch("mcp_server.tools.firestore_client.find_nearest")
-    def test_search_kb_with_search_cards_only(
+    def test_search_kb_with_include_content(
         self, mock_find_nearest, mock_generate_embedding
     ):
-        """Test search_kb with search_cards_only filter."""
+        """Test search_kb with include_content=True for backwards compatibility.
+
+        Story 3.10: When include_content=True, results include snippet and full_content.
+        """
         # Mock embedding generation
         mock_generate_embedding.return_value = [0.1] * 768
 
@@ -354,6 +366,9 @@ class TestSearchKBUnified(unittest.TestCase):
                 "title": "Test Book",
                 "author": "Test Author",
                 "source": "kindle",
+                "content": "Full content of the chunk goes here.",
+                "chunk_index": 0,
+                "total_chunks": 1,
                 "knowledge_card": {
                     "summary": "Card summary",
                     "takeaways": ["Takeaway 1", "Takeaway 2"],
@@ -361,9 +376,9 @@ class TestSearchKBUnified(unittest.TestCase):
             }
         ]
 
-        # Execute search with search_cards_only
+        # Execute search with include_content=True
         result = tools.search_kb(
-            query="test query", filters={"search_cards_only": True}, limit=10
+            query="test query", filters={"include_content": True}, limit=10
         )
 
         # Assertions
@@ -375,8 +390,15 @@ class TestSearchKBUnified(unittest.TestCase):
         )
         self.assertEqual(len(result["results"][0]["knowledge_card"]["takeaways"]), 2)
 
-        # Verify full_content NOT in results (cards only)
-        self.assertNotIn("full_content", result["results"][0])
+        # Verify full_content IS in results when include_content=True
+        self.assertIn("full_content", result["results"][0])
+        self.assertIn("snippet", result["results"][0])
+        self.assertEqual(
+            result["results"][0]["full_content"], "Full content of the chunk goes here."
+        )
+
+        # detail_hint should still be present
+        self.assertIn("detail_hint", result["results"][0])
 
     @patch("mcp_server.tools.firestore_client.query_by_date_range")
     def test_search_kb_combined_filters(self, mock_query_date):

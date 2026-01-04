@@ -117,6 +117,61 @@ def _format_source_info(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         }
 
 
+def _format_search_result(
+    chunk: Dict[str, Any], rank: int, include_content: bool = False
+) -> Dict[str, Any]:
+    """
+    Format a chunk as a search result.
+
+    Story 3.10: Returns knowledge cards by default, full content only on request.
+    This reduces token usage by ~5x while maintaining quality.
+
+    Args:
+        chunk: Chunk dictionary from Firestore
+        rank: Result ranking (1-based)
+        include_content: If True, include snippet and full_content (default False)
+
+    Returns:
+        Formatted search result dict with detail_hint for on-demand loading
+    """
+    chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
+    title = chunk.get("title", "Untitled")
+    author_name = chunk.get("author", "Unknown")
+    source_name = chunk.get("source", "unknown")
+    tags_list = chunk.get("tags", [])
+    chunk_index = chunk.get("chunk_index", 0)
+    total_chunks = chunk.get("total_chunks", 1)
+
+    # Extract knowledge card and URLs
+    knowledge_card = _format_knowledge_card(chunk)
+    urls = _format_urls(chunk)
+
+    # Base result with knowledge card (always included)
+    result = {
+        "rank": rank,
+        "chunk_id": chunk_id,
+        "title": title,
+        "author": author_name,
+        "source": source_name,
+        "tags": tags_list,
+        "chunk_info": f"{chunk_index + 1}/{total_chunks}",
+        "knowledge_card": knowledge_card,
+        "detail_hint": f"Use get_chunk('{chunk_id}') for full content and related chunks",
+        **urls,
+    }
+
+    # Story 3.10: Only include content when explicitly requested
+    if include_content:
+        content = chunk.get("content", "")
+        snippet = content[:500] + "..." if len(content) > 500 else content
+        result["snippet"] = snippet
+        result["full_content"] = content
+        # Also include source_info for backwards compatibility
+        result["source"] = _format_source_info(chunk)
+
+    return result
+
+
 def get_chunk(
     chunk_id: str, include_related: bool = True, related_limit: int = 5
 ) -> Dict[str, Any]:
@@ -436,7 +491,8 @@ def search_kb(
     Unified knowledge base search with flexible filtering options.
 
     Story 4.1: Consolidates 6 separate search tools into one unified interface.
-    Routes to appropriate backend based on filter combination.
+    Story 3.10: Returns Knowledge Cards by default for faster comprehension.
+    Use get_chunk() for full content when quotes or detailed context is needed.
 
     Args:
         query: Natural language search query
@@ -447,11 +503,12 @@ def search_kb(
             - source (str): Filter by source
             - date_range (dict): {start: "YYYY-MM-DD", end: "YYYY-MM-DD"}
             - period (str): Relative time ("yesterday", "last_week", etc.)
-            - search_cards_only (bool): Search knowledge card summaries only
+            - include_content (bool): Include full_content and snippet (default False)
         limit: Maximum number of results (default 10)
 
     Returns:
-        Dictionary with results including knowledge cards, cluster info, and URLs
+        Dictionary with results. Each result includes knowledge_card and detail_hint.
+        Use get_chunk(chunk_id) to retrieve full content when needed.
     """
     try:
         logger.info(
@@ -466,7 +523,8 @@ def search_kb(
         source = filters.get("source")
         date_range = filters.get("date_range")
         period = filters.get("period")
-        search_cards_only = filters.get("search_cards_only", False)
+        # Story 3.10: Default to cards-only (include_content=False)
+        include_content = filters.get("include_content", False)
 
         # Validate conflicting filters
         if date_range and period:
@@ -502,39 +560,11 @@ def search_kb(
                 cluster_id=cluster_id, embedding_vector=query_embedding, limit=limit
             )
 
-            # Format results
-            results = []
-            for rank, chunk in enumerate(chunks, 1):
-                chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
-                title = chunk.get("title", "Untitled")
-                author_name = chunk.get("author", "Unknown")
-                source_name = chunk.get("source", "unknown")
-                tags_list = chunk.get("tags", [])
-                content = chunk.get("content", "")
-                chunk_index = chunk.get("chunk_index", 0)
-                total_chunks = chunk.get("total_chunks", 1)
-
-                snippet = content[:500] + "..." if len(content) > 500 else content
-
-                knowledge_card = _format_knowledge_card(chunk)
-                source_info = _format_source_info(chunk)
-                urls = _format_urls(chunk)
-
-                result = {
-                    "rank": rank,
-                    "chunk_id": chunk_id,
-                    "title": title,
-                    "author": author_name,
-                    "source": source_name,
-                    "tags": tags_list,
-                    "chunk_info": f"{chunk_index + 1}/{total_chunks}",
-                    "snippet": snippet,
-                    "full_content": content,
-                    "knowledge_card": knowledge_card,
-                    "source": source_info,
-                    **urls,
-                }
-                results.append(result)
+            # Story 3.10: Use unified formatter with include_content
+            results = [
+                _format_search_result(chunk, rank, include_content)
+                for rank, chunk in enumerate(chunks, 1)
+            ]
 
             return {
                 "query": query,
@@ -547,7 +577,7 @@ def search_kb(
 
         # 2. Date range filtering
         if date_range:
-            logger.info(f"Routing to date range search")
+            logger.info("Routing to date range search")
             start_date = date_range.get("start")
             end_date = date_range.get("end")
 
@@ -570,39 +600,11 @@ def search_kb(
                 source=source,
             )
 
-            # Format results
-            results = []
-            for rank, chunk in enumerate(chunks, 1):
-                chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
-                title = chunk.get("title", "Untitled")
-                author_name = chunk.get("author", "Unknown")
-                source_name = chunk.get("source", "unknown")
-                tags_list = chunk.get("tags", [])
-                content = chunk.get("content", "")
-                chunk_index = chunk.get("chunk_index", 0)
-                total_chunks = chunk.get("total_chunks", 1)
-
-                snippet = content[:500] + "..." if len(content) > 500 else content
-
-                knowledge_card = _format_knowledge_card(chunk)
-                source_info = _format_source_info(chunk)
-                urls = _format_urls(chunk)
-
-                result = {
-                    "rank": rank,
-                    "chunk_id": chunk_id,
-                    "title": title,
-                    "author": author_name,
-                    "source": source_name,
-                    "tags": tags_list,
-                    "chunk_info": f"{chunk_index + 1}/{total_chunks}",
-                    "snippet": snippet,
-                    "full_content": content,
-                    "knowledge_card": knowledge_card,
-                    "source": source_info,
-                    **urls,
-                }
-                results.append(result)
+            # Story 3.10: Use unified formatter with include_content
+            results = [
+                _format_search_result(chunk, rank, include_content)
+                for rank, chunk in enumerate(chunks, 1)
+            ]
 
             return {
                 "query": query,
@@ -621,39 +623,11 @@ def search_kb(
                 period=period, limit=limit, tags=tags, author=author, source=source
             )
 
-            # Format results
-            results = []
-            for rank, chunk in enumerate(chunks, 1):
-                chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
-                title = chunk.get("title", "Untitled")
-                author_name = chunk.get("author", "Unknown")
-                source_name = chunk.get("source", "unknown")
-                tags_list = chunk.get("tags", [])
-                content = chunk.get("content", "")
-                chunk_index = chunk.get("chunk_index", 0)
-                total_chunks = chunk.get("total_chunks", 1)
-
-                snippet = content[:500] + "..." if len(content) > 500 else content
-
-                knowledge_card = _format_knowledge_card(chunk)
-                source_info = _format_source_info(chunk)
-                urls = _format_urls(chunk)
-
-                result = {
-                    "rank": rank,
-                    "chunk_id": chunk_id,
-                    "title": title,
-                    "author": author_name,
-                    "source": source_name,
-                    "tags": tags_list,
-                    "chunk_info": f"{chunk_index + 1}/{total_chunks}",
-                    "snippet": snippet,
-                    "full_content": content,
-                    "knowledge_card": knowledge_card,
-                    "source": source_info,
-                    **urls,
-                }
-                results.append(result)
+            # Story 3.10: Use unified formatter with include_content
+            results = [
+                _format_search_result(chunk, rank, include_content)
+                for rank, chunk in enumerate(chunks, 1)
+            ]
 
             return {
                 "query": query,
@@ -663,57 +637,7 @@ def search_kb(
                 "results": results,
             }
 
-        # 4. Knowledge card search only
-        if search_cards_only:
-            logger.info("Routing to knowledge card search")
-
-            # Generate embedding for query
-            query_embedding = embeddings.generate_query_embedding(query)
-
-            # Execute vector search
-            chunks = firestore_client.find_nearest(
-                embedding_vector=query_embedding, limit=limit
-            )
-
-            # Format results - return only knowledge card summaries
-            results = []
-            for rank, chunk in enumerate(chunks, 1):
-                chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
-                title = chunk.get("title", "Untitled")
-                author_name = chunk.get("author", "Unknown")
-                source_name = chunk.get("source", "unknown")
-
-                # Extract knowledge card
-                knowledge_card = chunk.get("knowledge_card")
-                urls = _format_urls(chunk)
-
-                result = {
-                    "rank": rank,
-                    "chunk_id": chunk_id,
-                    "title": title,
-                    "author": author_name,
-                    "source": source_name,
-                    "knowledge_card": {
-                        "summary": knowledge_card.get("summary", "")
-                        if knowledge_card
-                        else "Knowledge card not available",
-                        "takeaways": knowledge_card.get("takeaways", [])
-                        if knowledge_card
-                        else [],
-                    },
-                    **urls,
-                }
-                results.append(result)
-
-            return {
-                "query": query,
-                "filters": filters,
-                "result_count": len(results),
-                "limit": limit,
-                "results": results,
-            }
-
-        # 5. Default: Semantic search with optional metadata filters
+        # 4. Default: Semantic search with optional metadata filters
         logger.info("Routing to semantic search with metadata filters")
 
         # Generate embedding for query
@@ -728,39 +652,11 @@ def search_kb(
             else None,
         )
 
-        # Format results
-        results = []
-        for rank, chunk in enumerate(chunks, 1):
-            chunk_id = chunk.get("id") or chunk.get("chunk_id", "unknown")
-            title = chunk.get("title", "Untitled")
-            author_name = chunk.get("author", "Unknown")
-            source_name = chunk.get("source", "unknown")
-            tags_list = chunk.get("tags", [])
-            content = chunk.get("content", "")
-            chunk_index = chunk.get("chunk_index", 0)
-            total_chunks = chunk.get("total_chunks", 1)
-
-            snippet = content[:500] + "..." if len(content) > 500 else content
-
-            knowledge_card = _format_knowledge_card(chunk)
-            source_info = _format_source_info(chunk)
-            urls = _format_urls(chunk)
-
-            result = {
-                "rank": rank,
-                "chunk_id": chunk_id,
-                "title": title,
-                "author": author_name,
-                "source": source_name,
-                "tags": tags_list,
-                "chunk_info": f"{chunk_index + 1}/{total_chunks}",
-                "snippet": snippet,
-                "full_content": content,
-                "knowledge_card": knowledge_card,
-                "source": source_info,
-                **urls,
-            }
-            results.append(result)
+        # Story 3.10: Use unified formatter with include_content
+        results = [
+            _format_search_result(chunk, rank, include_content)
+            for rank, chunk in enumerate(chunks, 1)
+        ]
 
         return {
             "query": query,

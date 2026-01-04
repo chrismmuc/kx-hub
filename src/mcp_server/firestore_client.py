@@ -117,6 +117,50 @@ def get_chunk_by_id(chunk_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_chunks_batch(chunk_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    """
+    Batch fetch multiple chunks by ID using Firestore get_all().
+
+    Story 3.10: Fixes N+1 query problem - fetches up to 100 chunks in one read.
+
+    Args:
+        chunk_ids: List of chunk document IDs
+
+    Returns:
+        Dictionary mapping chunk_id to chunk data (missing chunks not included)
+    """
+    if not chunk_ids:
+        return {}
+
+    try:
+        db = get_firestore_client()
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
+
+        # Limit to 100 for Firestore batch limits
+        chunk_ids = chunk_ids[:100]
+        logger.info(f"Batch fetching {len(chunk_ids)} chunks from {collection}")
+
+        # Create document references
+        doc_refs = [db.collection(collection).document(cid) for cid in chunk_ids]
+
+        # Batch fetch using get_all
+        docs = db.get_all(doc_refs)
+
+        result = {}
+        for doc in docs:
+            if doc.exists:
+                chunk_data = doc.to_dict()
+                chunk_data["id"] = doc.id
+                result[doc.id] = chunk_data
+
+        logger.info(f"Batch retrieved {len(result)} of {len(chunk_ids)} chunks")
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to batch fetch chunks: {e}")
+        return {}
+
+
 def query_by_metadata(
     tags: Optional[List[str]] = None,
     author: Optional[str] = None,
@@ -1944,11 +1988,13 @@ def get_source_by_id(source_id: str) -> Optional[Dict[str, Any]]:
     """
     Get a specific source with its chunks.
 
+    Story 3.10: Uses batch read for chunks (1 Firestore read instead of N).
+
     Args:
         source_id: Source document ID
 
     Returns:
-        Source data with chunk details, or None if not found
+        Source data with chunk details including full knowledge cards, or None if not found
     """
     try:
         db = get_firestore_client()
@@ -1959,18 +2005,26 @@ def get_source_by_id(source_id: str) -> Optional[Dict[str, Any]]:
 
         data = doc.to_dict()
 
-        # Get chunk summaries
+        # Story 3.10: Batch fetch chunks (fixes N+1 query problem)
         chunk_ids = data.get("chunk_ids", [])
+        chunk_ids_to_fetch = chunk_ids[:20]  # Limit to first 20 chunks
+        chunks_data = get_chunks_batch(chunk_ids_to_fetch)
+
+        # Format chunks with full knowledge cards
         chunks = []
-        for chunk_id in chunk_ids[:20]:  # Limit to first 20 chunks
-            chunk = get_chunk_by_id(chunk_id)
+        for chunk_id in chunk_ids_to_fetch:
+            chunk = chunks_data.get(chunk_id)
             if chunk:
                 kc = chunk.get("knowledge_card", {})
                 chunks.append(
                     {
                         "chunk_id": chunk_id,
                         "chunk_index": chunk.get("chunk_index", 0),
-                        "summary": kc.get("summary", "") if kc else "",
+                        # Story 3.10: Return full knowledge card, not just summary
+                        "knowledge_card": {
+                            "summary": kc.get("summary", "") if kc else "",
+                            "takeaways": kc.get("takeaways", []) if kc else [],
+                        },
                     }
                 )
 
