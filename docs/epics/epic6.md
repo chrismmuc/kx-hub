@@ -112,6 +112,25 @@ article_ideas/
     article_id: null | "article-id"  # If converted to article
     suggested_at: timestamp
     reason: "Why this is article-worthy"
+    
+    # Explainability: detailed scoring breakdown
+    reasoning_details: {
+      source_score: 0.85,       # Number and quality of sources
+      chunk_score: 0.90,        # Content depth (chunk count)
+      relationship_score: 0.70, # Cross-source connections
+      recency_score: 0.95,      # How recent the highlights are
+      contradiction_bonus: 0.0  # Bonus if contradictions found
+    }
+    
+    # Medium-Scores (calculated from primary signals)
+    medium_scores: {
+      linkedin_post: 0.6,
+      linkedin_article: 0.9,
+      blog: 0.75,
+      newsletter: 0.5,
+      twitter_thread: 0.4,
+      substack: 0.7
+    }
 ```
 
 ### Article Series Collection (new)
@@ -131,7 +150,29 @@ article_series/
 
 **Status:** Planned
 
-**Summary:** Automatically identify article-worthy topics from KB sources by analyzing source relationships, knowledge cards, and content density.
+**Summary:** Automatically identify article-worthy topics from KB sources by analyzing source relationships, knowledge cards, and content density. Supports both automatic discovery and manual idea input via a single unified tool.
+
+### Supported Publication Mediums
+
+| Medium | Description | Typical Length |
+|--------|-------------|----------------|
+| `linkedin_post` | Short, hook-driven, personal insights | < 1300 chars |
+| `linkedin_article` | Professional deep-dives | 800-2000 words |
+| `blog` | SEO-optimized, permanent reference | 1000-3000 words |
+| `newsletter` | Curated, personal voice | 500-1500 words |
+| `twitter_thread` | Punchy, numbered takeaways | 5-15 tweets |
+| `substack` | Essay-style, analytical | 1000-2500 words |
+
+### Medium Score Calculation
+
+Scores are calculated from primary signals available in the KB:
+
+| Signal | Measurement | Impact |
+|--------|-------------|--------|
+| Source Count | 1-2 vs 3+ | Few → Post, Many → Article/Blog |
+| Chunk Count | 1-3 vs 5+ | Few → short, Many → long |
+| Topic Breadth | Number of distinct tags | Narrow → Post, Broad → Blog |
+| Contradictions | Relationships with `contradicts` type | Yes → good for discussion/essay |
 
 ### Algorithm
 
@@ -152,54 +193,127 @@ article_series/
    - For related source pairs: "Comparing X and Y"
    - For contradiction pairs: "X vs Y: Which is right?"
    - For 3+ related sources: "Synthesis: What I learned about Z"
+
+4. Calculate medium scores for each idea based on primary signals
+
+5. Deduplicate: Skip ideas similar to existing ones (title similarity or same source_ids)
 ```
 
 ### MCP Tool: `suggest_article_ideas`
+
+Unified tool for both automatic discovery and manual idea input.
+
 ```python
 suggest_article_ideas(
+    # Filters
     min_sources: int = 2,        # Minimum KB sources to draw from
-    focus_tags: list = None,     # Optional: focus on specific topics
-    limit: int = 5               # Number of suggestions
+    focus_tags: list = None,     # Optional: filter by tags (use get_stats() to see available)
+    limit: int = 5,              # Number of suggestions
+    
+    # Storage
+    save: bool = True,           # False = preview only, don't persist
+    
+    # Web enrichment (optional, uses Tavily)
+    enrich_with_web: bool = False,  # Add market analysis
+    
+    # Manual idea input (replaces log_article_idea)
+    topic: str = None,           # e.g., "Deep Work for Developers"
+    source_ids: list = None      # Optional: specific sources to use
 ) -> {
     "ideas": [
         {
+            "idea_id": "idea-123",
             "title": "The PARA Method in Practice",
             "type": "deep_dive",
             "sources": ["building-a-second-brain", "the-para-method"],
             "strength": 0.92,
-            "reason": "3 highly-related sources with 15 chunks, recent activity"
+            "suggested_at": "2026-01-05T10:30:00Z",
+            "reason": "3 highly-related sources with 15 chunks",
+            "reasoning_details": {
+                "source_score": 0.85,       # Number and quality of sources
+                "chunk_score": 0.90,        # Content depth (chunk count)
+                "relationship_score": 0.70, # Cross-source connections
+                "recency_score": 0.95,      # How recent the highlights are
+                "contradiction_bonus": 0.0  # Bonus if contradictions found
+            },
+            "medium_scores": {
+                "linkedin_post": 0.5,
+                "linkedin_article": 0.9,
+                "blog": 0.8,
+                "newsletter": 0.6,
+                "twitter_thread": 0.4,
+                "substack": 0.75
+            },
+            # Only when enrich_with_web=True:
+            "web_analysis": {
+                "existing_articles": 12,
+                "trending": true,
+                "suggested_angle": "Focus on developer workflows",
+                "competition": "medium"
+            }
         }
     ]
 }
 ```
 
-### MCP Tool: `log_article_idea`
+**Usage patterns:**
+- `suggest_article_ideas()` → Auto-generate 5 ideas from entire KB
+- `suggest_article_ideas(focus_tags=["productivity"])` → Ideas only from productivity sources
+- `suggest_article_ideas(topic="Deep Work for Developers")` → Evaluate and develop THIS idea
+- `suggest_article_ideas(topic="X", source_ids=["a", "b"])` → Develop idea with specific sources
+- `suggest_article_ideas(enrich_with_web=True)` → Include market/competition analysis
+
+### MCP Tool: `list_ideas`
+
 ```python
-log_article_idea(
-    title: str,
-    description: str,
-    source_ids: list = None
+list_ideas(
+    status: str = None,  # Optional filter: "suggested" | "accepted" | "rejected"
+    limit: int = 20
 ) -> {
-    "idea_id": "idea-123",
-    "status": "logged"
+    "ideas": [
+        {
+            "idea_id": "idea-123",
+            "title": "Deep Work for Developers",
+            "suggested_at": "2026-01-05T10:30:00Z",
+            "strength": 0.92,
+            "status": "suggested",
+            "source_count": 3,
+            "top_mediums": [
+                {"medium": "linkedin_article", "score": 0.9},
+                {"medium": "blog", "score": 0.8},
+                {"medium": "substack", "score": 0.75}
+            ]
+        }
+    ]
 }
+```
+
+### MCP Tool: `accept_idea` / `reject_idea`
+
+```python
+accept_idea(idea_id: str) -> {"status": "accepted", "idea_id": "..."}
+reject_idea(idea_id: str) -> {"status": "rejected", "idea_id": "..."}
 ```
 
 ### Tasks
 
 1. [ ] Implement source scoring algorithm
 2. [ ] Build cross-source theme detection
-3. [ ] Create `article_ideas` Firestore collection
-4. [ ] Implement `suggest_article_ideas` MCP tool
-5. [ ] Implement `log_article_idea` MCP tool
-6. [ ] Add idea management tools (`list_ideas`, `accept_idea`, `reject_idea`)
+3. [ ] Create `article_ideas` Firestore collection with `medium_scores` field
+4. [ ] Implement medium score calculation (primary signals)
+5. [ ] Implement `suggest_article_ideas` MCP tool (unified with manual input)
+6. [ ] Implement idea deduplication logic
+7. [ ] Implement Tavily web enrichment (optional parameter)
+8. [ ] Implement `list_ideas` MCP tool (with date, medium scores)
+9. [ ] Implement `accept_idea`, `reject_idea` tools
 
 ### Success Metrics
 
 - Generates 3-5 relevant ideas per week (for active KB)
 - 70%+ of suggested ideas rated as "interesting" by user
 - Ideas draw from 2+ sources (not single-source suggestions)
-- Response time < 5 seconds
+- Response time < 5 seconds (without web enrichment)
+- Medium scores correlate with user's actual publication choices
 
 ---
 
