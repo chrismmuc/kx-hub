@@ -365,6 +365,70 @@ Usage patterns:
             "required": ["idea_id"],
         },
     },
+    # Story 7.1: Async Recommendations
+    {
+        "name": "recommendations",
+        "description": """Async recommendations: start a new job or poll for results.
+
+Start mode (no job_id): Creates background job, returns immediately with job_id.
+Poll mode (with job_id): Check status and get results when complete.
+
+Example flow:
+1. recommendations(hot_sites="ai") → {job_id: "rec-123", poll_after_seconds: 10}
+2. [wait 10s]
+3. recommendations(job_id="rec-123") → {status: "running", progress: 0.4}
+4. [wait 5s]
+5. recommendations(job_id="rec-123") → {status: "completed", result: {...}}""",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "description": "Job ID to poll (omit to start new job)",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Lookback period in days (default 14)",
+                    "default": 14,
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max recommendations (default 10)",
+                    "default": 10,
+                },
+                "hot_sites": {
+                    "type": "string",
+                    "description": "Source category",
+                    "enum": ["tech", "tech_de", "ai", "devops", "business", "all"],
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Discovery mode",
+                    "default": "balanced",
+                    "enum": ["balanced", "fresh", "deep", "surprise_me"],
+                },
+                "include_seen": {
+                    "type": "boolean",
+                    "description": "Include previously shown",
+                    "default": False,
+                },
+            },
+        },
+    },
+    {
+        "name": "recommendations_history",
+        "description": "Get all recommendations from the last N days as a flat list.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "Lookback period in days (default 14)",
+                    "default": 14,
+                },
+            },
+        },
+    },
 ]
 
 
@@ -462,6 +526,20 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         return tools.reject_idea(
             idea_id=arguments.get("idea_id", ""),
             reason=arguments.get("reason"),
+        )
+    # Story 7.1: Async Recommendations
+    elif name == "recommendations":
+        return tools.recommendations(
+            job_id=arguments.get("job_id"),
+            days=arguments.get("days", 14),
+            limit=arguments.get("limit", 10),
+            hot_sites=arguments.get("hot_sites"),
+            mode=arguments.get("mode", "balanced"),
+            include_seen=arguments.get("include_seen", False),
+        )
+    elif name == "recommendations_history":
+        return tools.recommendations_history(
+            days=arguments.get("days", 14),
         )
     else:
         raise ValueError(f"Unknown tool: {name}")

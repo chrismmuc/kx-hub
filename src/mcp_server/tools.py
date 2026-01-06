@@ -2668,3 +2668,170 @@ def reject_idea(idea_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
             "idea_id": idea_id,
             "error": str(e),
         }
+
+
+# ==================== Async Recommendations (Epic 7) ====================
+
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+# Thread pool for background jobs
+_executor = ThreadPoolExecutor(max_workers=4)
+
+
+def _run_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
+    """
+    Background worker for recommendations job.
+
+    Runs get_reading_recommendations and updates job status.
+    """
+    try:
+        # Mark as running
+        firestore_client.update_async_job(job_id, status="running", progress=0.1)
+
+        # Execute the actual recommendations logic
+        result = get_reading_recommendations(
+            days=params.get("days", 14),
+            limit=params.get("limit", 10),
+            user_id=params.get("user_id", "default"),
+            hot_sites=params.get("hot_sites"),
+            mode=params.get("mode", "balanced"),
+            include_seen=params.get("include_seen", False),
+            predictable=params.get("predictable", False),
+        )
+
+        # Check for error in result
+        if result.get("error"):
+            firestore_client.update_async_job(
+                job_id, status="failed", error=result["error"]
+            )
+        else:
+            firestore_client.update_async_job(
+                job_id, status="completed", progress=1.0, result=result
+            )
+
+    except Exception as e:
+        logger.error(f"Recommendations job {job_id} failed: {e}")
+        firestore_client.update_async_job(job_id, status="failed", error=str(e))
+
+
+def recommendations(
+    job_id: Optional[str] = None,
+    days: int = 14,
+    limit: int = 10,
+    hot_sites: Optional[str] = None,
+    mode: str = "balanced",
+    include_seen: bool = False,
+) -> Dict[str, Any]:
+    """
+    Async recommendations: start a new job or poll for results.
+
+    Story 7.1: Async Recommendations
+
+    Usage:
+    - No job_id: Start a new recommendations job (returns immediately)
+    - With job_id: Poll for job status and results
+
+    Args:
+        job_id: Optional job ID to poll (if None, starts new job)
+        days: Lookback period for recent reads (default 14)
+        limit: Maximum recommendations to return (default 10)
+        hot_sites: Source category: "tech", "ai", "devops", "business", "all"
+        mode: Discovery mode: "balanced", "fresh", "deep", "surprise_me"
+        include_seen: Include previously shown recommendations (default False)
+
+    Returns:
+        When starting (no job_id):
+        - job_id: Unique job identifier
+        - status: "pending"
+        - poll_after_seconds: Suggested wait time before polling
+        - estimated_duration_seconds: Estimated total time
+
+        When polling (with job_id):
+        - job_id: Job identifier
+        - status: "pending" | "running" | "completed" | "failed"
+        - progress: 0.0 - 1.0
+        - poll_after_seconds: Time until next poll (if not complete)
+        - result: Full recommendations result (when completed)
+        - error: Error message (when failed)
+    """
+    # Poll mode: get existing job status
+    if job_id:
+        logger.info(f"Polling recommendations job: {job_id}")
+        job = firestore_client.get_async_job(job_id)
+
+        if not job:
+            return {"error": f"Job not found: {job_id}"}
+
+        response = {
+            "job_id": job["job_id"],
+            "status": job["status"],
+            "progress": job.get("progress", 0.0),
+            "created_at": job["created_at"],
+            "updated_at": job["updated_at"],
+        }
+
+        if job["status"] == "completed":
+            response["completed_at"] = job["completed_at"]
+            response["result"] = job["result"]
+        elif job["status"] == "failed":
+            response["error"] = job.get("error", "Unknown error")
+        else:
+            # Still running - suggest poll interval
+            response["poll_after_seconds"] = 5
+
+        return response
+
+    # Start mode: create new job and run in background
+    logger.info(
+        f"Starting recommendations job: mode={mode}, hot_sites={hot_sites}, limit={limit}"
+    )
+
+    params = {
+        "days": days,
+        "limit": limit,
+        "hot_sites": hot_sites,
+        "mode": mode,
+        "include_seen": include_seen,
+    }
+
+    # Create job in Firestore
+    job_info = firestore_client.create_async_job(
+        job_type="recommendations",
+        params=params,
+    )
+    job_id = job_info["job_id"]
+
+    # Start background execution
+    _executor.submit(_run_recommendations_job, job_id, params)
+
+    return {
+        "job_id": job_id,
+        "status": "pending",
+        "poll_after_seconds": 10,
+        "estimated_duration_seconds": 60,
+        "created_at": job_info["created_at"],
+    }
+
+
+def recommendations_history(days: int = 14) -> Dict[str, Any]:
+    """
+    Get all recommendations from the last N days.
+
+    Story 7.1: Simple flat list of all recommendations.
+
+    Args:
+        days: Lookback period (default 14)
+
+    Returns:
+        Dictionary with:
+        - days: Lookback period used
+        - total_count: Number of recommendations
+        - recommendations: List of recommendation objects with:
+            - title, url, domain
+            - recommended_at: Timestamp
+            - params: {mode, hot_sites}
+            - why_recommended: Explanation
+    """
+    logger.info(f"Getting recommendations history: days={days}")
+    return firestore_client.get_recommendations_history(days=days)

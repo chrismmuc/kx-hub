@@ -164,6 +164,20 @@ The MCP server exposes the following tools to Claude:
 | `get_hot_sites_config` | View curated source categories |
 | `update_hot_sites_config` | Manage hot sites categories |
 
+**Article Ideas (Story 6.1):**
+| Tool | Purpose |
+|------|---------|
+| `suggest_article_ideas` | Generate blog ideas from KB sources or evaluate specific topic |
+| `list_ideas` | List article ideas with optional status filter |
+| `accept_idea` | Accept an idea for development |
+| `reject_idea` | Reject an idea with optional reason |
+
+**Async Recommendations (Story 7.1):**
+| Tool | Purpose |
+|------|---------|
+| `recommendations` | Start async job (no job_id) or poll for results (with job_id) |
+| `recommendations_history` | List all recommendations from last N days |
+
 **Discovery Modes (Story 3.9):**
 - `balanced` - Standard mix for daily use
 - `fresh` - Prioritize recent content (last 30 days)
@@ -264,6 +278,31 @@ config/
 
 - **Tavily API**: ~$0.50-1.00/month (depends on usage)
 - **Vertex AI Embeddings**: +$0.05/month (deduplication checks)
+
+---
+
+## Firestore Data Model
+
+### Collections
+
+| Collection | Purpose | Key Fields |
+|------------|---------|------------|
+| `kb_items` | Knowledge chunks with embeddings | `source_id`, `embedding`, `knowledge_card` |
+| `sources` | Books/articles metadata | `title`, `author`, `chunk_ids` |
+| `relationships` | Cross-source semantic connections | `source_id`, `target_id`, `type` |
+| `article_ideas` | Blog idea suggestions (Epic 6) | `status`, `suggested_at`, `medium_scores` |
+| `async_jobs` | Background job tracking (Epic 7) | `job_type`, `status`, `progress`, `result` |
+| `config/*` | System configuration | Various settings |
+
+### Composite Indexes
+
+Managed via Terraform in `terraform/firestore_indexes.tf`:
+
+| Index | Collection | Fields | Purpose |
+|-------|------------|--------|---------|
+| `article_ideas_status` | `article_ideas` | `status` ASC, `suggested_at` DESC | Filter ideas by status with date ordering |
+
+**Adding new indexes:** Define in `firestore_indexes.tf` and run `terraform apply`.
 
 ---
 

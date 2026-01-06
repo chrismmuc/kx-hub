@@ -76,10 +76,44 @@ See [epic4.md](epic4.md) for full details.
 
 ---
 
+## Epic 6: AI-Powered Blogging Engine 🚧
+
+**Goal:** Transform KB content into polished blog articles with AI assistance.
+
+**Status:** In Progress
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 6.1 | **Blog Idea Extraction** - `suggest_article_ideas`, `list_ideas`, `accept_idea`, `reject_idea` | ✅ Done |
+| 6.2 | **Article Outline Generation** - Structure and outline creation | Planned |
+| 6.3 | **AI-Assisted Drafting** - Section expansion and refinement | Planned |
+| 6.4 | **Article Development Log** - Session tracking and history | Planned |
+| 6.5 | **Article Series** - Multi-part article management | Planned |
+| 6.6 | **Obsidian Export** - Markdown export with frontmatter | Planned |
+| 6.7 | **Claude Code Integration** - Direct editing support | Planned |
+
+See [epics/epic6.md](epics/epic6.md) for full details.
+
+---
+
+## Epic 7: Async MCP Interface ✅
+
+**Goal:** Replace long-running synchronous MCP tools with async job pattern to prevent client timeouts.
+
+**Status:** Complete
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 7.1 | **Async Recommendations** - `recommendations`, `recommendations_history` (compact 2-tool design) | ✅ Done |
+| 7.2 | **Async Article Ideas** - Apply pattern to article ideas if needed | Planned |
+
+See [epics/epic7.md](epics/epic7.md) for full details.
+
+---
+
 ## Backlog
 
 See [backlog.md](backlog.md) for future ideas:
 - Email digests
 - Reader article integration
-- Blogging engine
 - MCP tool consolidation

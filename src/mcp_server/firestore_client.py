@@ -2125,3 +2125,257 @@ def get_relationship_stats() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get relationship stats: {e}")
         return {"total_relationships": 0, "by_type": {}, "error": str(e)}
+
+
+# ==================== Async Jobs (Epic 7) ====================
+
+import hashlib
+import uuid
+
+
+def create_async_job(
+    job_type: str,
+    params: Dict[str, Any],
+    user_id: str = "default",
+    ttl_days: int = 14,
+) -> Dict[str, Any]:
+    """
+    Create a new async job document.
+
+    Story 7.1: Async Recommendations
+
+    Args:
+        job_type: Type of job (e.g., "recommendations")
+        params: Job parameters
+        user_id: User identifier
+        ttl_days: Days until job expires (default 14)
+
+    Returns:
+        Dictionary with job_id, status, created_at
+    """
+    try:
+        db = get_firestore_client()
+
+        # Generate unique job ID
+        job_id = f"{job_type[:3]}-{uuid.uuid4().hex[:12]}"
+        now = datetime.utcnow()
+        expires_at = now + timedelta(days=ttl_days)
+
+        job_doc = {
+            "job_id": job_id,
+            "job_type": job_type,
+            "status": "pending",
+            "progress": 0.0,
+            "created_at": now,
+            "updated_at": now,
+            "completed_at": None,
+            "expires_at": expires_at,
+            "params": params,
+            "result": None,
+            "error": None,
+            "user_id": user_id,
+        }
+
+        db.collection("async_jobs").document(job_id).set(job_doc)
+        logger.info(f"Created async job {job_id} of type {job_type}")
+
+        return {
+            "job_id": job_id,
+            "status": "pending",
+            "created_at": now.isoformat() + "Z",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create async job: {e}")
+        raise
+
+
+def get_async_job(job_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get async job by ID.
+
+    Args:
+        job_id: Job identifier
+
+    Returns:
+        Job document or None if not found
+    """
+    try:
+        db = get_firestore_client()
+        doc = db.collection("async_jobs").document(job_id).get()
+
+        if not doc.exists:
+            return None
+
+        data = doc.to_dict()
+        # Convert timestamps to ISO strings
+        for field in ["created_at", "updated_at", "completed_at", "expires_at"]:
+            if data.get(field):
+                data[field] = data[field].isoformat() + "Z"
+
+        return data
+
+    except Exception as e:
+        logger.error(f"Failed to get async job {job_id}: {e}")
+        return None
+
+
+def update_async_job(
+    job_id: str,
+    status: Optional[str] = None,
+    progress: Optional[float] = None,
+    result: Optional[Dict[str, Any]] = None,
+    error: Optional[str] = None,
+) -> bool:
+    """
+    Update async job status and/or result.
+
+    Args:
+        job_id: Job identifier
+        status: New status (pending, running, completed, failed)
+        progress: Progress percentage (0.0 - 1.0)
+        result: Job result (when completed)
+        error: Error message (when failed)
+
+    Returns:
+        True if updated successfully
+    """
+    try:
+        db = get_firestore_client()
+        now = datetime.utcnow()
+
+        update_data = {"updated_at": now}
+
+        if status is not None:
+            update_data["status"] = status
+            if status in ("completed", "failed"):
+                update_data["completed_at"] = now
+
+        if progress is not None:
+            update_data["progress"] = progress
+
+        if result is not None:
+            update_data["result"] = result
+
+        if error is not None:
+            update_data["error"] = error
+
+        db.collection("async_jobs").document(job_id).update(update_data)
+        logger.info(f"Updated async job {job_id}: status={status}, progress={progress}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to update async job {job_id}: {e}")
+        return False
+
+
+def list_async_jobs(
+    job_type: str,
+    user_id: str = "default",
+    status: Optional[str] = None,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    """
+    List async jobs for a user.
+
+    Args:
+        job_type: Filter by job type
+        user_id: User identifier
+        status: Optional status filter
+        limit: Maximum jobs to return
+
+    Returns:
+        List of job documents
+    """
+    try:
+        db = get_firestore_client()
+
+        query = db.collection("async_jobs")
+        query = query.where("job_type", "==", job_type)
+        query = query.where("user_id", "==", user_id)
+
+        if status:
+            query = query.where("status", "==", status)
+
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
+        query = query.limit(limit)
+
+        jobs = []
+        for doc in query.stream():
+            data = doc.to_dict()
+            # Convert timestamps
+            for field in ["created_at", "updated_at", "completed_at", "expires_at"]:
+                if data.get(field):
+                    data[field] = data[field].isoformat() + "Z"
+            jobs.append(data)
+
+        return jobs
+
+    except Exception as e:
+        logger.error(f"Failed to list async jobs: {e}")
+        return []
+
+
+def get_recommendations_history(
+    user_id: str = "default",
+    days: int = 14,
+) -> Dict[str, Any]:
+    """
+    Get all recommendations from completed jobs in the last N days.
+
+    Story 7.1: Flat list of all recommendations with metadata.
+
+    Args:
+        user_id: User identifier
+        days: Lookback period (default 14)
+
+    Returns:
+        Dictionary with total_count and recommendations list
+    """
+    try:
+        db = get_firestore_client()
+        cutoff = datetime.utcnow() - timedelta(days=days)
+
+        query = db.collection("async_jobs")
+        query = query.where("job_type", "==", "recommendations")
+        query = query.where("user_id", "==", user_id)
+        query = query.where("status", "==", "completed")
+        query = query.where("created_at", ">=", cutoff)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
+
+        all_recommendations = []
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            job_params = data.get("params", {})
+            completed_at = data.get("completed_at")
+            if completed_at:
+                completed_at = completed_at.isoformat() + "Z"
+
+            result = data.get("result", {})
+            recommendations = result.get("recommendations", [])
+
+            for rec in recommendations:
+                all_recommendations.append(
+                    {
+                        "title": rec.get("title"),
+                        "url": rec.get("url"),
+                        "domain": rec.get("domain"),
+                        "recommended_at": completed_at,
+                        "params": {
+                            "mode": job_params.get("mode"),
+                            "hot_sites": job_params.get("hot_sites"),
+                        },
+                        "why_recommended": rec.get("why_recommended"),
+                    }
+                )
+
+        return {
+            "days": days,
+            "total_count": len(all_recommendations),
+            "recommendations": all_recommendations,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get recommendations history: {e}")
+        return {"days": days, "total_count": 0, "recommendations": [], "error": str(e)}
