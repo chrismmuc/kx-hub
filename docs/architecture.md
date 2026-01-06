@@ -153,16 +153,23 @@ The MCP server exposes the following tools to Claude:
 | `get_knowledge_card` | AI summary for a specific chunk |
 | `search_knowledge_cards` | Semantic search across summaries only |
 
-**Reading Recommendations (Stories 3.5, 3.8, 3.9):**
+**Reading Recommendations (Stories 3.5, 7.1, 7.2):**
 | Tool | Purpose |
 |------|---------|
-| `get_reading_recommendations` | AI-powered reading recommendations with discovery modes |
-| `get_recommendation_config` | View recommendation settings |
-| `update_recommendation_domains` | Manage domain whitelist |
-| `get_ranking_config` | View multi-factor ranking weights |
-| `update_ranking_config` | Adjust ranking weights and settings |
-| `get_hot_sites_config` | View curated source categories |
-| `update_hot_sites_config` | Manage hot sites categories |
+| `recommendations()` | Start async job with config defaults |
+| `recommendations(topic="...")` | Start with topic override |
+| `recommendations(job_id="...")` | Poll for results |
+| `recommendations_history` | List all recommendations from last N days |
+
+**Recommendation Config** (`config/recommendations` in Firestore):
+```json
+{
+  "hot_sites": "tech",
+  "tavily_days": 30,
+  "limit": 10,
+  "topics": ["AI agents", "platform engineering", "developer productivity"]
+}
+```
 
 **Article Ideas (Story 6.1):**
 | Tool | Purpose |
@@ -172,19 +179,7 @@ The MCP server exposes the following tools to Claude:
 | `accept_idea` | Accept an idea for development |
 | `reject_idea` | Reject an idea with optional reason |
 
-**Async Recommendations (Story 7.1):**
-| Tool | Purpose |
-|------|---------|
-| `recommendations` | Start async job (no job_id) or poll for results (with job_id) |
-| `recommendations_history` | List all recommendations from last N days |
-
-**Discovery Modes (Story 3.9):**
-- `balanced` - Standard mix for daily use
-- `fresh` - Prioritize recent content (last 30 days)
-- `deep` - In-depth content for weekend reading
-- `surprise_me` - Break filter bubble, explore new topics
-
-**Hot Sites Categories:**
+**Hot Sites Categories** (domain filtering):
 - `tech` - Engineering blogs (25 domains)
 - `tech_de` - German tech news (6 domains)
 - `ai` - AI/ML sources (17 domains)

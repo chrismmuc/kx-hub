@@ -104,8 +104,9 @@ See [epics/epic6.md](epics/epic6.md) for full details.
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 7.1 | **Async Recommendations** - `recommendations`, `recommendations_history` (compact 2-tool design) | ✅ Done |
-| 7.2 | **Async Article Ideas** - Apply pattern to article ideas if needed | Planned |
+| 7.1 | **Async Recommendations** - `recommendations`, `recommendations_history` via Cloud Tasks | ✅ Done |
+| 7.2 | **Simplified Interface** - Config-based defaults, optional `topic` override | ✅ Done |
+| 7.3 | **Async Article Ideas** - Apply pattern to article ideas if needed | Optional |
 
 See [epics/epic7.md](epics/epic7.md) for full details.
 

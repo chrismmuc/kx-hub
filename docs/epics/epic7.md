@@ -10,7 +10,7 @@
 
 **Dependencies:** Epic 3 (Recommendations)
 
-**Status:** Complete (Story 7.1 - Cloud Tasks)
+**Status:** Complete (Story 7.1 - Cloud Tasks, Story 7.2 - Simplified Interface)
 
 ---
 
@@ -101,48 +101,60 @@ Firestore: async_jobs/{job_id}
 
 Unified tool for starting and polling recommendation jobs.
 
+**Story 7.2 Update:** Simplified interface - settings come from `config/recommendations` in Firestore.
+
 **Start a new job** (no `job_id`):
 
 ```python
-recommendations(
-    days: int = 14,
-    limit: int = 10,
-    hot_sites: str = None,  # "tech" | "ai" | "devops" | "business" | "all"
-    mode: str = "balanced", # "balanced" | "fresh" | "deep" | "surprise_me"
-    include_seen: bool = False
-) -> {
+# Simple call - uses config defaults
+recommendations() -> {
     "job_id": "rec-abc123def456",
     "status": "pending",
     "poll_after_seconds": 10,
-    "estimated_duration_seconds": 60,
-    "created_at": "2026-01-06T13:00:00Z"
+    "config_used": {
+        "hot_sites": "tech",
+        "limit": 10,
+        "tavily_days": 30,
+        "topic": null
+    }
+}
+
+# With topic override
+recommendations(topic="kubernetes security") -> {
+    "job_id": "rec-abc123def456",
+    "config_used": {"topic": "kubernetes security", ...}
 }
 ```
 
 **Poll for status/result** (with `job_id`):
 
 ```python
-recommendations(
-    job_id: str
-) -> {
+recommendations(job_id: str) -> {
     "job_id": "rec-abc123def456",
     "status": "running",  # pending | running | completed | failed
     "progress": 0.6,      # 60% complete
     "poll_after_seconds": 5,
-    "created_at": "2026-01-06T13:00:00Z",
-    "updated_at": "2026-01-06T13:00:45Z",
     
     # When completed:
-    "completed_at": "2026-01-06T13:01:20Z",
     "result": {
         "recommendations": [...],
         "processing_time_seconds": 80,
-        "queries_used": [...],
         ...
     },
     
     # When failed:
     "error": "Tavily API rate limit exceeded"
+}
+```
+
+**Config document** (`config/recommendations` in Firestore):
+
+```json
+{
+  "hot_sites": "tech",
+  "tavily_days": 30,
+  "limit": 10,
+  "topics": ["AI agents", "platform engineering", "developer productivity"]
 }
 ```
 
@@ -187,9 +199,13 @@ recommendations_history(
 ### Example Flow
 
 ```python
-# 1. Start job
-recommendations(hot_sites="ai", mode="surprise_me")
-# → {job_id: "rec-123", status: "pending", poll_after_seconds: 10}
+# 1. Start job (simple - uses config defaults)
+recommendations()
+# → {job_id: "rec-123", status: "pending", config_used: {hot_sites: "tech", ...}}
+
+# Or with topic override:
+recommendations(topic="kubernetes")
+# → {job_id: "rec-456", config_used: {topic: "kubernetes", ...}}
 
 # 2. Poll (after 10s)
 recommendations(job_id="rec-123")
@@ -226,18 +242,42 @@ recommendations_history()
 
 ---
 
-## Story 7.2: Async Article Ideas (Optional)
+## Story 7.2: Simplified Recommendations Interface ✅
+
+**Goal:** Simplify the `recommendations` tool to require no parameters for typical use.
+
+**Problem:** The original interface had too many parameters (mode, hot_sites, days, limit, include_seen) making it hard to call correctly.
+
+**Solution:** 
+- Settings stored in Firestore `config/recommendations`
+- Only 2 parameters: `job_id` (for polling) and `topic` (optional override)
+- Always uses "fresh" mode for recency-focused results
+
+### Changes
+
+| Before | After |
+|--------|-------|
+| `recommendations(mode="fresh", hot_sites="ai", days=7, limit=5)` | `recommendations()` |
+| 6 parameters | 2 parameters (job_id, topic) |
+| LLM had to guess params | Defaults from Firestore config |
+
+### Tasks
+
+1. [x] Add `get_recommendations_defaults()` to firestore_client.py
+2. [x] Add `config/recommendations` Firestore document with defaults
+3. [x] Remove mode, hot_sites, days, limit, include_seen from `recommendations()`
+4. [x] Add optional `topic` parameter for one-time override
+5. [x] Update `_get_reading_recommendations()` to accept tavily_days and topic
+6. [x] Update server.py tool definition
+7. [x] Update tests
+
+---
+
+## Story 7.3: Async Article Ideas (Optional)
 
 **Goal:** Apply same pattern to `suggest_article_ideas` if needed.
 
 Depends on Story 6.1 performance. If article idea generation is fast (<30s), may not need async treatment.
-
-### Tools (if needed)
-
-| Tool | Verhalten |
-|------|-----------|
-| `article_ideas(...)` | Start (ohne job_id) / Poll (mit job_id) |
-| `article_ideas_history(days=14)` | Flache Liste aller Ideen |
 
 ### Tasks
 
@@ -287,13 +327,14 @@ src/mcp_server/server.py   → /jobs/run endpoint executes job
 
 ## Summary
 
-| Story | Tools | Priority |
-|-------|-------|----------|
-| 7.1 | `recommendations`, `recommendations_history` | High |
-| 7.2 | `article_ideas`, `article_ideas_history` | Low |
+| Story | Description | Status |
+|-------|-------------|--------|
+| 7.1 | Async Recommendations via Cloud Tasks | ✅ Done |
+| 7.2 | Simplified Interface (config-based defaults) | ✅ Done |
+| 7.3 | Async Article Ideas | Optional |
 
 **Design Principle:** 
-- `recommendations`: `job_id` determines Start vs Poll
-- `recommendations_history`: Simple flat list, no job details
-
-**Estimated Effort:** 2-3 days for Story 7.1
+- `recommendations()`: No params needed, uses Firestore config
+- `recommendations(topic="...")`: One-time topic override
+- `recommendations(job_id="...")`: Poll for results
+- `recommendations_history()`: Flat list of past recommendations
