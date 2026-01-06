@@ -66,13 +66,15 @@ Die Templates nutzen nur Titel/Tags, nicht den semantischen Inhalt der Highlight
 Du bist ein Research-Assistent. Basierend auf diesen Erkenntnissen 
 aus meiner Wissensdatenbank, generiere 6 Suchanfragen für Tavily.
 
+Aktuelles Datum: {current_date}  # z.B. "January 2026"
+
 Erkenntnisse:
 {takeaways}
 
 Anforderungen an die Queries:
 - Baue auf den Erkenntnissen auf ("was kommt als nächstes?")
 - Finde neue Perspektiven oder Gegenargumente
-- Suche aktuelle Entwicklungen (2025)
+- Füge das aktuelle Jahr oder "latest" hinzu für Aktualität
 - Max 50 Zeichen pro Query, keine Füllwörter
 - Englisch
 
@@ -81,12 +83,12 @@ Format: Eine Query pro Zeile, ohne Nummerierung.
 
 **Output (LLM-generierte Queries):**
 ```
-deep work interruption recovery time research 2025
-developer cognitive load measurement tools
-agentic AI planning patterns production systems
-platform engineering team topologies
-knowledge compression techniques RAG systems
-DORA metrics limitations developer experience
+deep work interruption recovery research 2026
+developer cognitive load measurement tools 2026
+agentic AI planning patterns January 2026
+platform engineering team topologies latest
+knowledge compression RAG systems 2026
+DORA metrics alternatives developer experience
 ```
 
 ---

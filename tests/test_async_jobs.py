@@ -208,11 +208,21 @@ class TestRecommendationsTool:
 
         assert "error" in result
 
+    @patch("firestore_client.get_recommendations_defaults")
     @patch("firestore_client.create_async_job")
     @patch("tools._enqueue_cloud_task")
-    def test_recommendations_start_job(self, mock_enqueue, mock_create_job):
+    def test_recommendations_start_job(
+        self, mock_enqueue, mock_create_job, mock_get_defaults
+    ):
         """Test starting a new recommendations job."""
         import tools
+
+        mock_get_defaults.return_value = {
+            "hot_sites": "tech",
+            "tavily_days": 30,
+            "limit": 10,
+            "topics": ["AI agents", "platform engineering"],
+        }
 
         mock_create_job.return_value = {
             "job_id": "rec-new123",
@@ -220,29 +230,53 @@ class TestRecommendationsTool:
             "created_at": "2026-01-06T10:00:00Z",
         }
 
-        result = tools.recommendations(
-            hot_sites="tech",
-            mode="surprise_me",
-            limit=5,
-        )
+        result = tools.recommendations()
 
         assert result["job_id"] == "rec-new123"
         assert result["status"] == "pending"
         assert "poll_after_seconds" in result
-        assert "estimated_duration_seconds" in result
+        assert "config_used" in result
+        assert result["config_used"]["hot_sites"] == "tech"
+        assert result["config_used"]["limit"] == 10
 
-        # Verify Cloud Task was enqueued
-        mock_enqueue.assert_called_once_with(
-            "rec-new123",
-            "recommendations",
-            {
-                "days": 14,
-                "limit": 5,
-                "hot_sites": "tech",
-                "mode": "surprise_me",
-                "include_seen": False,
-            },
-        )
+        # Verify Cloud Task was enqueued with correct params
+        mock_enqueue.assert_called_once()
+        call_args = mock_enqueue.call_args[0]
+        assert call_args[0] == "rec-new123"
+        assert call_args[1] == "recommendations"
+        assert call_args[2]["hot_sites"] == "tech"
+        assert call_args[2]["mode"] == "fresh"
+        assert call_args[2]["tavily_days"] == 30
+
+    @patch("firestore_client.get_recommendations_defaults")
+    @patch("firestore_client.create_async_job")
+    @patch("tools._enqueue_cloud_task")
+    def test_recommendations_start_job_with_topic(
+        self, mock_enqueue, mock_create_job, mock_get_defaults
+    ):
+        """Test starting a recommendations job with topic override."""
+        import tools
+
+        mock_get_defaults.return_value = {
+            "hot_sites": "tech",
+            "tavily_days": 30,
+            "limit": 10,
+        }
+
+        mock_create_job.return_value = {
+            "job_id": "rec-topic123",
+            "status": "pending",
+            "created_at": "2026-01-06T10:00:00Z",
+        }
+
+        result = tools.recommendations(topic="kubernetes security")
+
+        assert result["job_id"] == "rec-topic123"
+        assert result["config_used"]["topic"] == "kubernetes security"
+
+        # Verify topic is passed to Cloud Task
+        call_args = mock_enqueue.call_args[0]
+        assert call_args[2]["topic"] == "kubernetes security"
 
 
 class TestRecommendationsHistory:

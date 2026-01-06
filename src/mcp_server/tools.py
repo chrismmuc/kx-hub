@@ -1377,6 +1377,8 @@ def _get_reading_recommendations(
     mode: str = "balanced",
     include_seen: bool = False,
     predictable: bool = False,
+    tavily_days: Optional[int] = None,
+    topic: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Internal: Get AI-powered reading recommendations based on KB content.
@@ -1389,6 +1391,7 @@ def _get_reading_recommendations(
     Story 3.9: Parameterized Recommendations
     Story 4.4: Removed cluster dependency
     Story 7.1: Made internal, called via Cloud Tasks
+    Story 7.2: Simplified interface with topic override
 
     Args:
         days: Lookback period for recent reads (default 14)
@@ -1398,6 +1401,8 @@ def _get_reading_recommendations(
         mode: Discovery mode: "balanced", "fresh", "deep", "surprise_me" (default "balanced")
         include_seen: Include previously shown recommendations (default False)
         predictable: Disable query variation for reproducible results (default False)
+        tavily_days: Override tavily search days (default: from mode config)
+        topic: Optional topic override for query generation
 
     Returns:
         Dictionary with recommendations and metadata.
@@ -1465,10 +1470,11 @@ def _get_reading_recommendations(
             "max_age_days", recommendation_filter.DEFAULT_MAX_AGE_DAYS
         )
 
-        # Story 3.9: Use mode-specific tavily_days
-        tavily_days = mode_config.get(
-            "tavily_days", recency_settings.get("tavily_days_filter", 180)
-        )
+        # Story 7.2: Use passed tavily_days or fall back to mode config
+        if tavily_days is None:
+            tavily_days = mode_config.get(
+                "tavily_days", recency_settings.get("tavily_days_filter", 180)
+            )
 
         # Story 3.9: Use mode-specific temperature
         temperature = mode_config.get(
@@ -1509,14 +1515,24 @@ def _get_reading_recommendations(
         )
 
         # Story 4.4: Simplified query generation (no cluster dependency)
-        # Use predictable flag to control query variation
+        # Story 7.2: Support topic override
         use_variation = not predictable
 
-        queries = recommendation_queries.generate_search_queries(
-            days=days,
-            max_queries=8,
-            use_variation=use_variation,
-        )
+        if topic:
+            # Topic override: generate simple topic-based queries
+            logger.info(f"Using topic override: {topic}")
+            queries = [
+                {"query": f"{topic} best practices 2025", "source": "topic_override"},
+                {"query": f"{topic} latest developments", "source": "topic_override"},
+                {"query": f"advanced {topic} techniques", "source": "topic_override"},
+            ]
+            filters_applied["topic"] = topic
+        else:
+            queries = recommendation_queries.generate_search_queries(
+                days=days,
+                max_queries=8,
+                use_variation=use_variation,
+            )
 
         if not queries:
             return {
@@ -2720,7 +2736,7 @@ def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
 
     Args:
         job_id: Job identifier
-        params: Job parameters (days, limit, hot_sites, mode, include_seen)
+        params: Job parameters (days, limit, hot_sites, mode, include_seen, tavily_days, topic)
     """
     try:
         # Mark as running
@@ -2732,9 +2748,11 @@ def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
             limit=params.get("limit", 10),
             user_id=params.get("user_id", "default"),
             hot_sites=params.get("hot_sites"),
-            mode=params.get("mode", "balanced"),
+            mode=params.get("mode", "fresh"),
             include_seen=params.get("include_seen", False),
             predictable=params.get("predictable", False),
+            tavily_days=params.get("tavily_days"),
+            topic=params.get("topic"),
         )
 
         # Check for error in result
@@ -2754,43 +2772,36 @@ def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
 
 def recommendations(
     job_id: Optional[str] = None,
-    days: int = 14,
-    limit: int = 10,
-    hot_sites: Optional[str] = None,
-    mode: str = "balanced",
-    include_seen: bool = False,
+    topic: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Async recommendations: start a new job or poll for results.
 
     Story 7.1: Async Recommendations
+    Story 7.2: Simplified interface with config-based defaults
 
     Usage:
-    - No job_id: Start a new recommendations job (returns immediately)
-    - With job_id: Poll for job status and results
+    - recommendations() - Start job with defaults from config
+    - recommendations(topic="kubernetes") - Override with specific topic
+    - recommendations(job_id="...") - Poll for results
 
     Args:
-        job_id: Optional job ID to poll (if None, starts new job)
-        days: Lookback period for recent reads (default 14)
-        limit: Maximum recommendations to return (default 10)
-        hot_sites: Source category: "tech", "ai", "devops", "business", "all"
-        mode: Discovery mode: "balanced", "fresh", "deep", "surprise_me"
-        include_seen: Include previously shown recommendations (default False)
+        job_id: Job ID to poll (if provided, returns status/results)
+        topic: Optional topic override (e.g., "kubernetes security")
+               If not provided, uses topics from config/recommendations
 
     Returns:
         When starting (no job_id):
         - job_id: Unique job identifier
         - status: "pending"
         - poll_after_seconds: Suggested wait time before polling
-        - estimated_duration_seconds: Estimated total time
+        - config_used: Settings from config/recommendations
 
         When polling (with job_id):
         - job_id: Job identifier
         - status: "pending" | "running" | "completed" | "failed"
         - progress: 0.0 - 1.0
-        - poll_after_seconds: Time until next poll (if not complete)
-        - result: Full recommendations result (when completed)
-        - error: Error message (when failed)
+        - result: Full recommendations (when completed)
     """
     # Poll mode: get existing job status
     if job_id:
@@ -2819,17 +2830,24 @@ def recommendations(
 
         return response
 
-    # Start mode: create new job and run in background
+    # Start mode: load defaults from config
+    defaults = firestore_client.get_recommendations_defaults()
+    hot_sites = defaults.get("hot_sites", "tech")
+    limit = defaults.get("limit", 10)
+    tavily_days = defaults.get("tavily_days", 30)
+
     logger.info(
-        f"Starting recommendations job: mode={mode}, hot_sites={hot_sites}, limit={limit}"
+        f"Starting recommendations job: topic={topic}, hot_sites={hot_sites}, limit={limit}"
     )
 
     params = {
-        "days": days,
+        "days": 14,  # KB lookback always 14 days
         "limit": limit,
         "hot_sites": hot_sites,
-        "mode": mode,
-        "include_seen": include_seen,
+        "mode": "fresh",  # Always fresh mode
+        "include_seen": False,
+        "tavily_days": tavily_days,
+        "topic": topic,  # Optional override
     }
 
     # Create job in Firestore
@@ -2837,17 +2855,23 @@ def recommendations(
         job_type="recommendations",
         params=params,
     )
-    job_id = job_info["job_id"]
+    new_job_id = job_info["job_id"]
 
     # Enqueue to Cloud Tasks for async execution
-    _enqueue_cloud_task(job_id, "recommendations", params)
+    _enqueue_cloud_task(new_job_id, "recommendations", params)
 
     return {
-        "job_id": job_id,
+        "job_id": new_job_id,
         "status": "pending",
         "poll_after_seconds": 10,
         "estimated_duration_seconds": 60,
         "created_at": job_info["created_at"],
+        "config_used": {
+            "hot_sites": hot_sites,
+            "limit": limit,
+            "tavily_days": tavily_days,
+            "topic": topic,
+        },
     }
 
 

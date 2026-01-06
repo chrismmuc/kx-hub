@@ -328,17 +328,14 @@ Usage patterns:
     # Story 7.1: Async Recommendations
     {
         "name": "recommendations",
-        "description": """Async recommendations: start a new job or poll for results.
+        "description": """Get reading recommendations based on your KB content.
 
-Start mode (no job_id): Creates background job, returns immediately with job_id.
-Poll mode (with job_id): Check status and get results when complete.
+Simple interface - settings come from config/recommendations in Firestore.
 
-Example flow:
-1. recommendations(hot_sites="ai") → {job_id: "rec-123", poll_after_seconds: 10}
-2. [wait 10s]
-3. recommendations(job_id="rec-123") → {status: "running", progress: 0.4}
-4. [wait 5s]
-5. recommendations(job_id="rec-123") → {status: "completed", result: {...}}""",
+Usage:
+1. recommendations() → starts job, returns {job_id, poll_after_seconds}
+2. recommendations(job_id="...") → poll for results
+3. recommendations(topic="kubernetes") → one-time topic override""",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -346,31 +343,9 @@ Example flow:
                     "type": "string",
                     "description": "Job ID to poll (omit to start new job)",
                 },
-                "days": {
-                    "type": "integer",
-                    "description": "Lookback period in days (default 14)",
-                    "default": 14,
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max recommendations (default 10)",
-                    "default": 10,
-                },
-                "hot_sites": {
+                "topic": {
                     "type": "string",
-                    "description": "Source category",
-                    "enum": ["tech", "tech_de", "ai", "devops", "business", "all"],
-                },
-                "mode": {
-                    "type": "string",
-                    "description": "Discovery mode",
-                    "default": "balanced",
-                    "enum": ["balanced", "fresh", "deep", "surprise_me"],
-                },
-                "include_seen": {
-                    "type": "boolean",
-                    "description": "Include previously shown",
-                    "default": False,
+                    "description": "Optional topic override (e.g., 'kubernetes security')",
                 },
             },
         },
@@ -479,15 +454,11 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             idea_id=arguments.get("idea_id", ""),
             reason=arguments.get("reason"),
         )
-    # Story 7.1: Async Recommendations
+    # Story 7.1: Async Recommendations, Story 7.2: Simplified interface
     elif name == "recommendations":
         return tools.recommendations(
             job_id=arguments.get("job_id"),
-            days=arguments.get("days", 14),
-            limit=arguments.get("limit", 10),
-            hot_sites=arguments.get("hot_sites"),
-            mode=arguments.get("mode", "balanced"),
-            include_seen=arguments.get("include_seen", False),
+            topic=arguments.get("topic"),
         )
     elif name == "recommendations_history":
         return tools.recommendations_history(

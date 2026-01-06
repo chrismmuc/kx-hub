@@ -1248,6 +1248,61 @@ def get_ranking_config() -> Dict[str, Any]:
         }
 
 
+# Default recommendations settings
+DEFAULT_RECOMMENDATIONS_CONFIG = {
+    "hot_sites": "tech",
+    "tavily_days": 30,
+    "limit": 10,
+    "topics": ["AI agents", "platform engineering", "developer productivity"],
+}
+
+
+def get_recommendations_defaults() -> Dict[str, Any]:
+    """
+    Get recommendations defaults from Firestore.
+
+    Story 7.2: Simplified recommendations interface.
+
+    Fetches config/recommendations document with default settings.
+    Creates defaults if document doesn't exist.
+
+    Returns:
+        Dictionary with:
+        - hot_sites: Default hot_sites category (e.g., "tech")
+        - tavily_days: Days to search back (e.g., 30)
+        - limit: Max recommendations (e.g., 10)
+        - topics: List of focus topics for LLM query generation
+    """
+    try:
+        db = get_firestore_client()
+
+        logger.info("Fetching recommendations defaults from config/recommendations")
+
+        doc_ref = db.collection("config").document("recommendations")
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            logger.info("Recommendations config not found, creating defaults")
+            default_config = {
+                **DEFAULT_RECOMMENDATIONS_CONFIG,
+                "last_updated": datetime.utcnow(),
+                "updated_by": "initial_setup",
+            }
+            doc_ref.set(default_config)
+            return default_config
+
+        config = doc.to_dict()
+        logger.info(
+            f"Retrieved recommendations defaults: hot_sites={config.get('hot_sites')}, "
+            f"tavily_days={config.get('tavily_days')}, topics={len(config.get('topics', []))}"
+        )
+        return config
+
+    except Exception as e:
+        logger.error(f"Failed to get recommendations defaults: {e}")
+        return {**DEFAULT_RECOMMENDATIONS_CONFIG, "error": str(e)}
+
+
 def update_ranking_config(
     weights: Optional[Dict[str, float]] = None,
     settings: Optional[Dict[str, Any]] = None,
