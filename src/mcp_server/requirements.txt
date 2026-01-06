@@ -2,6 +2,7 @@ mcp>=1.25.0
 google-cloud-firestore>=2.22.0
 google-cloud-aiplatform>=1.130.0
 google-cloud-secret-manager>=2.26.0
+google-cloud-tasks>=2.16.0
 python-dotenv>=1.0.0
 tavily-python>=0.7.0
 fastapi>=0.128.0

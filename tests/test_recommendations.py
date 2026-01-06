@@ -6,7 +6,7 @@ Tests the recommendation system including:
 - Query generation
 - Quality filtering
 - KB deduplication
-- Main get_reading_recommendations() tool
+- Internal _get_reading_recommendations() function
 """
 
 import os
@@ -585,7 +585,7 @@ class TestFindBySourceURL(unittest.TestCase):
 
 
 class TestGetReadingRecommendations(unittest.TestCase):
-    """Test suite for the main get_reading_recommendations() tool."""
+    """Test suite for the internal _get_reading_recommendations() function."""
 
     @patch("recommendation_queries.generate_search_queries")
     @patch("firestore_client.get_recommendation_config")
@@ -596,7 +596,7 @@ class TestGetReadingRecommendations(unittest.TestCase):
         mock_config.return_value = {"quality_domains": [], "excluded_domains": []}
         mock_queries.return_value = []
 
-        result = tools.get_reading_recommendations()
+        result = tools._get_reading_recommendations()
 
         self.assertIn("error", result)
         self.assertIn("No queries", result["error"])
@@ -734,7 +734,7 @@ class TestGetReadingRecommendations(unittest.TestCase):
             }
         ]
 
-        result = tools.get_reading_recommendations(days=14, limit=10)
+        result = tools._get_reading_recommendations(days=14, limit=10)
 
         self.assertIn("recommendations", result)
         self.assertEqual(len(result["recommendations"]), 1)

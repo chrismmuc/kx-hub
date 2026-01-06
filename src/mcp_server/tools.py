@@ -16,11 +16,12 @@ Tools:
 - get_reading_activity: Get reading activity summary and statistics
 - get_recently_added: Get most recently added chunks
 - get_related_clusters: Find clusters conceptually related to a given cluster (Story 3.4)
-- get_reading_recommendations: AI-powered reading recommendations (Story 3.5)
+- recommendations: Async AI-powered reading recommendations via Cloud Tasks (Story 7.1)
 - update_recommendation_domains: Update recommendation domain whitelist (Story 3.5)
 """
 
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -1368,7 +1369,7 @@ def search_knowledge_cards(query: str, limit: int = 10) -> Dict[str, Any]:
 # ============================================================================
 
 
-def get_reading_recommendations(
+def _get_reading_recommendations(
     days: int = 14,
     limit: int = 10,
     user_id: str = "default",
@@ -1378,15 +1379,16 @@ def get_reading_recommendations(
     predictable: bool = False,
 ) -> Dict[str, Any]:
     """
-    Get AI-powered reading recommendations based on KB content.
+    Internal: Get AI-powered reading recommendations based on KB content.
+
+    Called by the async recommendations job via Cloud Tasks.
+    Not exposed as a public MCP tool.
 
     Story 3.5: AI-Powered Reading Recommendations
     Story 3.8: Enhanced Recommendation Ranking
     Story 3.9: Parameterized Recommendations
     Story 4.4: Removed cluster dependency
-
-    Analyzes recent reads and top sources, searches Tavily with domain
-    whitelisting, filters for quality, and deduplicates against KB.
+    Story 7.1: Made internal, called via Cloud Tasks
 
     Args:
         days: Lookback period for recent reads (default 14)
@@ -1398,30 +1400,7 @@ def get_reading_recommendations(
         predictable: Disable query variation for reproducible results (default False)
 
     Returns:
-        Dictionary with:
-        - generated_at: Timestamp
-        - processing_time_seconds: Total time taken
-        - scope: Scope used (always "both")
-        - mode: Discovery mode used
-        - filters_applied: Active filters (hot_sites, etc.)
-        - days_analyzed: Days lookback
-        - queries_used: List of search queries
-        - recommendations: List of recommendation objects
-        - ranking_config: Weights and settings used
-        - filtered_out: Counts of filtered items
-
-    Example:
-        >>> get_reading_recommendations(hot_sites="ai", mode="fresh")
-        {
-            "generated_at": "2025-12-12T10:00:00Z",
-            "processing_time_seconds": 35,
-            "mode": "fresh",
-            "filters_applied": {
-                "hot_sites": "ai",
-                "hot_sites_domain_count": 17
-            },
-            "recommendations": [...]
-        }
+        Dictionary with recommendations and metadata.
     """
     start_time = time.time()
     scope = "both"  # Story 4.4: Fixed scope, no longer configurable
@@ -2672,25 +2651,83 @@ def reject_idea(idea_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
 
 # ==================== Async Recommendations (Epic 7) ====================
 
-import threading
-from concurrent.futures import ThreadPoolExecutor
-
-# Thread pool for background jobs
-_executor = ThreadPoolExecutor(max_workers=4)
+import json as json_module
 
 
-def _run_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
+def _enqueue_cloud_task(job_id: str, job_type: str, params: Dict[str, Any]) -> None:
     """
-    Background worker for recommendations job.
+    Enqueue a job to Cloud Tasks for async execution.
 
-    Runs get_reading_recommendations and updates job status.
+    Epic 7: Uses Cloud Tasks instead of in-process threading to ensure
+    jobs survive Cloud Run instance restarts.
+
+    Args:
+        job_id: Unique job identifier
+        job_type: Type of job (e.g., "recommendations")
+        params: Job parameters
+    """
+    from google.cloud import tasks_v2
+
+    # Get configuration from environment
+    project_id = os.environ.get("GCP_PROJECT", "kx-hub")
+    location = os.environ.get("GCP_REGION", "europe-west1")
+    queue_name = os.environ.get("CLOUD_TASKS_QUEUE", "async-jobs")
+    service_url = os.environ.get("MCP_SERVER_URL", "")
+    cloud_tasks_sa = os.environ.get(
+        "CLOUD_TASKS_SA_EMAIL",
+        f"cloud-tasks-invoker@{project_id}.iam.gserviceaccount.com",
+    )
+
+    if not service_url:
+        # Fallback: construct from Cloud Run service name
+        service_name = os.environ.get("K_SERVICE", "kx-hub-mcp")
+        service_url = f"https://{service_name}-{project_id}.{location}.run.app"
+
+    # Create Cloud Tasks client
+    client = tasks_v2.CloudTasksClient()
+    parent = client.queue_path(project_id, location, queue_name)
+
+    # Build the task
+    task = {
+        "http_request": {
+            "http_method": tasks_v2.HttpMethod.POST,
+            "url": f"{service_url}/jobs/run",
+            "headers": {"Content-Type": "application/json"},
+            "body": json_module.dumps(
+                {
+                    "job_id": job_id,
+                    "job_type": job_type,
+                    "params": params,
+                }
+            ).encode(),
+            "oidc_token": {
+                "service_account_email": cloud_tasks_sa,
+            },
+        },
+    }
+
+    # Enqueue the task
+    response = client.create_task(request={"parent": parent, "task": task})
+    logger.info(f"Enqueued Cloud Task: {response.name} for job {job_id}")
+
+
+def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
+    """
+    Execute a recommendations job. Called by /jobs/run endpoint.
+
+    Epic 7: This is the actual job execution, called synchronously by Cloud Tasks.
+    Updates job status in Firestore throughout execution.
+
+    Args:
+        job_id: Job identifier
+        params: Job parameters (days, limit, hot_sites, mode, include_seen)
     """
     try:
         # Mark as running
         firestore_client.update_async_job(job_id, status="running", progress=0.1)
 
         # Execute the actual recommendations logic
-        result = get_reading_recommendations(
+        result = _get_reading_recommendations(
             days=params.get("days", 14),
             limit=params.get("limit", 10),
             user_id=params.get("user_id", "default"),
@@ -2802,8 +2839,8 @@ def recommendations(
     )
     job_id = job_info["job_id"]
 
-    # Start background execution
-    _executor.submit(_run_recommendations_job, job_id, params)
+    # Enqueue to Cloud Tasks for async execution
+    _enqueue_cloud_task(job_id, "recommendations", params)
 
     return {
         "job_id": job_id,

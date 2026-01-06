@@ -218,46 +218,6 @@ Two-step pattern: search_kb → scan cards → get_chunk for details.""",
             },
         },
     },
-    {
-        "name": "get_reading_recommendations",
-        "description": "Get AI-powered reading recommendations based on your KB content.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "days": {
-                    "type": "integer",
-                    "description": "Lookback period in days (default 14)",
-                    "default": 14,
-                },
-                "hot_sites": {
-                    "type": "string",
-                    "description": "Source category",
-                    "enum": ["tech", "tech_de", "ai", "devops", "business", "all"],
-                },
-                "include_seen": {
-                    "type": "boolean",
-                    "description": "Include previously shown",
-                    "default": False,
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max recommendations (default 10)",
-                    "default": 10,
-                },
-                "mode": {
-                    "type": "string",
-                    "description": "Discovery mode",
-                    "default": "balanced",
-                    "enum": ["balanced", "fresh", "deep", "surprise_me"],
-                },
-                "predictable": {
-                    "type": "boolean",
-                    "description": "Disable query variation",
-                    "default": False,
-                },
-            },
-        },
-    },
     # Story 6.1: Blog Idea Extraction
     {
         "name": "suggest_article_ideas",
@@ -495,15 +455,7 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
     elif name == "get_contradictions":
         return tools.get_contradictions(limit=arguments.get("limit", 10))
-    elif name == "get_reading_recommendations":
-        return tools.get_reading_recommendations(
-            days=arguments.get("days", 14),
-            hot_sites=arguments.get("hot_sites"),
-            include_seen=arguments.get("include_seen", False),
-            limit=arguments.get("limit", 10),
-            mode=arguments.get("mode", "balanced"),
-            predictable=arguments.get("predictable", False),
-        )
+
     # Story 6.1: Blog Idea Extraction
     elif name == "suggest_article_ideas":
         return tools.suggest_article_ideas(
@@ -543,6 +495,53 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
     else:
         raise ValueError(f"Unknown tool: {name}")
+
+
+# ==================== Async Job Execution (Epic 7) ====================
+
+
+@app.post("/jobs/run")
+async def run_job(request: Request):
+    """
+    Execute an async job. Called by Cloud Tasks.
+
+    Epic 7: Cloud Tasks calls this endpoint to execute recommendation jobs.
+    The job_id and params are passed in the request body.
+
+    Request body:
+        {
+            "job_id": "rec-abc123",
+            "job_type": "recommendations",
+            "params": {"mode": "balanced", "limit": 10, ...}
+        }
+
+    Security: This endpoint is protected by Cloud Run IAM.
+    Only the cloud-tasks-invoker service account can call it.
+    """
+    try:
+        body = await request.json()
+        job_id = body.get("job_id")
+        job_type = body.get("job_type")
+        params = body.get("params", {})
+
+        if not job_id or not job_type:
+            raise HTTPException(status_code=400, detail="Missing job_id or job_type")
+
+        logger.info(f"Executing async job: {job_id} (type={job_type})")
+
+        if job_type == "recommendations":
+            # Execute the recommendations job synchronously
+            # (Cloud Tasks handles the async dispatch)
+            tools.execute_recommendations_job(job_id, params)
+            return {"status": "completed", "job_id": job_id}
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown job_type: {job_type}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Job execution failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== Health Check ====================

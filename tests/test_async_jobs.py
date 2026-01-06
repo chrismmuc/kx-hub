@@ -209,8 +209,8 @@ class TestRecommendationsTool:
         assert "error" in result
 
     @patch("firestore_client.create_async_job")
-    @patch("tools._executor")
-    def test_recommendations_start_job(self, mock_executor, mock_create_job):
+    @patch("tools._enqueue_cloud_task")
+    def test_recommendations_start_job(self, mock_enqueue, mock_create_job):
         """Test starting a new recommendations job."""
         import tools
 
@@ -231,8 +231,18 @@ class TestRecommendationsTool:
         assert "poll_after_seconds" in result
         assert "estimated_duration_seconds" in result
 
-        # Verify background execution was started
-        mock_executor.submit.assert_called_once()
+        # Verify Cloud Task was enqueued
+        mock_enqueue.assert_called_once_with(
+            "rec-new123",
+            "recommendations",
+            {
+                "days": 14,
+                "limit": 5,
+                "hot_sites": "tech",
+                "mode": "surprise_me",
+                "include_seen": False,
+            },
+        )
 
 
 class TestRecommendationsHistory:
@@ -290,13 +300,13 @@ class TestRecommendationsHistory:
         assert result["recommendations"] == []
 
 
-class TestBackgroundJobExecution:
-    """Tests for background job execution."""
+class TestJobExecution:
+    """Tests for job execution via Cloud Tasks."""
 
     @patch("firestore_client.update_async_job")
-    @patch("tools.get_reading_recommendations")
-    def test_run_recommendations_job_success(self, mock_get_recs, mock_update):
-        """Test successful background job execution."""
+    @patch("tools._get_reading_recommendations")
+    def test_execute_recommendations_job_success(self, mock_get_recs, mock_update):
+        """Test successful job execution."""
         import tools
 
         mock_get_recs.return_value = {
@@ -304,7 +314,7 @@ class TestBackgroundJobExecution:
             "processing_time_seconds": 60,
         }
 
-        tools._run_recommendations_job(
+        tools.execute_recommendations_job(
             "rec-123",
             {"mode": "balanced", "limit": 10},
         )
@@ -318,9 +328,9 @@ class TestBackgroundJobExecution:
         assert last_call[1]["result"] is not None
 
     @patch("firestore_client.update_async_job")
-    @patch("tools.get_reading_recommendations")
-    def test_run_recommendations_job_error(self, mock_get_recs, mock_update):
-        """Test background job handles errors."""
+    @patch("tools._get_reading_recommendations")
+    def test_execute_recommendations_job_error(self, mock_get_recs, mock_update):
+        """Test job handles errors in result."""
         import tools
 
         mock_get_recs.return_value = {
@@ -328,7 +338,7 @@ class TestBackgroundJobExecution:
             "recommendations": [],
         }
 
-        tools._run_recommendations_job(
+        tools.execute_recommendations_job(
             "rec-123",
             {"mode": "balanced"},
         )
@@ -339,14 +349,14 @@ class TestBackgroundJobExecution:
         assert "error" in last_call[1]
 
     @patch("firestore_client.update_async_job")
-    @patch("tools.get_reading_recommendations")
-    def test_run_recommendations_job_exception(self, mock_get_recs, mock_update):
-        """Test background job handles exceptions."""
+    @patch("tools._get_reading_recommendations")
+    def test_execute_recommendations_job_exception(self, mock_get_recs, mock_update):
+        """Test job handles exceptions."""
         import tools
 
         mock_get_recs.side_effect = Exception("Unexpected error")
 
-        tools._run_recommendations_job(
+        tools.execute_recommendations_job(
             "rec-123",
             {"mode": "balanced"},
         )
@@ -354,3 +364,52 @@ class TestBackgroundJobExecution:
         # Should have marked as failed
         last_call = mock_update.call_args_list[-1]
         assert last_call[1]["status"] == "failed"
+
+
+class TestCloudTasksEnqueue:
+    """Tests for Cloud Tasks enqueueing."""
+
+    def test_enqueue_cloud_task_success(self):
+        """Test successful Cloud Tasks enqueueing."""
+        import os
+        import sys
+
+        # Create mock for google.cloud.tasks_v2
+        mock_tasks_v2 = MagicMock()
+        mock_client = MagicMock()
+        mock_tasks_v2.CloudTasksClient.return_value = mock_client
+        mock_client.queue_path.return_value = "projects/test/queues/async-jobs"
+        mock_client.create_task.return_value = MagicMock(name="tasks/123")
+
+        # Mock HttpMethod enum
+        mock_tasks_v2.HttpMethod.POST = "POST"
+
+        # Insert mock into sys.modules before importing tools
+        sys.modules["google.cloud.tasks_v2"] = mock_tasks_v2
+
+        # Set environment variables
+        os.environ["GCP_PROJECT"] = "test-project"
+        os.environ["GCP_REGION"] = "europe-west1"
+        os.environ["CLOUD_TASKS_QUEUE"] = "async-jobs"
+        os.environ["MCP_SERVER_URL"] = "https://test.run.app"
+        os.environ["CLOUD_TASKS_SA_EMAIL"] = "test@test.iam.gserviceaccount.com"
+
+        try:
+            import tools
+
+            tools._enqueue_cloud_task(
+                job_id="rec-123",
+                job_type="recommendations",
+                params={"mode": "balanced"},
+            )
+
+            # Verify task was created
+            mock_client.create_task.assert_called_once()
+            call_args = mock_client.create_task.call_args
+            task_request = call_args[1]["request"]
+            assert task_request["parent"] == "projects/test/queues/async-jobs"
+            assert "http_request" in task_request["task"]
+        finally:
+            # Cleanup
+            if "google.cloud.tasks_v2" in sys.modules:
+                del sys.modules["google.cloud.tasks_v2"]

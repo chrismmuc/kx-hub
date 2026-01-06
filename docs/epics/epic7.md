@@ -10,7 +10,7 @@
 
 **Dependencies:** Epic 3 (Recommendations)
 
-**Status:** Complete (Story 7.1)
+**Status:** Complete (Story 7.1 - Cloud Tasks)
 
 ---
 
@@ -35,35 +35,40 @@ Long-running MCP tools like `get_reading_recommendations` (60-120s) cause client
 ### Async Job Pattern
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Client    │     │  MCP Server │     │  Firestore  │
-└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
-       │                   │                   │
-       │ recommendations() │                   │
-       │──────────────────▶│                   │
-       │                   │ create job doc    │
-       │                   │──────────────────▶│
-       │ {job_id, poll_s}  │                   │
-       │◀──────────────────│                   │
-       │                   │                   │
-       │    [async work starts in background]  │
-       │                   │                   │
-       │ recommendations   │                   │
-       │ (job_id=...)      │                   │
-       │──────────────────▶│                   │
-       │                   │ read job status   │
-       │                   │──────────────────▶│
-       │ {status, progress}│                   │
-       │◀──────────────────│                   │
-       │                   │                   │
-       │    [poll again after poll_s]          │
-       │                   │                   │
-       │ recommendations   │                   │
-       │ (job_id=...)      │                   │
-       │──────────────────▶│                   │
-       │ {status: complete,│                   │
-       │  recommendations} │                   │
-       │◀──────────────────│                   │
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Client    │     │  MCP Server │     │ Cloud Tasks │     │  Firestore  │
+└──────┬──────┘     └──────┬──────┘     └──────┬──────┘     └──────┬──────┘
+       │                   │                   │                   │
+       │ recommendations() │                   │                   │
+       │──────────────────▶│                   │                   │
+       │                   │ create job doc    │                   │
+       │                   │─────────────────────────────────────▶│
+       │                   │ enqueue task      │                   │
+       │                   │──────────────────▶│                   │
+       │ {job_id, poll_s}  │                   │                   │
+       │◀──────────────────│                   │                   │
+       │                   │                   │                   │
+       │                   │   [Cloud Tasks calls /jobs/run]       │
+       │                   │◀──────────────────│                   │
+       │                   │ execute job       │                   │
+       │                   │─────────────────────────────────────▶│
+       │                   │                   │                   │
+       │ recommendations   │                   │                   │
+       │ (job_id=...)      │                   │                   │
+       │──────────────────▶│                   │                   │
+       │                   │ read job status   │                   │
+       │                   │─────────────────────────────────────▶│
+       │ {status, progress}│                   │                   │
+       │◀──────────────────│                   │                   │
+       │                   │                   │                   │
+       │    [poll again after poll_s]          │                   │
+       │                   │                   │                   │
+       │ recommendations   │                   │                   │
+       │ (job_id=...)      │                   │                   │
+       │──────────────────▶│                   │                   │
+       │ {status: complete,│                   │                   │
+       │  recommendations} │                   │                   │
+       │◀──────────────────│                   │                   │
 ```
 
 ### Data Model
@@ -203,13 +208,14 @@ recommendations_history()
 
 1. [x] Create `async_jobs` Firestore collection with TTL (14 days)
 2. [x] Implement job creation and status tracking
-3. [x] Implement background job execution (in-process threading)
-4. [ ] Add progress reporting during Tavily searches
-5. [x] Implement `recommendations` MCP tool (start + poll)
-6. [x] Implement `recommendations_history` MCP tool (flat list)
-7. [ ] Add job cleanup for expired jobs (TTL-based)
-8. [x] Update documentation
-9. [ ] Deprecate `get_reading_recommendations` (keep as alias initially)
+3. [x] ~~Implement background job execution (in-process threading)~~ → Replaced with Cloud Tasks
+4. [x] Implement Cloud Tasks queue for async job execution
+5. [x] Add `/jobs/run` endpoint for Cloud Tasks invocation
+6. [x] Implement `recommendations` MCP tool (start + poll)
+7. [x] Implement `recommendations_history` MCP tool (flat list)
+8. [x] Remove `get_reading_recommendations` (replaced by `recommendations`)
+9. [ ] Add progress reporting during Tavily searches
+10. [ ] Add job cleanup for expired jobs (TTL-based)
 
 ### Success Metrics
 
@@ -243,18 +249,25 @@ Depends on Story 6.1 performance. If article idea generation is fast (<30s), may
 
 ## Implementation Notes
 
-### Background Execution Options
+### Background Execution: Cloud Tasks
 
-1. **In-Process Threading** (Simple) ← Start here
-   - Start background thread for job execution
-   - Works for Cloud Run (long-running instances)
-   - Risk: Instance shutdown kills running jobs
+Jobs are executed via Cloud Tasks for reliability:
 
-2. **Cloud Tasks** (Robust)
-   - Queue job to Cloud Tasks
-   - Separate endpoint handles execution
-   - Survives instance restarts
-   - Migrate if reliability issues arise
+```
+terraform/async_jobs.tf    → Cloud Tasks queue "async-jobs"
+src/mcp_server/tools.py    → _enqueue_cloud_task() enqueues job
+src/mcp_server/server.py   → /jobs/run endpoint executes job
+```
+
+**Why Cloud Tasks instead of in-process threading:**
+- Cloud Run instances can shut down anytime (timeout, scaling)
+- In-process threads die with the instance
+- Cloud Tasks guarantees job delivery and automatic retries
+
+**Configuration (cloudbuild.yaml):**
+- `CLOUD_TASKS_QUEUE=async-jobs`
+- `CLOUD_TASKS_SA_EMAIL=cloud-tasks-invoker@$PROJECT_ID.iam.gserviceaccount.com`
+- `MCP_SERVER_URL` (for /jobs/run callback)
 
 ### Job TTL Strategy
 
@@ -266,9 +279,9 @@ Depends on Story 6.1 performance. If article idea generation is fast (<30s), may
 
 ### Backwards Compatibility
 
-Keep `get_reading_recommendations` as deprecated alias:
-- Internally calls `recommendations()` and polls until complete
-- Log deprecation warning
+`get_reading_recommendations` has been removed:
+- Replaced by `recommendations()` (async with polling)
+- Internal function `_get_reading_recommendations()` still exists for job execution
 
 ---
 
