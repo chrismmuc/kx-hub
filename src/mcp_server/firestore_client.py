@@ -161,6 +161,41 @@ def get_chunks_batch(chunk_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         return {}
 
 
+def get_chunks_by_source_id(source_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Get all chunks for a given source ID.
+
+    Args:
+        source_id: The source ID to find chunks for
+        limit: Maximum chunks to return
+
+    Returns:
+        List of chunk dictionaries with knowledge cards
+    """
+    try:
+        db = get_firestore_client()
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        query = (
+            db.collection("kb_items")
+            .where(filter=FieldFilter("source_id", "==", source_id))
+            .limit(limit)
+        )
+
+        chunks = []
+        for doc in query.stream():
+            chunk_data = doc.to_dict()
+            chunk_data["chunk_id"] = doc.id
+            chunks.append(chunk_data)
+
+        logger.info(f"Found {len(chunks)} chunks for source {source_id}")
+        return chunks
+
+    except Exception as e:
+        logger.error(f"Failed to get chunks for source {source_id}: {e}")
+        return []
+
+
 def query_by_metadata(
     tags: Optional[List[str]] = None,
     author: Optional[str] = None,

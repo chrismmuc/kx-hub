@@ -138,21 +138,20 @@ def extract_top_takeaways(
         if not source:
             continue
 
-        # Get chunks with knowledge cards
-        chunk_ids = source.get("chunk_ids", [])
         source_title = source.get("title", "Unknown")
         source_author = source.get("author", "Unknown")
 
+        # Get chunks for this source via query
+        chunks = firestore_client.get_chunks_by_source_id(source_id)
+
         source_takeaways = []
 
-        for chunk_id in chunk_ids:
-            chunk = firestore_client.get_chunk_by_id(chunk_id)
-            if not chunk:
-                continue
-
+        for chunk in chunks:
             kc = chunk.get("knowledge_card", {})
             if not kc:
                 continue
+
+            chunk_id = chunk.get("chunk_id", "")
 
             # Get takeaways from knowledge card
             for takeaway in kc.get("takeaways", []):
@@ -228,8 +227,8 @@ def generate_thesis_and_angle(
     prompt = THESIS_PROMPT.format(takeaways_formatted=takeaways_formatted)
 
     try:
-        # Use LLM abstraction
-        client = get_client(provider="gemini", model_preference="flash")
+        # Use LLM abstraction (gemini-2.5-flash for cost efficiency)
+        client = get_client(model="gemini-2.5-flash")
         response = client.generate(prompt)
 
         # Parse JSON response

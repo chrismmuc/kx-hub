@@ -179,21 +179,22 @@ class TestExtractTopTakeaways(unittest.TestCase):
         mock_firestore.get_source_by_id.return_value = {
             "title": "Deep Work",
             "author": "Cal Newport",
-            "chunk_ids": ["chunk-1", "chunk-2"],
         }
-        mock_firestore.get_chunk_by_id.side_effect = [
+        mock_firestore.get_chunks_by_source_id.return_value = [
             {
+                "chunk_id": "chunk-1",
                 "knowledge_card": {
                     "takeaways": [
                         "Focus is essential for deep work",
                         "Shallow work should be minimized",
                     ]
-                }
+                },
             },
             {
+                "chunk_id": "chunk-2",
                 "knowledge_card": {
                     "takeaways": ["Rituals help establish deep work habits"]
-                }
+                },
             },
         ]
 
@@ -211,16 +212,18 @@ class TestExtractTopTakeaways(unittest.TestCase):
         mock_firestore.get_source_by_id.return_value = {
             "title": "Test",
             "author": "Author",
-            "chunk_ids": ["chunk-1"],
         }
-        mock_firestore.get_chunk_by_id.return_value = {
-            "knowledge_card": {
-                "takeaways": [
-                    "Short",  # Too short (< 20 chars)
-                    "This is a longer takeaway that should be included",
-                ]
+        mock_firestore.get_chunks_by_source_id.return_value = [
+            {
+                "chunk_id": "chunk-1",
+                "knowledge_card": {
+                    "takeaways": [
+                        "Short",  # Too short (< 20 chars)
+                        "This is a longer takeaway that should be included",
+                    ]
+                },
             }
-        }
+        ]
 
         takeaways = article_ideas.extract_top_takeaways(
             source_ids=["source-1"], max_per_source=5
@@ -341,7 +344,7 @@ class TestThesisGeneration(unittest.TestCase):
         self.assertEqual(result["title"], "Test Title")
         self.assertEqual(result["thesis"], "Test thesis")
         self.assertEqual(result["unique_angle"], "Test angle")
-        mock_get_client.assert_called_with(provider="gemini", model_preference="flash")
+        mock_get_client.assert_called_with(model="gemini-2.5-flash")
 
     @patch("mcp_server.article_ideas.get_client")
     def test_generate_thesis_handles_markdown(self, mock_get_client):
@@ -384,13 +387,15 @@ class TestGenerateArticleIdea(unittest.TestCase):
         mock_firestore.get_source_by_id.return_value = {
             "title": "Deep Work",
             "author": "Cal Newport",
-            "chunk_ids": ["chunk-1"],
         }
-        mock_firestore.get_chunk_by_id.return_value = {
-            "knowledge_card": {
-                "takeaways": ["This is a long enough takeaway to be included"]
+        mock_firestore.get_chunks_by_source_id.return_value = [
+            {
+                "chunk_id": "chunk-1",
+                "knowledge_card": {
+                    "takeaways": ["This is a long enough takeaway to be included"]
+                },
             }
-        }
+        ]
         mock_firestore.get_source_relationships.return_value = []
 
         recent_time = datetime.utcnow() - timedelta(days=5)
@@ -412,8 +417,8 @@ class TestGenerateArticleIdea(unittest.TestCase):
         mock_firestore.get_source_by_id.return_value = {
             "title": "Test",
             "author": "Author",
-            "chunk_ids": [],
         }
+        mock_firestore.get_chunks_by_source_id.return_value = []
 
         result = article_ideas.generate_article_idea(["source-1"])
 
