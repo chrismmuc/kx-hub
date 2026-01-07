@@ -104,32 +104,56 @@ articles/
 ```
 article_ideas/
   {idea_id}:
-    title: "Potential article title"
-    description: "Brief description of the idea"
-    source_ids: ["source-1", "source-2"]  # Related KB sources
-    strength: 0.85  # How strong is the foundation?
-    status: "suggested" | "accepted" | "rejected" | "converted"
-    article_id: null | "article-id"  # If converted to article
-    suggested_at: timestamp
-    reason: "Why this is article-worthy"
+    title: "Developer Productivity ist Fokus-Zeit, nicht Velocity"
     
-    # Explainability: detailed scoring breakdown
-    reasoning_details: {
-      source_score: 0.85,       # Number and quality of sources
-      chunk_score: 0.90,        # Content depth (chunk count)
-      relationship_score: 0.70, # Cross-source connections
-      recency_score: 0.95,      # How recent the highlights are
-      contradiction_bonus: 0.0  # Bonus if contradictions found
+    # THE CORE INSIGHT - what makes this idea unique
+    thesis: "Deine Highlights zeigen: Deep Work Blocks (90min) + Cognitive Load Metriken 
+             ergeben zusammen ein besseres Productivity-Framework als DORA."
+    
+    # Your unique angle - why only YOU can write this
+    unique_angle: "Kombination von Cal Newports Deep Work mit Platform Engineering Metriken - 
+                   diese Verbindung macht sonst niemand."
+    
+    # Concrete highlights that support the thesis
+    key_highlights: [
+      {
+        quote: "90min Deep Work blocks outperform fragmented coding sessions",
+        source: "Deep Work",
+        author: "Cal Newport"
+      },
+      {
+        quote: "Measure developer cognitive load, not just DORA metrics",
+        source: "4 North Star Metrics for Platform Engineering Teams",
+        author: "Humanitec"
+      },
+      {
+        quote: "Context switching costs 23 minutes to regain focus",
+        source: "Maker's Schedule",
+        author: "Paul Graham"
+      }
+    ]
+    
+    # Why now?
+    timeliness: {
+      recency: "Du hast diese 3 Sources in den letzten 2 Wochen gelesen",
+      trending: true,  # Tavily shows current interest
+      trending_context: "5 aktuelle Artikel zu 'Developer Experience' in den letzten 30 Tagen"
     }
     
-    # Medium-Scores (calculated from primary signals)
+    # Sources and metadata
+    source_ids: ["deep-work", "platform-eng-metrics", "makers-schedule"]
+    strength: 0.92
+    status: "suggested" | "accepted" | "rejected" | "converted"
+    suggested_at: timestamp
+    
+    # Medium-Scores
     medium_scores: {
-      linkedin_post: 0.6,
+      linkedin_post: 0.5,
       linkedin_article: 0.9,
-      blog: 0.75,
-      newsletter: 0.5,
+      blog: 0.85,
+      newsletter: 0.7,
       twitter_thread: 0.4,
-      substack: 0.7
+      substack: 0.8
     }
 ```
 
@@ -146,11 +170,35 @@ article_series/
 
 ---
 
-## Story 6.1: Blog Idea Extraction from Knowledge Base
+## Story 6.1: High-Quality Article Idea Generation
 
 **Status:** Planned
 
-**Summary:** Automatically identify article-worthy topics from KB sources by analyzing source relationships, knowledge cards, and content density. Supports both automatic discovery and manual idea input via a single unified tool.
+**Summary:** Generate high-quality article ideas that go beyond simple topic suggestions. Each idea contains a concrete thesis, your unique angle based on YOUR highlights, and supporting quotes from your KB.
+
+### What Makes a High-Quality Idea?
+
+| Element | Bad Example | Good Example |
+|---------|-------------|--------------|
+| **Title** | "Deep Work Article" | "Developer Productivity ist Fokus-Zeit, nicht Velocity" |
+| **Thesis** | (missing) | "Deep Work Blocks + Cognitive Load Metriken = besseres Framework als DORA" |
+| **Unique Angle** | (missing) | "Kombination die nur DU machen kannst basierend auf deinen Highlights" |
+| **Evidence** | "3 sources" | 3 konkrete Zitate aus deinen Highlights |
+| **Timeliness** | (missing) | "Gelesen vor 2 Wochen + Thema trending" |
+
+### Why This Matters
+
+Eine Idee ist nicht "schreib über X". Eine Idee ist:
+
+> "Deine Highlights zeigen einen Zusammenhang zwischen A und B. 
+> Das ist dein einzigartiger Insight. Hier sind 3 Zitate die das stützen.
+> Das Thema ist gerade relevant weil..."
+
+**Das Ziel:** Wenn du eine Idee siehst, weißt du sofort:
+1. Was ist die These?
+2. Warum kann nur ICH das schreiben?
+3. Welche meiner Highlights fließen ein?
+4. Warum jetzt?
 
 ### Supported Publication Mediums
 
@@ -177,26 +225,40 @@ Scores are calculated from primary signals available in the KB:
 ### Algorithm
 
 ```
-1. Score each source for "article potential":
-   - Has 3+ chunks (enough material)
-   - Has 2+ relationships to other sources (cross-pollination)
-   - Knowledge card has strong takeaways
-   - Recent highlights (topic is active in mind)
+1. Find source clusters with strong connections:
+   - Sources with "extends" or "contradicts" relationships
+   - Sources that share tags/concepts
+   - Recent highlights (topic is fresh in mind)
 
-2. Identify cross-source themes:
-   - Find source clusters with "extends" relationships
-   - Look for sources that share tags/concepts
-   - Detect contradictions (great for analysis articles)
+2. Extract key takeaways from Knowledge Cards:
+   - Pull the strongest takeaways from each source
+   - Find patterns: What concepts appear across sources?
+   - Identify contradictions (great for thesis development)
 
-3. Generate idea candidates:
-   - For each high-scoring source: "Deep dive on X"
-   - For related source pairs: "Comparing X and Y"
-   - For contradiction pairs: "X vs Y: Which is right?"
-   - For 3+ related sources: "Synthesis: What I learned about Z"
+3. Generate thesis using LLM:
+   - Input: Top takeaways from related sources
+   - Prompt: "What unique insight emerges from combining these highlights?"
+   - Output: Concrete thesis statement (not just a topic)
 
-4. Calculate medium scores for each idea based on primary signals
+4. Identify unique angle:
+   - What combination of sources is unusual?
+   - What perspective does the user bring?
+   - Why can only THIS user write this article?
 
-5. Deduplicate: Skip ideas similar to existing ones (title similarity or same source_ids)
+5. Select supporting highlights:
+   - Pick 2-4 concrete quotes that support the thesis
+   - Include author and source for credibility
+   - Prioritize memorable/quotable highlights
+
+6. Assess timeliness:
+   - How recently were these sources read?
+   - Is the topic trending? (optional Tavily check)
+   - Any current events that make this relevant?
+
+7. Calculate medium scores based on:
+   - Source count → long-form vs short
+   - Contradiction presence → discussion/essay format
+   - Topic breadth → post vs article
 ```
 
 ### MCP Tool: `suggest_article_ideas`
@@ -207,49 +269,69 @@ Unified tool for both automatic discovery and manual idea input.
 suggest_article_ideas(
     # Filters
     min_sources: int = 2,        # Minimum KB sources to draw from
-    focus_tags: list = None,     # Optional: filter by tags (use get_stats() to see available)
+    focus_tags: list = None,     # Optional: filter by tags
     limit: int = 5,              # Number of suggestions
     
     # Storage
-    save: bool = True,           # False = preview only, don't persist
+    save: bool = True,           # False = preview only
     
-    # Web enrichment (optional, uses Tavily)
-    enrich_with_web: bool = False,  # Add market analysis
+    # Web enrichment (optional)
+    enrich_with_web: bool = False,  # Add trending/competition analysis
     
-    # Manual idea input (replaces log_article_idea)
-    topic: str = None,           # e.g., "Deep Work for Developers"
-    source_ids: list = None      # Optional: specific sources to use
+    # Manual idea input
+    topic: str = None,           # Evaluate a specific topic
+    source_ids: list = None      # Use specific sources
 ) -> {
     "ideas": [
         {
             "idea_id": "idea-123",
-            "title": "The PARA Method in Practice",
-            "type": "deep_dive",
-            "sources": ["building-a-second-brain", "the-para-method"],
+            
+            # THE IDEA (not just a topic!)
+            "title": "Developer Productivity ist Fokus-Zeit, nicht Velocity",
+            "thesis": "Deep Work Blocks (90min) + Cognitive Load Metriken ergeben 
+                       zusammen ein besseres Productivity-Framework als DORA.",
+            "unique_angle": "Kombination von Cal Newports Deep Work mit Platform 
+                            Engineering Metriken - diese Verbindung macht sonst niemand.",
+            
+            # YOUR HIGHLIGHTS that support the thesis
+            "key_highlights": [
+                {
+                    "quote": "90min Deep Work blocks outperform fragmented coding sessions",
+                    "source": "Deep Work",
+                    "author": "Cal Newport"
+                },
+                {
+                    "quote": "Measure developer cognitive load, not just DORA metrics",
+                    "source": "4 North Star Metrics for Platform Engineering Teams",
+                    "author": "Humanitec"
+                },
+                {
+                    "quote": "Context switching costs 23 minutes to regain focus",
+                    "source": "Maker's Schedule",
+                    "author": "Paul Graham"
+                }
+            ],
+            
+            # WHY NOW?
+            "timeliness": {
+                "recency": "Diese 3 Sources in den letzten 2 Wochen gelesen",
+                "trending": true,
+                "trending_context": "5 aktuelle Artikel zu 'Developer Experience'"
+            },
+            
+            # Metadata
+            "sources": ["deep-work", "platform-eng-metrics", "makers-schedule"],
             "strength": 0.92,
             "suggested_at": "2026-01-05T10:30:00Z",
-            "reason": "3 highly-related sources with 15 chunks",
-            "reasoning_details": {
-                "source_score": 0.85,       # Number and quality of sources
-                "chunk_score": 0.90,        # Content depth (chunk count)
-                "relationship_score": 0.70, # Cross-source connections
-                "recency_score": 0.95,      # How recent the highlights are
-                "contradiction_bonus": 0.0  # Bonus if contradictions found
-            },
+            
+            # Which format fits best?
             "medium_scores": {
-                "linkedin_post": 0.5,
                 "linkedin_article": 0.9,
-                "blog": 0.8,
-                "newsletter": 0.6,
-                "twitter_thread": 0.4,
-                "substack": 0.75
-            },
-            # Only when enrich_with_web=True:
-            "web_analysis": {
-                "existing_articles": 12,
-                "trending": true,
-                "suggested_angle": "Focus on developer workflows",
-                "competition": "medium"
+                "blog": 0.85,
+                "substack": 0.8,
+                "newsletter": 0.7,
+                "linkedin_post": 0.5,
+                "twitter_thread": 0.4
             }
         }
     ]
@@ -257,11 +339,10 @@ suggest_article_ideas(
 ```
 
 **Usage patterns:**
-- `suggest_article_ideas()` → Auto-generate 5 ideas from entire KB
+- `suggest_article_ideas()` → Auto-generate 5 high-quality ideas from entire KB
 - `suggest_article_ideas(focus_tags=["productivity"])` → Ideas only from productivity sources
-- `suggest_article_ideas(topic="Deep Work for Developers")` → Evaluate and develop THIS idea
-- `suggest_article_ideas(topic="X", source_ids=["a", "b"])` → Develop idea with specific sources
-- `suggest_article_ideas(enrich_with_web=True)` → Include market/competition analysis
+- `suggest_article_ideas(topic="Deep Work for Developers")` → Develop THIS topic into a full idea
+- `suggest_article_ideas(enrich_with_web=True)` → Include trending/competition analysis
 
 ### MCP Tool: `list_ideas`
 
@@ -297,23 +378,90 @@ reject_idea(idea_id: str) -> {"status": "rejected", "idea_id": "..."}
 
 ### Tasks
 
-1. [ ] Implement source scoring algorithm
-2. [ ] Build cross-source theme detection
-3. [ ] Create `article_ideas` Firestore collection with `medium_scores` field
-4. [ ] Implement medium score calculation (primary signals)
-5. [ ] Implement `suggest_article_ideas` MCP tool (unified with manual input)
-6. [ ] Implement idea deduplication logic
-7. [ ] Implement Tavily web enrichment (optional parameter)
-8. [ ] Implement `list_ideas` MCP tool (with date, medium scores)
-9. [ ] Implement `accept_idea`, `reject_idea` tools
+1. [ ] Find source clusters with relationships (extends/contradicts)
+2. [ ] Extract top takeaways from Knowledge Cards
+3. [ ] LLM prompt: Generate thesis from combined takeaways
+4. [ ] LLM prompt: Identify unique angle ("why only YOU can write this")
+5. [ ] Select 2-4 supporting highlights with quotes
+6. [ ] Calculate timeliness (recency + optional trending check)
+7. [ ] Calculate medium scores
+8. [ ] Create `article_ideas` Firestore collection
+9. [ ] Implement `suggest_article_ideas` MCP tool
+10. [ ] Implement `list_ideas`, `accept_idea`, `reject_idea` tools
+11. [ ] Optional: Infografik-Generierung (siehe unten)
+
+### Optional: Infografik-Generierung mit Gemini 3 Pro Image
+
+Generiere automatisch eine Infografik zur Artikel-Idee.
+
+**Voraussetzung:** LLM-Abstraktion erweitern um `generate_image()` Methode:
+
+```python
+# src/llm/base.py - neue abstrakte Methode
+@abstractmethod
+def generate_image(
+    self,
+    prompt: str,
+    config: Optional[ImageGenerationConfig] = None,
+) -> ImageResponse:
+    """Generate image from prompt (only supported by Gemini 3 Pro Image)."""
+    pass
+```
+
+**Prompt-Template** (komplette Idee als Kontext):
+
+```python
+INFOGRAPHIC_PROMPT = """
+Create a professional infographic for a blog article.
+
+ARTICLE IDEA:
+Title: {title}
+Thesis: {thesis}
+Unique Angle: {unique_angle}
+
+KEY INSIGHTS TO VISUALIZE:
+{key_highlights_formatted}
+
+VISUAL REQUIREMENTS:
+- Modern, clean, minimalist flat lay style
+- Clear visual flow showing how the insights connect to the thesis
+- Highlight the thesis as the central conclusion
+- Include author attributions for credibility
+- Professional typography, readable text
+- Aspect ratio: 16:9
+- Resolution: 4K for sharp text
+"""
+```
+
+**Nutzung:**
+
+```python
+suggest_article_ideas(generate_infographic=True) -> {
+    "ideas": [{
+        ...
+        "infographic": {
+            "image_url": "gs://kx-hub/ideas/idea-123.png",
+            "prompt_used": "Create a professional infographic...",
+            "model": "gemini-3-pro-image"
+        }
+    }]
+}
+```
+
+**Tasks für Infografik:**
+1. [ ] Erweitere `BaseLLMClient` um `generate_image()` Methode
+2. [ ] Implementiere `GeminiImageClient` für Gemini 3 Pro Image
+3. [ ] Infografik-Prompt-Template erstellen
+4. [ ] Upload zu GCS und URL in Firestore speichern
 
 ### Success Metrics
 
-- Generates 3-5 relevant ideas per week (for active KB)
-- 70%+ of suggested ideas rated as "interesting" by user
-- Ideas draw from 2+ sources (not single-source suggestions)
-- Response time < 5 seconds (without web enrichment)
-- Medium scores correlate with user's actual publication choices
+- Each idea has a concrete thesis (not just a topic)
+- Each idea has 2-4 supporting highlights with quotes
+- Each idea explains WHY this user can uniquely write it
+- 80%+ of ideas rated as "I could start writing this now"
+- Response time < 10 seconds (LLM call included)
+- Optional: Infografik visuell ansprechend und inhaltlich korrekt
 
 ---
 
