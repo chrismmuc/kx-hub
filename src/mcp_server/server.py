@@ -226,17 +226,24 @@ Two-step pattern: search_kb → scan cards → get_chunk for details.""",
 Unified tool for:
 - Auto-generate ideas from KB analysis (no topic param)
 - Evaluate a specific topic (with topic param)
+- List existing ideas (list_existing=true)
 - Calculate medium suitability scores (linkedin_post, linkedin_article, blog, newsletter, twitter_thread, substack)
 - Optional web enrichment for market analysis (enrich_with_web=true)
 
 Usage patterns:
 - suggest_article_ideas() → Auto-generate 5 ideas from entire KB
+- suggest_article_ideas(list_existing=true) → Show previously generated ideas
 - suggest_article_ideas(focus_tags=["productivity"]) → Ideas only from productivity sources
 - suggest_article_ideas(topic="Deep Work for Developers") → Evaluate THIS idea
 - suggest_article_ideas(enrich_with_web=true) → Include market/competition analysis""",
         "inputSchema": {
             "type": "object",
             "properties": {
+                "list_existing": {
+                    "type": "boolean",
+                    "description": "List previously generated ideas instead of generating new ones",
+                    "default": False,
+                },
                 "min_sources": {
                     "type": "integer",
                     "description": "Minimum KB sources per idea (default 2)",
@@ -249,7 +256,7 @@ Usage patterns:
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum ideas to generate (default 5)",
+                    "description": "Maximum ideas to generate or list (default 5)",
                     "default": 5,
                 },
                 "save": {
@@ -272,57 +279,6 @@ Usage patterns:
                     "description": "Specific sources to use with topic",
                 },
             },
-        },
-    },
-    {
-        "name": "list_ideas",
-        "description": "List article ideas with optional status filter. Shows title, date, strength, status, and top recommended mediums.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "description": "Filter by status",
-                    "enum": ["suggested", "accepted", "rejected"],
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum ideas to return (default 20)",
-                    "default": 20,
-                },
-            },
-        },
-    },
-    {
-        "name": "accept_idea",
-        "description": "Accept an article idea for development.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "idea_id": {
-                    "type": "string",
-                    "description": "ID of the idea to accept",
-                },
-            },
-            "required": ["idea_id"],
-        },
-    },
-    {
-        "name": "reject_idea",
-        "description": "Reject an article idea.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "idea_id": {
-                    "type": "string",
-                    "description": "ID of the idea to reject",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Optional reason for rejection",
-                },
-            },
-            "required": ["idea_id"],
         },
     },
     # Story 7.1: Async Recommendations
@@ -434,6 +390,7 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     # Story 6.1: Blog Idea Extraction
     elif name == "suggest_article_ideas":
         return tools.suggest_article_ideas(
+            list_existing=arguments.get("list_existing", False),
             min_sources=arguments.get("min_sources", 2),
             focus_tags=arguments.get("focus_tags"),
             limit=arguments.get("limit", 5),
@@ -441,18 +398,6 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             enrich_with_web=arguments.get("enrich_with_web", False),
             topic=arguments.get("topic"),
             source_ids=arguments.get("source_ids"),
-        )
-    elif name == "list_ideas":
-        return tools.list_ideas(
-            status=arguments.get("status"),
-            limit=arguments.get("limit", 20),
-        )
-    elif name == "accept_idea":
-        return tools.accept_idea(idea_id=arguments.get("idea_id", ""))
-    elif name == "reject_idea":
-        return tools.reject_idea(
-            idea_id=arguments.get("idea_id", ""),
-            reason=arguments.get("reason"),
         )
     # Story 7.1: Async Recommendations, Story 7.2: Simplified interface
     elif name == "recommendations":

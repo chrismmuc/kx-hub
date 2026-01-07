@@ -309,7 +309,6 @@ class TestFirestoreOperations(unittest.TestCase):
         mock_doc.to_dict.return_value = {
             "idea_id": "idea-1",
             "title": "Test Idea",
-            "status": "suggested",
             "strength": 0.8,
         }
         mock_query.stream.return_value = [mock_doc]
@@ -318,60 +317,6 @@ class TestFirestoreOperations(unittest.TestCase):
 
         self.assertEqual(len(ideas), 1)
         self.assertEqual(ideas[0]["idea_id"], "idea-1")
-
-    @patch("mcp_server.article_ideas.firestore_client.get_firestore_client")
-    def test_get_article_ideas_with_status_filter(self, mock_get_client):
-        """Getting ideas with status filter."""
-        mock_db = MagicMock()
-        mock_get_client.return_value = mock_db
-        mock_collection = MagicMock()
-        mock_db.collection.return_value = mock_collection
-
-        mock_query = MagicMock()
-        mock_collection.where.return_value = mock_query
-        mock_query.order_by.return_value = mock_query
-        mock_query.limit.return_value = mock_query
-        mock_query.stream.return_value = []
-
-        article_ideas.get_article_ideas(status="accepted", limit=10)
-
-        mock_collection.where.assert_called_with("status", "==", "accepted")
-
-    @patch("mcp_server.article_ideas.firestore_client.get_firestore_client")
-    def test_update_idea_status(self, mock_get_client):
-        """Updating idea status works correctly."""
-        mock_db = MagicMock()
-        mock_get_client.return_value = mock_db
-        mock_collection = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_doc = MagicMock()
-        mock_collection.document.return_value = mock_doc
-
-        success = article_ideas.update_idea_status("idea-1", "accepted")
-
-        self.assertTrue(success)
-        mock_doc.update.assert_called_once()
-        call_args = mock_doc.update.call_args[0][0]
-        self.assertEqual(call_args["status"], "accepted")
-
-    @patch("mcp_server.article_ideas.firestore_client.get_firestore_client")
-    def test_update_idea_status_with_reason(self, mock_get_client):
-        """Updating idea status with reason."""
-        mock_db = MagicMock()
-        mock_get_client.return_value = mock_db
-        mock_collection = MagicMock()
-        mock_db.collection.return_value = mock_collection
-        mock_doc = MagicMock()
-        mock_collection.document.return_value = mock_doc
-
-        success = article_ideas.update_idea_status(
-            "idea-1", "rejected", reason="Not relevant"
-        )
-
-        self.assertTrue(success)
-        call_args = mock_doc.update.call_args[0][0]
-        self.assertEqual(call_args["status"], "rejected")
-        self.assertEqual(call_args["status_reason"], "Not relevant")
 
 
 class TestThesisGeneration(unittest.TestCase):
@@ -518,17 +463,17 @@ class TestMCPToolHandlers(unittest.TestCase):
             self.assertEqual(result["mode"], "topic_evaluation")
             self.assertEqual(result["topic"], "Deep Work for Developers")
 
-    def test_list_ideas_handler(self):
-        """list_ideas MCP handler works correctly."""
+    def test_suggest_article_ideas_list_existing(self):
+        """suggest_article_ideas list_existing mode."""
         mock_module = MagicMock()
         mock_module.get_article_ideas.return_value = [
             {
                 "idea_id": "idea-1",
                 "title": "Test Idea",
-                "suggested_at": datetime.now(),
+                "thesis": "Test thesis",
+                "suggested_at": "2026-01-07T10:00:00Z",
                 "strength": 0.8,
-                "status": "suggested",
-                "source_ids": ["source-1"],
+                "sources": ["source-1"],
                 "medium_scores": {"blog": 0.9, "linkedin_post": 0.5},
             }
         ]
@@ -536,38 +481,12 @@ class TestMCPToolHandlers(unittest.TestCase):
         with patch.dict("sys.modules", {"article_ideas": mock_module}):
             from mcp_server import tools
 
-            result = tools.list_ideas(status="suggested", limit=10)
+            result = tools.suggest_article_ideas(list_existing=True, limit=10)
 
+            self.assertEqual(result["mode"], "list")
             self.assertEqual(result["idea_count"], 1)
             self.assertEqual(result["ideas"][0]["idea_id"], "idea-1")
             self.assertIn("top_mediums", result["ideas"][0])
-
-    def test_accept_idea_handler(self):
-        """accept_idea MCP handler works correctly."""
-        mock_module = MagicMock()
-        mock_module.update_idea_status.return_value = True
-
-        with patch.dict("sys.modules", {"article_ideas": mock_module}):
-            from mcp_server import tools
-
-            result = tools.accept_idea(idea_id="idea-1")
-
-            self.assertTrue(result["success"])
-            self.assertEqual(result["status"], "accepted")
-
-    def test_reject_idea_handler(self):
-        """reject_idea MCP handler works correctly."""
-        mock_module = MagicMock()
-        mock_module.update_idea_status.return_value = True
-
-        with patch.dict("sys.modules", {"article_ideas": mock_module}):
-            from mcp_server import tools
-
-            result = tools.reject_idea(idea_id="idea-1", reason="Not relevant")
-
-            self.assertTrue(result["success"])
-            self.assertEqual(result["status"], "rejected")
-            self.assertEqual(result["reason"], "Not relevant")
 
 
 class TestSourceClusterDiscovery(unittest.TestCase):

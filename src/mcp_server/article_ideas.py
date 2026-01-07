@@ -504,10 +504,7 @@ def save_article_idea(idea: Dict[str, Any]) -> str:
     doc_data = {
         **idea,
         "idea_id": idea_id,
-        "status": "suggested",
         "suggested_at": datetime.utcnow(),
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
     }
 
     db.collection("article_ideas").document(idea_id).set(doc_data)
@@ -517,14 +514,12 @@ def save_article_idea(idea: Dict[str, Any]) -> str:
 
 
 def get_article_ideas(
-    status: Optional[str] = None,
     limit: int = 20,
 ) -> List[Dict[str, Any]]:
     """
     Get article ideas from Firestore.
 
     Args:
-        status: Optional status filter
         limit: Maximum ideas to return
 
     Returns:
@@ -533,50 +528,17 @@ def get_article_ideas(
     db = firestore_client.get_firestore_client()
 
     query = db.collection("article_ideas")
-
-    if status:
-        query = query.where("status", "==", status)
-
     query = query.order_by("suggested_at", direction="DESCENDING").limit(limit)
 
     ideas = []
     for doc in query.stream():
         idea = doc.to_dict()
-        # Convert timestamps to ISO strings
-        for field in ["suggested_at", "created_at", "updated_at"]:
-            if idea.get(field) and hasattr(idea[field], "isoformat"):
-                idea[field] = idea[field].isoformat() + "Z"
+        # Convert timestamp to ISO string
+        if idea.get("suggested_at") and hasattr(idea["suggested_at"], "isoformat"):
+            idea["suggested_at"] = idea["suggested_at"].isoformat() + "Z"
         ideas.append(idea)
 
     return ideas
-
-
-def update_idea_status(idea_id: str, status: str, reason: Optional[str] = None) -> bool:
-    """
-    Update article idea status.
-
-    Args:
-        idea_id: Idea ID
-        status: New status (accepted, rejected)
-        reason: Optional reason for status change
-
-    Returns:
-        True if successful
-    """
-    db = firestore_client.get_firestore_client()
-
-    update_data = {
-        "status": status,
-        "updated_at": datetime.utcnow(),
-    }
-
-    if reason:
-        update_data["status_reason"] = reason
-
-    db.collection("article_ideas").document(idea_id).update(update_data)
-
-    logger.info(f"Updated idea {idea_id} status to {status}")
-    return True
 
 
 # ============================================================================
@@ -636,7 +598,6 @@ def suggest_ideas_from_sources(
         if save:
             idea_id = save_article_idea(idea)
             idea["idea_id"] = idea_id
-            idea["status"] = "suggested"
             idea["suggested_at"] = datetime.utcnow().isoformat() + "Z"
 
         ideas.append(idea)
@@ -711,7 +672,6 @@ def suggest_idea_for_topic(
     if save:
         idea_id = save_article_idea(idea)
         idea["idea_id"] = idea_id
-        idea["status"] = "suggested"
         idea["suggested_at"] = datetime.utcnow().isoformat() + "Z"
 
     return {"idea": idea}

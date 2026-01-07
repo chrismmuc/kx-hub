@@ -2363,6 +2363,7 @@ def search_within_source(source_id: str, query: str, limit: int = 10) -> Dict[st
 
 
 def suggest_article_ideas(
+    list_existing: bool = False,
     min_sources: int = 2,
     focus_tags: Optional[List[str]] = None,
     limit: int = 5,
@@ -2379,13 +2380,15 @@ def suggest_article_ideas(
     Unified tool for:
     - Automatic idea discovery from KB analysis
     - Manual topic evaluation and scoring
+    - List existing ideas (list_existing=True)
     - Medium suitability calculation
     - Optional web enrichment for market analysis
 
     Args:
+        list_existing: List previously generated ideas instead of generating new ones
         min_sources: Minimum KB sources per idea (default 2)
         focus_tags: Filter by specific tags (use get_stats() to see available)
-        limit: Maximum ideas to generate (default 5)
+        limit: Maximum ideas to generate or list (default 5)
         save: Save ideas to Firestore (False = preview only)
         enrich_with_web: Add Tavily market analysis (slower, uses API)
         topic: Specific topic to evaluate (replaces auto-generation)
@@ -2394,11 +2397,15 @@ def suggest_article_ideas(
     Returns:
         Dictionary with generated ideas including:
         - ideas: List of idea objects with scores
-        - Each idea contains: title, type, sources, strength, reasoning_details,
-          medium_scores, reason, suggested_at
+        - Each idea contains: title, thesis, unique_angle, sources, strength,
+          medium_scores, key_highlights, timeliness, suggested_at
         - If enrich_with_web=True: web_analysis with competition info
 
     Examples:
+        # List existing ideas
+        >>> suggest_article_ideas(list_existing=True)
+        {"mode": "list", "idea_count": 5, "ideas": [...]}
+
         # Auto-generate ideas
         >>> suggest_article_ideas()
         {"idea_count": 5, "ideas": [...]}
@@ -2416,9 +2423,40 @@ def suggest_article_ideas(
 
     try:
         logger.info(
-            f"suggest_article_ideas: topic={topic}, min_sources={min_sources}, "
-            f"tags={focus_tags}, enrich_with_web={enrich_with_web}"
+            f"suggest_article_ideas: list_existing={list_existing}, topic={topic}, "
+            f"min_sources={min_sources}, tags={focus_tags}"
         )
+
+        # List existing ideas
+        if list_existing:
+            ideas = article_ideas.get_article_ideas(limit=limit)
+
+            # Format for display
+            formatted_ideas = []
+            for idea in ideas:
+                medium_scores = idea.get("medium_scores", {})
+                sorted_mediums = sorted(
+                    medium_scores.items(), key=lambda x: x[1], reverse=True
+                )[:3]
+                top_mediums = [{"medium": m, "score": s} for m, s in sorted_mediums]
+
+                formatted_ideas.append(
+                    {
+                        "idea_id": idea.get("idea_id"),
+                        "title": idea.get("title"),
+                        "thesis": idea.get("thesis"),
+                        "suggested_at": idea.get("suggested_at"),
+                        "strength": idea.get("strength", 0),
+                        "source_count": len(idea.get("sources", [])),
+                        "top_mediums": top_mediums,
+                    }
+                )
+
+            return {
+                "mode": "list",
+                "idea_count": len(formatted_ideas),
+                "ideas": formatted_ideas,
+            }
 
         # If topic provided, evaluate that specific idea
         if topic:
@@ -2478,190 +2516,6 @@ def suggest_article_ideas(
             "error": str(e),
             "idea_count": 0,
             "ideas": [],
-        }
-
-
-def list_ideas(
-    status: Optional[str] = None,
-    limit: int = 20,
-) -> Dict[str, Any]:
-    """
-    List article ideas with optional status filter.
-
-    Story 6.1: Blog Idea Extraction from Knowledge Base
-
-    Args:
-        status: Filter by status (suggested, accepted, rejected)
-        limit: Maximum ideas to return (default 20)
-
-    Returns:
-        Dictionary with:
-        - idea_count: Number of ideas returned
-        - ideas: List of ideas with id, title, suggested_at, strength,
-                 status, source_count, top_mediums
-
-    Example:
-        >>> list_ideas(status="suggested")
-        {
-            "idea_count": 5,
-            "ideas": [
-                {
-                    "idea_id": "abc123",
-                    "title": "Deep Work for Developers",
-                    "suggested_at": "2026-01-05T10:30:00Z",
-                    "strength": 0.92,
-                    "status": "suggested",
-                    "source_count": 3,
-                    "top_mediums": [
-                        {"medium": "linkedin_article", "score": 0.9},
-                        {"medium": "blog", "score": 0.8}
-                    ]
-                }
-            ]
-        }
-    """
-    import article_ideas
-
-    try:
-        logger.info(f"list_ideas: status={status}, limit={limit}")
-
-        ideas = article_ideas.get_article_ideas(status=status, limit=limit)
-
-        # Format output with top mediums
-        formatted_ideas = []
-        for idea in ideas:
-            medium_scores = idea.get("medium_scores", {})
-
-            # Get top 3 mediums by score
-            sorted_mediums = sorted(
-                medium_scores.items(), key=lambda x: x[1], reverse=True
-            )[:3]
-
-            top_mediums = [{"medium": m, "score": s} for m, s in sorted_mediums]
-
-            # Format suggested_at
-            suggested_at = idea.get("suggested_at")
-            if hasattr(suggested_at, "isoformat"):
-                suggested_at = suggested_at.isoformat() + "Z"
-
-            formatted_ideas.append(
-                {
-                    "idea_id": idea.get("idea_id"),
-                    "title": idea.get("title"),
-                    "suggested_at": suggested_at,
-                    "strength": idea.get("strength", 0),
-                    "status": idea.get("status", "suggested"),
-                    "source_count": len(idea.get("source_ids", [])),
-                    "top_mediums": top_mediums,
-                    "type": idea.get("type"),
-                    "reason": idea.get("reason"),
-                }
-            )
-
-        return {
-            "filter": {"status": status},
-            "idea_count": len(formatted_ideas),
-            "ideas": formatted_ideas,
-        }
-
-    except Exception as e:
-        logger.error(f"list_ideas failed: {e}")
-        return {
-            "error": str(e),
-            "idea_count": 0,
-            "ideas": [],
-        }
-
-
-def accept_idea(idea_id: str) -> Dict[str, Any]:
-    """
-    Accept an article idea for development.
-
-    Story 6.1: Blog Idea Extraction from Knowledge Base
-
-    Args:
-        idea_id: ID of the idea to accept
-
-    Returns:
-        Dictionary with:
-        - success: Boolean
-        - idea_id: The accepted idea ID
-        - status: New status (accepted)
-    """
-    import article_ideas
-
-    try:
-        logger.info(f"accept_idea: {idea_id}")
-
-        success = article_ideas.update_idea_status(idea_id, "accepted")
-
-        if success:
-            return {
-                "success": True,
-                "idea_id": idea_id,
-                "status": "accepted",
-                "message": "Idea accepted for development",
-            }
-        else:
-            return {
-                "success": False,
-                "idea_id": idea_id,
-                "error": "Failed to update idea status",
-            }
-
-    except Exception as e:
-        logger.error(f"accept_idea failed: {e}")
-        return {
-            "success": False,
-            "idea_id": idea_id,
-            "error": str(e),
-        }
-
-
-def reject_idea(idea_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Reject an article idea.
-
-    Story 6.1: Blog Idea Extraction from Knowledge Base
-
-    Args:
-        idea_id: ID of the idea to reject
-        reason: Optional reason for rejection
-
-    Returns:
-        Dictionary with:
-        - success: Boolean
-        - idea_id: The rejected idea ID
-        - status: New status (rejected)
-    """
-    import article_ideas
-
-    try:
-        logger.info(f"reject_idea: {idea_id}, reason={reason}")
-
-        success = article_ideas.update_idea_status(idea_id, "rejected", reason=reason)
-
-        if success:
-            return {
-                "success": True,
-                "idea_id": idea_id,
-                "status": "rejected",
-                "reason": reason,
-                "message": "Idea rejected",
-            }
-        else:
-            return {
-                "success": False,
-                "idea_id": idea_id,
-                "error": "Failed to update idea status",
-            }
-
-    except Exception as e:
-        logger.error(f"reject_idea failed: {e}")
-        return {
-            "success": False,
-            "idea_id": idea_id,
-            "error": str(e),
         }
 
 
