@@ -344,7 +344,7 @@ class TestThesisGeneration(unittest.TestCase):
         self.assertEqual(result["title"], "Test Title")
         self.assertEqual(result["thesis"], "Test thesis")
         self.assertEqual(result["unique_angle"], "Test angle")
-        mock_get_client.assert_called_with(model="gemini-2.5-flash")
+        mock_get_client.assert_called_with(model="gemini-3-pro-preview")
 
     @patch("mcp_server.article_ideas.get_client")
     def test_generate_thesis_handles_markdown(self, mock_get_client):

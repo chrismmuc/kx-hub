@@ -178,30 +178,33 @@ def extract_top_takeaways(
 # ============================================================================
 
 
-THESIS_PROMPT = """Du bist ein erfahrener Content-Stratege. Analysiere diese Highlights aus verschiedenen Quellen und generiere eine Artikel-Idee.
+THESIS_PROMPT = """Analyze these highlights and generate a concrete article idea.
 
-HIGHLIGHTS AUS DER WISSENSDATENBANK:
+HIGHLIGHTS:
 {takeaways_formatted}
 
-AUFGABE:
-Finde einen einzigartigen Zusammenhang zwischen diesen Highlights und formuliere:
+RULES FOR THE THESIS:
+- FORBIDDEN: Vague phrases like "holistic approach", "unlock potential", "foster collaboration", "shift mindset"
+- FORBIDDEN: Generic statements that could apply to any topic
+- REQUIRED: Concrete claim that can be answered with YES or NO
+- REQUIRED: Include specific details from the highlights
 
-1. TITEL: Ein prägnanter Artikel-Titel (deutsch oder englisch, je nach Highlights)
-2. THESE: Die zentrale Aussage des Artikels (1-2 Sätze)
-3. EINZIGARTIGER BLICKWINKEL: Warum ist diese Kombination der Quellen besonders? Was macht diesen Artikel einzigartig?
+GOOD THESES (examples):
+- "Teams that deploy daily have 3x fewer bugs than teams with weekly releases"
+- "The ROI of AI tools drops after 6 months because developers stop using them"
+- "Code reviews under 200 lines find 80% more bugs than longer reviews"
 
-Antworte im folgenden JSON-Format:
+BAD THESES (examples):
+- "AI transforms software development" (says nothing concrete)
+- "Organizations must embrace change" (generic)
+- "Balance between X and Y is key" (platitude)
+
+Respond ONLY with this JSON:
 {{
-    "title": "...",
-    "thesis": "...",
-    "unique_angle": "..."
-}}
-
-Wichtig:
-- Die These muss konkret und argumentierbar sein (nicht nur ein Thema)
-- Der Blickwinkel muss erklären, warum diese Quellen-Kombination wertvoll ist
-- Beziehe dich auf die konkreten Inhalte der Highlights
-"""
+    "title": "Short, punchy title",
+    "thesis": "A concrete, verifiable claim with specific details",
+    "unique_angle": "What exactly connects these sources? What contradiction or surprising connection?"
+}}"""
 
 
 def generate_thesis_and_angle(
@@ -227,8 +230,8 @@ def generate_thesis_and_angle(
     prompt = THESIS_PROMPT.format(takeaways_formatted=takeaways_formatted)
 
     try:
-        # Use LLM abstraction (gemini-2.5-flash for cost efficiency)
-        client = get_client(model="gemini-2.5-flash")
+        # Use Gemini 3 Pro for better reasoning on creative tasks
+        client = get_client(model="gemini-3-pro-preview")
         response = client.generate(prompt)
 
         # Parse JSON response
