@@ -1,267 +1,322 @@
 """
-Article Ideas Engine for Blog Content Generation.
+Article Idea Generation from Knowledge Base.
 
-Story 6.1: Blog Idea Extraction from Knowledge Base
+Story 6.1: High-Quality Article Idea Generation
 
-Generates article ideas from KB sources by analyzing:
-- Source relationships and cross-source themes
-- Knowledge card content and takeaways
-- Content density (chunk count)
-- Recency of highlights
-
-Calculates medium scores for publication suitability:
-- linkedin_post, linkedin_article, blog, newsletter, twitter_thread, substack
+Generates article ideas with:
+- Concrete thesis (not just topics)
+- Unique angle based on user's highlights
+- Supporting quotes from KB
+- Timeliness assessment
+- Medium scores for publication format
 """
 
-import hashlib
 import logging
-import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import firestore_client
 
+from src.llm import get_client
+
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-# Constants
-# ============================================================================
-
-# Supported publication mediums with characteristics
-MEDIUMS = {
-    "linkedin_post": {
-        "max_length": 1300,  # characters
-        "ideal_sources": (1, 2),
-        "ideal_chunks": (1, 3),
-        "description": "Short, hook-driven, personal insights",
-    },
-    "linkedin_article": {
-        "max_length": 10000,  # ~2000 words
-        "ideal_sources": (2, 5),
-        "ideal_chunks": (5, 15),
-        "description": "Professional deep-dives, 800-2000 words",
-    },
-    "blog": {
-        "max_length": 15000,  # ~3000 words
-        "ideal_sources": (3, 10),
-        "ideal_chunks": (8, 30),
-        "description": "SEO-optimized, permanent reference, 1000-3000 words",
-    },
-    "newsletter": {
-        "max_length": 7500,  # ~1500 words
-        "ideal_sources": (2, 5),
-        "ideal_chunks": (4, 12),
-        "description": "Curated, personal voice, 500-1500 words",
-    },
-    "twitter_thread": {
-        "max_length": 4200,  # ~15 tweets
-        "ideal_sources": (1, 3),
-        "ideal_chunks": (2, 8),
-        "description": "Punchy, numbered takeaways, 5-15 tweets",
-    },
-    "substack": {
-        "max_length": 12500,  # ~2500 words
-        "ideal_sources": (2, 6),
-        "ideal_chunks": (5, 20),
-        "description": "Essay-style, analytical, 1000-2500 words",
-    },
-}
-
-# Idea types based on source patterns
-IDEA_TYPES = {
-    "deep_dive": "Deep analysis of a single topic",
-    "comparison": "Comparing two related concepts or approaches",
-    "synthesis": "Combining insights from multiple sources",
-    "contradiction": "Exploring conflicting viewpoints",
-    "practical": "Actionable takeaways and how-tos",
-}
-
 
 # ============================================================================
-# Source Scoring Algorithm
+# Source Cluster Discovery
 # ============================================================================
 
 
-def calculate_source_score(source: Dict[str, Any]) -> float:
+def find_source_clusters(
+    min_relationships: int = 2,
+    days: int = 30,
+    limit: int = 10,
+) -> List[Dict[str, Any]]:
     """
-    Calculate article potential score for a source.
+    Find clusters of related sources that could make good article topics.
 
-    Factors:
-    - Chunk count (more content = more to write about)
-    - Has relationships to other sources
-    - Quality of knowledge cards
+    Looks for sources with:
+    - Cross-source relationships (extends, contradicts, etc.)
+    - Recent highlights (topic is fresh)
+    - Strong knowledge cards with takeaways
 
     Args:
-        source: Source data from Firestore
+        min_relationships: Minimum cross-source relationships required
+        days: Only consider sources read in last N days
+        limit: Maximum clusters to return
 
     Returns:
-        Score between 0.0 and 1.0
-    """
-    score = 0.0
-
-    # Chunk count score (0-0.3)
-    chunk_count = source.get("chunk_count", 0)
-    if chunk_count >= 10:
-        score += 0.3
-    elif chunk_count >= 5:
-        score += 0.2
-    elif chunk_count >= 3:
-        score += 0.15
-    elif chunk_count >= 1:
-        score += 0.05
-
-    # Has tags (indicates categorization) (0-0.1)
-    tags = source.get("tags", [])
-    if len(tags) >= 3:
-        score += 0.1
-    elif len(tags) >= 1:
-        score += 0.05
-
-    return min(score, 1.0)
-
-
-def calculate_chunk_score(chunks: List[Dict[str, Any]]) -> float:
-    """
-    Calculate content depth score from chunks.
-
-    Args:
-        chunks: List of chunk data
-
-    Returns:
-        Score between 0.0 and 1.0
-    """
-    if not chunks:
-        return 0.0
-
-    chunk_count = len(chunks)
-
-    # Base score from chunk count
-    if chunk_count >= 15:
-        base_score = 1.0
-    elif chunk_count >= 10:
-        base_score = 0.85
-    elif chunk_count >= 5:
-        base_score = 0.7
-    elif chunk_count >= 3:
-        base_score = 0.5
-    else:
-        base_score = 0.3
-
-    # Bonus for knowledge cards with takeaways
-    cards_with_takeaways = 0
-    for chunk in chunks:
-        kc = chunk.get("knowledge_card", {})
-        if kc and kc.get("takeaways"):
-            cards_with_takeaways += 1
-
-    takeaway_ratio = cards_with_takeaways / chunk_count if chunk_count > 0 else 0
-    bonus = takeaway_ratio * 0.15
-
-    return min(base_score + bonus, 1.0)
-
-
-def calculate_relationship_score(
-    source_id: str, relationships: Optional[List[Dict[str, Any]]] = None
-) -> float:
-    """
-    Calculate cross-source connection score.
-
-    Args:
-        source_id: Source to check relationships for
-        relationships: Pre-fetched relationships (optional)
-
-    Returns:
-        Score between 0.0 and 1.0
-    """
-    if relationships is None:
-        relationships = firestore_client.get_source_relationships(source_id)
-
-    if not relationships:
-        return 0.0
-
-    rel_count = len(relationships)
-
-    # Base score from relationship count
-    if rel_count >= 5:
-        base_score = 1.0
-    elif rel_count >= 3:
-        base_score = 0.8
-    elif rel_count >= 2:
-        base_score = 0.6
-    elif rel_count >= 1:
-        base_score = 0.4
-    else:
-        base_score = 0.0
-
-    return base_score
-
-
-def calculate_recency_score(
-    created_at: Optional[datetime], half_life_days: int = 30
-) -> float:
-    """
-    Calculate recency score with exponential decay.
-
-    Args:
-        created_at: When the source/chunk was added
-        half_life_days: Days until score halves
-
-    Returns:
-        Score between 0.0 and 1.0
-    """
-    if created_at is None:
-        return 0.5  # Default for unknown dates
-
-    if isinstance(created_at, str):
-        try:
-            created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        except ValueError:
-            return 0.5
-
-    now = datetime.now(created_at.tzinfo) if created_at.tzinfo else datetime.now()
-    age_days = (now - created_at).days
-
-    if age_days <= 0:
-        return 1.0
-
-    # Exponential decay
-    import math
-
-    decay_rate = math.log(2) / half_life_days
-    score = math.exp(-decay_rate * age_days)
-
-    return max(0.0, min(1.0, score))
-
-
-def calculate_contradiction_bonus(source_ids: List[str]) -> float:
-    """
-    Check if sources have contradicting relationships (good for discussion articles).
-
-    Args:
-        source_ids: List of source IDs to check
-
-    Returns:
-        Bonus score (0.0 or 0.15)
+        List of source clusters with relationship info
     """
     try:
-        contradictions = firestore_client.find_contradictions(limit=50)
+        # Get recent sources
+        sources = firestore_client.list_sources(limit=100)
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
 
-        for contradiction in contradictions:
-            chunk_a_source = contradiction.get("chunk_a", {}).get("title", "")
-            chunk_b_source = contradiction.get("chunk_b", {}).get("title", "")
+        clusters = []
 
-            # Check if any of our sources are involved in contradictions
-            for source_id in source_ids:
-                if (
-                    source_id in chunk_a_source.lower()
-                    or source_id in chunk_b_source.lower()
-                ):
-                    return 0.15
+        for source in sources:
+            source_id = source.get("source_id")
+            if not source_id:
+                continue
 
-        return 0.0
+            # Check recency
+            updated_at = source.get("updated_at")
+            if updated_at and hasattr(updated_at, "timestamp"):
+                if datetime.fromtimestamp(updated_at.timestamp()) < cutoff_date:
+                    continue
+
+            # Get relationships to other sources
+            relationships = firestore_client.get_source_relationships(source_id)
+
+            if len(relationships) >= min_relationships:
+                # Get source details with knowledge cards
+                source_details = firestore_client.get_source_by_id(source_id)
+
+                clusters.append(
+                    {
+                        "primary_source": {
+                            "source_id": source_id,
+                            "title": source.get("title", "Unknown"),
+                            "author": source.get("author", "Unknown"),
+                            "chunk_count": source.get("chunk_count", 0),
+                        },
+                        "related_sources": relationships,
+                        "relationship_count": len(relationships),
+                        "relationship_types": _aggregate_relationship_types(
+                            relationships
+                        ),
+                    }
+                )
+
+            if len(clusters) >= limit:
+                break
+
+        # Sort by relationship count
+        clusters.sort(key=lambda x: x["relationship_count"], reverse=True)
+
+        logger.info(f"Found {len(clusters)} source clusters")
+        return clusters
+
     except Exception as e:
-        logger.warning(f"Failed to check contradictions: {e}")
-        return 0.0
+        logger.error(f"Failed to find source clusters: {e}")
+        return []
+
+
+def _aggregate_relationship_types(relationships: List[Dict]) -> Dict[str, int]:
+    """Aggregate relationship types across all related sources."""
+    types = {}
+    for rel in relationships:
+        for rel_type, count in rel.get("relationship_types", {}).items():
+            types[rel_type] = types.get(rel_type, 0) + count
+    return types
+
+
+# ============================================================================
+# Takeaway Extraction
+# ============================================================================
+
+
+def extract_top_takeaways(
+    source_ids: List[str],
+    max_per_source: int = 3,
+) -> List[Dict[str, Any]]:
+    """
+    Extract top takeaways from Knowledge Cards for given sources.
+
+    Args:
+        source_ids: List of source IDs to extract from
+        max_per_source: Maximum takeaways per source
+
+    Returns:
+        List of takeaways with source attribution
+    """
+    takeaways = []
+
+    for source_id in source_ids:
+        source = firestore_client.get_source_by_id(source_id)
+        if not source:
+            continue
+
+        # Get chunks with knowledge cards
+        chunk_ids = source.get("chunk_ids", [])
+        source_title = source.get("title", "Unknown")
+        source_author = source.get("author", "Unknown")
+
+        source_takeaways = []
+
+        for chunk_id in chunk_ids:
+            chunk = firestore_client.get_chunk_by_id(chunk_id)
+            if not chunk:
+                continue
+
+            kc = chunk.get("knowledge_card", {})
+            if not kc:
+                continue
+
+            # Get takeaways from knowledge card
+            for takeaway in kc.get("takeaways", []):
+                if takeaway and len(takeaway) > 20:  # Skip very short ones
+                    source_takeaways.append(
+                        {
+                            "quote": takeaway,
+                            "source": source_title,
+                            "author": source_author,
+                            "source_id": source_id,
+                            "chunk_id": chunk_id,
+                        }
+                    )
+
+        # Take top N per source (first ones, as they're usually most important)
+        takeaways.extend(source_takeaways[:max_per_source])
+
+    logger.info(f"Extracted {len(takeaways)} takeaways from {len(source_ids)} sources")
+    return takeaways
+
+
+# ============================================================================
+# Thesis & Angle Generation (LLM)
+# ============================================================================
+
+
+THESIS_PROMPT = """Du bist ein erfahrener Content-Stratege. Analysiere diese Highlights aus verschiedenen Quellen und generiere eine Artikel-Idee.
+
+HIGHLIGHTS AUS DER WISSENSDATENBANK:
+{takeaways_formatted}
+
+AUFGABE:
+Finde einen einzigartigen Zusammenhang zwischen diesen Highlights und formuliere:
+
+1. TITEL: Ein prägnanter Artikel-Titel (deutsch oder englisch, je nach Highlights)
+2. THESE: Die zentrale Aussage des Artikels (1-2 Sätze)
+3. EINZIGARTIGER BLICKWINKEL: Warum ist diese Kombination der Quellen besonders? Was macht diesen Artikel einzigartig?
+
+Antworte im folgenden JSON-Format:
+{{
+    "title": "...",
+    "thesis": "...",
+    "unique_angle": "..."
+}}
+
+Wichtig:
+- Die These muss konkret und argumentierbar sein (nicht nur ein Thema)
+- Der Blickwinkel muss erklären, warum diese Quellen-Kombination wertvoll ist
+- Beziehe dich auf die konkreten Inhalte der Highlights
+"""
+
+
+def generate_thesis_and_angle(
+    takeaways: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Use LLM to generate thesis and unique angle from takeaways.
+
+    Args:
+        takeaways: List of takeaways with quotes and source info
+
+    Returns:
+        Dict with title, thesis, unique_angle
+    """
+    if not takeaways:
+        return {"title": "", "thesis": "", "unique_angle": ""}
+
+    # Format takeaways for prompt
+    takeaways_formatted = "\n".join(
+        [f'- "{t["quote"]}" — {t["author"]}, {t["source"]}' for t in takeaways]
+    )
+
+    prompt = THESIS_PROMPT.format(takeaways_formatted=takeaways_formatted)
+
+    try:
+        # Use LLM abstraction
+        client = get_client(provider="gemini", model_preference="flash")
+        response = client.generate(prompt)
+
+        # Parse JSON response
+        import json
+
+        # Extract JSON from response (handle markdown code blocks)
+        text = response.text
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+
+        result = json.loads(text.strip())
+
+        return {
+            "title": result.get("title", ""),
+            "thesis": result.get("thesis", ""),
+            "unique_angle": result.get("unique_angle", ""),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to generate thesis: {e}")
+        return {"title": "", "thesis": "", "unique_angle": ""}
+
+
+# ============================================================================
+# Timeliness Assessment
+# ============================================================================
+
+
+def assess_timeliness(
+    source_ids: List[str],
+    check_trending: bool = False,
+) -> Dict[str, Any]:
+    """
+    Assess how timely/relevant the topic is.
+
+    Args:
+        source_ids: Source IDs to check
+        check_trending: Whether to check if topic is trending (uses Tavily)
+
+    Returns:
+        Timeliness info with recency and optional trending data
+    """
+    # Calculate recency based on when sources were last updated
+    recent_count = 0
+    oldest_days = 0
+
+    for source_id in source_ids:
+        source = firestore_client.get_source_by_id(source_id)
+        if not source:
+            continue
+
+        updated_at = source.get("updated_at")
+        if updated_at and hasattr(updated_at, "timestamp"):
+            days_ago = (
+                datetime.utcnow() - datetime.fromtimestamp(updated_at.timestamp())
+            ).days
+            if days_ago <= 14:
+                recent_count += 1
+            oldest_days = max(oldest_days, days_ago)
+
+    recency_text = (
+        f"{recent_count} von {len(source_ids)} Sources in den letzten 2 Wochen gelesen"
+    )
+    if oldest_days <= 7:
+        recency_text = "Alle Sources in der letzten Woche gelesen - sehr frisch!"
+    elif oldest_days <= 14:
+        recency_text = "Sources in den letzten 2 Wochen gelesen"
+    elif oldest_days <= 30:
+        recency_text = "Sources im letzten Monat gelesen"
+    else:
+        recency_text = f"Sources vor {oldest_days} Tagen gelesen"
+
+    result = {
+        "recency": recency_text,
+        "recent_source_count": recent_count,
+        "oldest_days_ago": oldest_days,
+    }
+
+    # Optional: Check if trending via Tavily
+    if check_trending:
+        # TODO: Implement trending check via Tavily
+        result["trending"] = False
+        result["trending_context"] = None
+
+    return result
 
 
 # ============================================================================
@@ -272,250 +327,157 @@ def calculate_contradiction_bonus(source_ids: List[str]) -> float:
 def calculate_medium_scores(
     source_count: int,
     chunk_count: int,
-    tag_count: int,
-    has_contradictions: bool = False,
+    has_contradictions: bool,
+    takeaway_count: int,
 ) -> Dict[str, float]:
     """
-    Calculate suitability scores for each publication medium.
-
-    Based on primary signals:
-    - Source count: Few → Post, Many → Article/Blog
-    - Chunk count: Few → short, Many → long
-    - Topic breadth (tags): Narrow → Post, Broad → Blog
-    - Contradictions: Good for discussion/essay formats
-
-    Args:
-        source_count: Number of sources involved
-        chunk_count: Total chunks available
-        tag_count: Number of distinct tags
-        has_contradictions: Whether contradictions exist
-
-    Returns:
-        Dict mapping medium name to score (0.0-1.0)
-    """
-    scores = {}
-
-    for medium, config in MEDIUMS.items():
-        ideal_sources = config["ideal_sources"]
-        ideal_chunks = config["ideal_chunks"]
-
-        # Source fit score
-        if ideal_sources[0] <= source_count <= ideal_sources[1]:
-            source_fit = 1.0
-        elif source_count < ideal_sources[0]:
-            source_fit = source_count / ideal_sources[0]
-        else:
-            # Penalty for too many sources (harder to synthesize)
-            overage = source_count - ideal_sources[1]
-            source_fit = max(0.3, 1.0 - (overage * 0.1))
-
-        # Chunk fit score
-        if ideal_chunks[0] <= chunk_count <= ideal_chunks[1]:
-            chunk_fit = 1.0
-        elif chunk_count < ideal_chunks[0]:
-            chunk_fit = chunk_count / ideal_chunks[0] if ideal_chunks[0] > 0 else 0.5
-        else:
-            overage = chunk_count - ideal_chunks[1]
-            chunk_fit = max(0.4, 1.0 - (overage * 0.05))
-
-        # Tag breadth bonus for longer formats
-        tag_bonus = 0.0
-        if medium in ["blog", "substack", "linkedin_article"]:
-            if tag_count >= 3:
-                tag_bonus = 0.1
-            elif tag_count >= 2:
-                tag_bonus = 0.05
-
-        # Contradiction bonus for essay/discussion formats
-        contradiction_bonus = 0.0
-        if has_contradictions and medium in ["substack", "blog", "linkedin_article"]:
-            contradiction_bonus = 0.1
-
-        # Combined score
-        base_score = (source_fit * 0.4) + (chunk_fit * 0.6)
-        final_score = min(1.0, base_score + tag_bonus + contradiction_bonus)
-
-        scores[medium] = round(final_score, 2)
-
-    return scores
-
-
-# ============================================================================
-# Idea Generation
-# ============================================================================
-
-
-def generate_idea_id(title: str, source_ids: List[str]) -> str:
-    """
-    Generate a deterministic idea ID from title and sources.
-
-    Args:
-        title: Idea title
-        source_ids: Related source IDs
-
-    Returns:
-        Short hash-based ID
-    """
-    content = f"{title.lower()}:{'|'.join(sorted(source_ids))}"
-    return hashlib.sha256(content.encode()).hexdigest()[:12]
-
-
-def determine_idea_type(
-    source_count: int, has_contradictions: bool, relationship_types: List[str]
-) -> str:
-    """
-    Determine the type of article idea based on source patterns.
+    Calculate suitability scores for different publication mediums.
 
     Args:
         source_count: Number of sources
-        has_contradictions: Whether contradictions exist
-        relationship_types: Types of relationships found
+        chunk_count: Total chunks across sources
+        has_contradictions: Whether there are contradicting sources
+        takeaway_count: Number of strong takeaways
 
     Returns:
-        Idea type key
+        Dict mapping medium name to score (0.0 - 1.0)
     """
-    if has_contradictions:
-        return "contradiction"
+    scores = {}
 
-    if source_count == 1:
-        return "deep_dive"
+    # LinkedIn Post: Good for single insight, low complexity
+    scores["linkedin_post"] = max(
+        0.0, min(1.0, 0.8 - (source_count - 1) * 0.2 - (chunk_count - 3) * 0.1)
+    )
 
-    if source_count == 2:
-        return "comparison"
+    # LinkedIn Article: Good for 2-3 sources, professional topic
+    scores["linkedin_article"] = max(
+        0.0, min(1.0, 0.5 + min(source_count, 3) * 0.15 + min(takeaway_count, 5) * 0.05)
+    )
 
-    if "extends" in relationship_types or "supports" in relationship_types:
-        return "synthesis"
+    # Blog: Good for 2+ sources, comprehensive coverage
+    scores["blog"] = max(
+        0.0, min(1.0, 0.4 + min(source_count, 4) * 0.1 + min(chunk_count, 10) * 0.03)
+    )
 
-    return "practical"
+    # Newsletter: Good for curated insights, personal voice
+    scores["newsletter"] = max(
+        0.0, min(1.0, 0.5 + min(source_count, 3) * 0.1 + min(takeaway_count, 4) * 0.05)
+    )
 
+    # Twitter Thread: Good for listicle-style, punchy insights
+    scores["twitter_thread"] = max(0.0, min(1.0, 0.3 + min(takeaway_count, 7) * 0.1))
 
-def extract_themes_from_sources(sources: List[Dict[str, Any]]) -> List[str]:
-    """
-    Extract common themes/tags from multiple sources.
+    # Substack: Good for analytical, essay-style (especially with contradictions)
+    scores["substack"] = max(
+        0.0,
+        min(1.0, 0.4 + min(source_count, 4) * 0.1 + (0.2 if has_contradictions else 0)),
+    )
 
-    Args:
-        sources: List of source data
-
-    Returns:
-        List of common themes
-    """
-    all_tags = []
-    for source in sources:
-        all_tags.extend(source.get("tags", []))
-
-    # Count occurrences
-    from collections import Counter
-
-    tag_counts = Counter(all_tags)
-
-    # Return tags that appear in multiple sources
-    common_tags = [tag for tag, count in tag_counts.items() if count >= 2]
-
-    if not common_tags:
-        # Fallback to most common tags
-        common_tags = [tag for tag, _ in tag_counts.most_common(3)]
-
-    return common_tags
+    # Round scores
+    return {k: round(v, 2) for k, v in scores.items()}
 
 
-def generate_idea_title(
-    idea_type: str, sources: List[Dict[str, Any]], themes: List[str]
-) -> str:
-    """
-    Generate a suggested title for the article idea.
-
-    Args:
-        idea_type: Type of idea (deep_dive, comparison, etc.)
-        sources: Source data
-        themes: Common themes
-
-    Returns:
-        Generated title
-    """
-    if not sources:
-        return "Untitled Idea"
-
-    primary_source = sources[0]
-    source_title = primary_source.get("title", "Unknown")
-
-    if idea_type == "deep_dive":
-        return f"Deep Dive: {source_title}"
-
-    if idea_type == "comparison" and len(sources) >= 2:
-        return f"{sources[0].get('title', 'A')} vs {sources[1].get('title', 'B')}"
-
-    if idea_type == "contradiction":
-        return (
-            f"The Debate: Conflicting Views on {themes[0] if themes else source_title}"
-        )
-
-    if idea_type == "synthesis" and themes:
-        return f"What I Learned About {themes[0].title()}"
-
-    if themes:
-        return f"Insights on {themes[0].title()}"
-
-    return f"Reflections on {source_title}"
+# ============================================================================
+# Main Idea Generation
+# ============================================================================
 
 
-def score_idea(
-    sources: List[Dict[str, Any]],
-    chunks: List[Dict[str, Any]],
-    relationships: List[Dict[str, Any]],
+def generate_article_idea(
+    source_ids: List[str],
+    check_trending: bool = False,
 ) -> Dict[str, Any]:
     """
-    Calculate comprehensive scores for an article idea.
+    Generate a complete article idea from given sources.
 
     Args:
-        sources: Source data
-        chunks: Related chunks
-        relationships: Cross-source relationships
+        source_ids: Source IDs to use
+        check_trending: Whether to check trending status
 
     Returns:
-        Dict with strength score and reasoning_details
+        Complete article idea with thesis, angle, highlights, etc.
     """
-    source_ids = [s.get("source_id", "") for s in sources]
+    # Extract takeaways
+    takeaways = extract_top_takeaways(source_ids, max_per_source=3)
 
-    # Individual scores
-    source_score = (
-        sum(calculate_source_score(s) for s in sources) / len(sources) if sources else 0
+    if not takeaways:
+        return {"error": "No takeaways found in sources"}
+
+    # Generate thesis and angle via LLM
+    thesis_result = generate_thesis_and_angle(takeaways)
+
+    if not thesis_result.get("title"):
+        return {"error": "Failed to generate thesis"}
+
+    # Get source details for metadata
+    total_chunks = 0
+    has_contradictions = False
+
+    for source_id in source_ids:
+        source = firestore_client.get_source_by_id(source_id)
+        if source:
+            total_chunks += len(source.get("chunk_ids", []))
+
+        # Check for contradiction relationships
+        relationships = firestore_client.get_source_relationships(source_id)
+        for rel in relationships:
+            if "contradicts" in rel.get("relationship_types", {}):
+                has_contradictions = True
+                break
+
+    # Assess timeliness
+    timeliness = assess_timeliness(source_ids, check_trending)
+
+    # Calculate medium scores
+    medium_scores = calculate_medium_scores(
+        source_count=len(source_ids),
+        chunk_count=total_chunks,
+        has_contradictions=has_contradictions,
+        takeaway_count=len(takeaways),
     )
-    chunk_score = calculate_chunk_score(chunks)
-    relationship_score = (
-        len(relationships) / 5.0 if relationships else 0
-    )  # Normalize to 0-1
-    relationship_score = min(1.0, relationship_score)
 
-    # Recency: use most recent source
-    recency_scores = []
-    for source in sources:
-        created_at = source.get("created_at")
-        if created_at:
-            recency_scores.append(calculate_recency_score(created_at))
-    recency_score = max(recency_scores) if recency_scores else 0.5
-
-    # Contradiction bonus
-    contradiction_bonus = calculate_contradiction_bonus(source_ids)
-
-    # Combined strength
-    strength = (
-        source_score * 0.2
-        + chunk_score * 0.35
-        + relationship_score * 0.2
-        + recency_score * 0.25
-        + contradiction_bonus
-    )
+    # Select top highlights (2-4)
+    key_highlights = takeaways[:4]
 
     return {
-        "strength": round(min(1.0, strength), 2),
-        "reasoning_details": {
-            "source_score": round(source_score, 2),
-            "chunk_score": round(chunk_score, 2),
-            "relationship_score": round(relationship_score, 2),
-            "recency_score": round(recency_score, 2),
-            "contradiction_bonus": round(contradiction_bonus, 2),
-        },
+        "title": thesis_result["title"],
+        "thesis": thesis_result["thesis"],
+        "unique_angle": thesis_result["unique_angle"],
+        "key_highlights": key_highlights,
+        "timeliness": timeliness,
+        "sources": source_ids,
+        "strength": _calculate_strength(
+            len(source_ids), total_chunks, len(takeaways), has_contradictions
+        ),
+        "medium_scores": medium_scores,
     }
+
+
+def _calculate_strength(
+    source_count: int,
+    chunk_count: int,
+    takeaway_count: int,
+    has_contradictions: bool,
+) -> float:
+    """Calculate overall idea strength score."""
+    score = 0.0
+
+    # Source count (2-4 is ideal)
+    if source_count >= 2:
+        score += 0.3
+    if source_count >= 3:
+        score += 0.1
+
+    # Chunk count (more material = stronger)
+    score += min(chunk_count / 20, 0.3)
+
+    # Takeaway count
+    score += min(takeaway_count / 10, 0.2)
+
+    # Contradiction bonus
+    if has_contradictions:
+        score += 0.1
+
+    return round(min(score, 1.0), 2)
 
 
 # ============================================================================
@@ -525,74 +487,48 @@ def score_idea(
 
 def save_article_idea(idea: Dict[str, Any]) -> str:
     """
-    Save an article idea to Firestore.
+    Save article idea to Firestore.
 
     Args:
-        idea: Idea data to save
+        idea: Complete article idea
 
     Returns:
-        Idea ID
+        Generated idea_id
     """
+    import uuid
+
     db = firestore_client.get_firestore_client()
 
-    idea_id = idea.get("idea_id") or generate_idea_id(
-        idea.get("title", ""), idea.get("source_ids", [])
-    )
+    idea_id = f"idea-{uuid.uuid4().hex[:12]}"
 
     doc_data = {
-        "title": idea.get("title"),
-        "description": idea.get("description", ""),
-        "type": idea.get("type", "deep_dive"),
-        "source_ids": idea.get("source_ids", []),
-        "strength": idea.get("strength", 0.0),
-        "reasoning_details": idea.get("reasoning_details", {}),
-        "medium_scores": idea.get("medium_scores", {}),
-        "status": idea.get("status", "suggested"),
-        "reason": idea.get("reason", ""),
-        "suggested_at": idea.get("suggested_at") or datetime.utcnow(),
-        "article_id": None,
+        **idea,
+        "idea_id": idea_id,
+        "status": "suggested",
+        "suggested_at": datetime.utcnow(),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
     }
 
-    db.collection("article_ideas").document(idea_id).set(doc_data, merge=True)
-    logger.info(f"Saved article idea: {idea_id}")
+    db.collection("article_ideas").document(idea_id).set(doc_data)
 
+    logger.info(f"Saved article idea: {idea_id}")
     return idea_id
 
 
-def get_article_idea(idea_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Get an article idea by ID.
-
-    Args:
-        idea_id: Idea document ID
-
-    Returns:
-        Idea data or None
-    """
-    db = firestore_client.get_firestore_client()
-
-    doc = db.collection("article_ideas").document(idea_id).get()
-    if not doc.exists:
-        return None
-
-    data = doc.to_dict()
-    data["idea_id"] = doc.id
-
-    return data
-
-
-def list_article_ideas(
-    status: Optional[str] = None, limit: int = 20
+def get_article_ideas(
+    status: Optional[str] = None,
+    limit: int = 20,
 ) -> List[Dict[str, Any]]:
     """
-    List article ideas with optional status filter.
+    Get article ideas from Firestore.
 
     Args:
-        status: Filter by status (suggested, accepted, rejected)
+        status: Optional status filter
         limit: Maximum ideas to return
 
     Returns:
-        List of ideas
+        List of article ideas
     """
     db = firestore_client.get_firestore_client()
 
@@ -601,27 +537,26 @@ def list_article_ideas(
     if status:
         query = query.where("status", "==", status)
 
-    query = query.order_by(
-        "suggested_at", direction=firestore_client.firestore.Query.DESCENDING
-    )
-    query = query.limit(limit)
+    query = query.order_by("suggested_at", direction="DESCENDING").limit(limit)
 
     ideas = []
     for doc in query.stream():
-        data = doc.to_dict()
-        data["idea_id"] = doc.id
-        ideas.append(data)
+        idea = doc.to_dict()
+        # Convert timestamps to ISO strings
+        for field in ["suggested_at", "created_at", "updated_at"]:
+            if idea.get(field) and hasattr(idea[field], "isoformat"):
+                idea[field] = idea[field].isoformat() + "Z"
+        ideas.append(idea)
 
-    logger.info(f"Listed {len(ideas)} article ideas (status={status})")
     return ideas
 
 
 def update_idea_status(idea_id: str, status: str, reason: Optional[str] = None) -> bool:
     """
-    Update the status of an article idea.
+    Update article idea status.
 
     Args:
-        idea_id: Idea document ID
+        idea_id: Idea ID
         status: New status (accepted, rejected)
         reason: Optional reason for status change
 
@@ -632,71 +567,20 @@ def update_idea_status(idea_id: str, status: str, reason: Optional[str] = None) 
 
     update_data = {
         "status": status,
-        f"{status}_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
     }
 
     if reason:
         update_data["status_reason"] = reason
 
-    try:
-        db.collection("article_ideas").document(idea_id).update(update_data)
-        logger.info(f"Updated idea {idea_id} status to {status}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to update idea status: {e}")
-        return False
+    db.collection("article_ideas").document(idea_id).update(update_data)
 
-
-def check_idea_duplicate(title: str, source_ids: List[str]) -> Optional[Dict[str, Any]]:
-    """
-    Check if a similar idea already exists.
-
-    Checks:
-    1. Same source_ids combination
-    2. Similar title (normalized comparison)
-
-    Args:
-        title: Idea title
-        source_ids: Related source IDs
-
-    Returns:
-        Existing idea if duplicate found, None otherwise
-    """
-    db = firestore_client.get_firestore_client()
-
-    # Normalize title for comparison
-    normalized_title = re.sub(r"[^a-z0-9\s]", "", title.lower()).strip()
-
-    # Check existing ideas
-    for doc in db.collection("article_ideas").limit(100).stream():
-        data = doc.to_dict()
-        existing_sources = set(data.get("source_ids", []))
-        candidate_sources = set(source_ids)
-
-        # Same sources = duplicate
-        if existing_sources == candidate_sources and existing_sources:
-            data["idea_id"] = doc.id
-            return data
-
-        # Similar title = duplicate
-        existing_title = data.get("title", "")
-        normalized_existing = re.sub(r"[^a-z0-9\s]", "", existing_title.lower()).strip()
-
-        # Check for high similarity
-        if normalized_title and normalized_existing:
-            # Simple containment check
-            if (
-                normalized_title in normalized_existing
-                or normalized_existing in normalized_title
-            ):
-                data["idea_id"] = doc.id
-                return data
-
-    return None
+    logger.info(f"Updated idea {idea_id} status to {status}")
+    return True
 
 
 # ============================================================================
-# Main Idea Generation Functions
+# Main Entry Points (called by tools.py)
 # ============================================================================
 
 
@@ -707,18 +591,10 @@ def suggest_ideas_from_sources(
     save: bool = True,
 ) -> List[Dict[str, Any]]:
     """
-    Generate article ideas by analyzing KB sources.
-
-    Algorithm:
-    1. Get sources, optionally filtered by tags
-    2. Score each source for article potential
-    3. Identify cross-source themes and relationships
-    4. Generate idea candidates
-    5. Calculate medium scores
-    6. Deduplicate against existing ideas
+    Auto-generate article ideas from KB source clusters.
 
     Args:
-        min_sources: Minimum sources per idea
+        min_sources: Minimum related sources required
         focus_tags: Optional tag filter
         limit: Maximum ideas to generate
         save: Whether to save ideas to Firestore
@@ -726,403 +602,160 @@ def suggest_ideas_from_sources(
     Returns:
         List of generated ideas
     """
-    logger.info(
-        f"Generating article ideas (min_sources={min_sources}, tags={focus_tags})"
+    # Find source clusters with relationships
+    clusters = find_source_clusters(
+        min_relationships=min_sources - 1,  # Relationships = sources - 1
+        days=60,
+        limit=limit * 2,  # Get more clusters, filter later
     )
 
-    # Get all sources
-    all_sources = firestore_client.list_sources(limit=100)
-
-    if not all_sources:
-        logger.warning("No sources found in KB")
+    if not clusters:
+        logger.info("No source clusters found")
         return []
 
     # Filter by tags if specified
     if focus_tags:
-        all_sources = [
-            s
-            for s in all_sources
-            if any(tag in s.get("tags", []) for tag in focus_tags)
-        ]
-
-    if len(all_sources) < min_sources:
-        logger.warning(f"Only {len(all_sources)} sources available, need {min_sources}")
-        return []
+        # TODO: Implement tag filtering on clusters
+        pass
 
     ideas = []
 
-    # Strategy 1: High-value single sources (deep dives)
-    high_value_sources = sorted(
-        all_sources, key=lambda s: s.get("chunk_count", 0), reverse=True
-    )[:3]
+    for cluster in clusters[:limit]:
+        # Collect source IDs from cluster
+        source_ids = [cluster["primary_source"]["source_id"]]
+        for rel in cluster.get("related_sources", [])[:2]:  # Max 3 sources total
+            source_ids.append(rel["target_source_id"])
 
-    for source in high_value_sources:
-        if len(ideas) >= limit:
-            break
+        # Generate idea for this cluster
+        idea = generate_article_idea(source_ids)
 
-        source_id = source.get("source_id")
-        source_detail = firestore_client.get_source_by_id(source_id)
-
-        if not source_detail:
+        if "error" in idea:
             continue
 
-        chunks = source_detail.get("chunks", [])
-        if len(chunks) < 3:
-            continue
-
-        # Check for duplicate
-        title = f"Deep Dive: {source.get('title')}"
-        if check_idea_duplicate(title, [source_id]):
-            continue
-
-        scores = score_idea([source], chunks, [])
-        themes = source.get("tags", [])
-
-        idea = {
-            "title": title,
-            "description": f"Comprehensive analysis of key insights from {source.get('title')}",
-            "type": "deep_dive",
-            "source_ids": [source_id],
-            "sources": [source],
-            "strength": scores["strength"],
-            "reasoning_details": scores["reasoning_details"],
-            "medium_scores": calculate_medium_scores(
-                source_count=1,
-                chunk_count=len(chunks),
-                tag_count=len(themes),
-                has_contradictions=False,
-            ),
-            "reason": f"High-value source with {len(chunks)} chunks and strong knowledge cards",
-            "suggested_at": datetime.utcnow().isoformat(),
-        }
-
+        # Save if requested
         if save:
-            idea["idea_id"] = save_article_idea(idea)
-        else:
-            idea["idea_id"] = generate_idea_id(title, [source_id])
+            idea_id = save_article_idea(idea)
+            idea["idea_id"] = idea_id
+            idea["status"] = "suggested"
+            idea["suggested_at"] = datetime.utcnow().isoformat() + "Z"
 
         ideas.append(idea)
 
-    # Strategy 2: Related source pairs (synthesis)
-    for i, source_a in enumerate(all_sources[:10]):
-        if len(ideas) >= limit:
-            break
+    logger.info(f"Generated {len(ideas)} article ideas")
+    return ideas
 
-        source_a_id = source_a.get("source_id")
-        relationships = firestore_client.get_source_relationships(source_a_id)
 
-        for rel in relationships[:3]:
-            if len(ideas) >= limit:
-                break
+def suggest_idea_for_topic(
+    topic: str,
+    source_ids: Optional[List[str]] = None,
+    save: bool = True,
+) -> Dict[str, Any]:
+    """
+    Evaluate and develop a specific topic into an article idea.
 
-            target_source_id = rel.get("target_source_id")
-            target_source = next(
-                (s for s in all_sources if s.get("source_id") == target_source_id), None
-            )
+    Args:
+        topic: The topic to evaluate
+        source_ids: Optional specific sources to use
+        save: Whether to save the idea
 
-            if not target_source:
-                continue
+    Returns:
+        Dict with idea or error
+    """
+    # If no sources specified, find relevant sources
+    if not source_ids:
+        # Search KB for sources related to topic using embeddings
+        import embeddings
 
-            source_ids = [source_a_id, target_source_id]
+        query_embedding = embeddings.generate_query_embedding(topic)
+        search_results = firestore_client.find_nearest(
+            query_embedding=query_embedding,
+            limit=10,
+        )
 
-            # Check for duplicate
-            title = f"{source_a.get('title')} meets {target_source.get('title')}"
-            if check_idea_duplicate(title, source_ids):
-                continue
+        # Extract unique source IDs
+        seen_sources = set()
+        source_ids = []
+        for result in search_results:
+            sid = result.get("source_id")
+            if sid and sid not in seen_sources:
+                seen_sources.add(sid)
+                source_ids.append(sid)
+                if len(source_ids) >= 4:
+                    break
 
-            # Get chunks from both sources
-            source_a_detail = firestore_client.get_source_by_id(source_a_id)
-            source_b_detail = firestore_client.get_source_by_id(target_source_id)
+    if not source_ids:
+        return {"error": f"No relevant sources found for topic: {topic}"}
 
-            all_chunks = []
-            if source_a_detail:
-                all_chunks.extend(source_a_detail.get("chunks", []))
-            if source_b_detail:
-                all_chunks.extend(source_b_detail.get("chunks", []))
-
-            sources = [source_a, target_source]
-            themes = extract_themes_from_sources(sources)
-
-            rel_types = rel.get("relationship_types", [])
-            has_contradictions = "contradicts" in rel_types
-
-            idea_type = determine_idea_type(2, has_contradictions, rel_types)
-            title = generate_idea_title(idea_type, sources, themes)
-
-            scores = score_idea(sources, all_chunks, [rel])
-
-            idea = {
-                "title": title,
-                "description": f"Exploring connections between {source_a.get('title')} and {target_source.get('title')}",
-                "type": idea_type,
-                "source_ids": source_ids,
-                "sources": sources,
-                "strength": scores["strength"],
-                "reasoning_details": scores["reasoning_details"],
-                "medium_scores": calculate_medium_scores(
-                    source_count=2,
-                    chunk_count=len(all_chunks),
-                    tag_count=len(themes),
-                    has_contradictions=has_contradictions,
-                ),
-                "reason": f"Related sources with {rel.get('relationship_types', ['connection'])} relationship",
-                "suggested_at": datetime.utcnow().isoformat(),
+    # Check for duplicate ideas
+    existing_ideas = get_article_ideas(limit=50)
+    for existing in existing_ideas:
+        # Simple title similarity check
+        if _titles_similar(topic, existing.get("title", "")):
+            return {
+                "is_duplicate": True,
+                "duplicate_of": existing.get("idea_id"),
+                "existing_idea": existing,
             }
 
-            if save:
-                idea["idea_id"] = save_article_idea(idea)
-            else:
-                idea["idea_id"] = generate_idea_id(title, source_ids)
+    # Generate the idea
+    idea = generate_article_idea(source_ids)
 
-            ideas.append(idea)
+    if "error" in idea:
+        return idea
 
-    logger.info(f"Generated {len(ideas)} article ideas")
-    return ideas[:limit]
+    # Override title with provided topic if thesis generation failed
+    if not idea.get("title"):
+        idea["title"] = topic
+
+    # Save if requested
+    if save:
+        idea_id = save_article_idea(idea)
+        idea["idea_id"] = idea_id
+        idea["status"] = "suggested"
+        idea["suggested_at"] = datetime.utcnow().isoformat() + "Z"
+
+    return {"idea": idea}
 
 
-# ============================================================================
-# Web Enrichment (Tavily)
-# ============================================================================
+def _titles_similar(title1: str, title2: str) -> bool:
+    """Check if two titles are similar (simple check)."""
+    t1 = title1.lower().strip()
+    t2 = title2.lower().strip()
+
+    # Exact match
+    if t1 == t2:
+        return True
+
+    # One contains the other
+    if t1 in t2 or t2 in t1:
+        return True
+
+    # Word overlap > 50%
+    words1 = set(t1.split())
+    words2 = set(t2.split())
+    if len(words1) > 0 and len(words2) > 0:
+        overlap = len(words1 & words2)
+        min_len = min(len(words1), len(words2))
+        if overlap / min_len > 0.5:
+            return True
+
+    return False
 
 
 def enrich_idea_with_web(idea: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Enrich an article idea with web research via Tavily.
-
-    Provides market analysis:
-    - How many similar articles exist
-    - Is the topic trending
-    - Suggested unique angle
-    - Competition level
+    Enrich idea with web analysis via Tavily.
 
     Args:
-        idea: Article idea to enrich
+        idea: The idea to enrich
 
     Returns:
-        Web analysis dict
+        Web analysis dict with trending/competition info
     """
-    try:
-        import tavily_client
-
-        title = idea.get("title", "")
-        themes = []
-
-        # Extract themes from sources
-        for source in idea.get("sources", []):
-            themes.extend(source.get("tags", []))
-
-        # Build search query
-        search_query = title
-        if themes:
-            search_query = f"{title} {' '.join(themes[:2])}"
-
-        logger.info(f"Web enrichment search: {search_query}")
-
-        # Search for existing articles
-        results = tavily_client.search(
-            query=search_query,
-            days=365,  # Look back 1 year
-            max_results=20,
-            search_depth="basic",
-        )
-
-        existing_articles = results.get("result_count", 0)
-        articles = results.get("results", [])
-
-        # Analyze recency for trending detection
-        recent_count = 0
-        for article in articles:
-            pub_date = article.get("published_date")
-            if pub_date:
-                try:
-                    from datetime import datetime
-
-                    date = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
-                    if (datetime.now(date.tzinfo) - date).days <= 30:
-                        recent_count += 1
-                except (ValueError, TypeError):
-                    pass
-
-        trending = recent_count >= 5  # 5+ articles in last month = trending
-
-        # Determine competition level
-        if existing_articles >= 15:
-            competition = "high"
-        elif existing_articles >= 8:
-            competition = "medium"
-        else:
-            competition = "low"
-
-        # Generate suggested angle based on analysis
-        suggested_angle = _generate_suggested_angle(idea, articles, competition)
-
-        return {
-            "existing_articles": existing_articles,
-            "trending": trending,
-            "recent_articles_30d": recent_count,
-            "suggested_angle": suggested_angle,
-            "competition": competition,
-            "top_existing": [
-                {"title": a.get("title"), "url": a.get("url")} for a in articles[:3]
-            ],
-        }
-
-    except Exception as e:
-        logger.warning(f"Web enrichment failed: {e}")
-        return {
-            "error": str(e),
-            "existing_articles": 0,
-            "trending": False,
-            "suggested_angle": "Unable to analyze - try again later",
-            "competition": "unknown",
-        }
-
-
-def _generate_suggested_angle(
-    idea: Dict[str, Any], existing_articles: List[Dict[str, Any]], competition: str
-) -> str:
-    """
-    Generate a suggested unique angle for the article.
-
-    Args:
-        idea: The article idea
-        existing_articles: Found existing articles
-        competition: Competition level
-
-    Returns:
-        Suggested angle text
-    """
-    idea_type = idea.get("type", "deep_dive")
-    source_count = len(idea.get("source_ids", []))
-
-    if competition == "low":
-        return "Low competition - you can be comprehensive and establish authority"
-
-    if competition == "high":
-        if idea_type == "contradiction":
-            return "High competition but controversy angle is underexplored"
-        if source_count >= 3:
-            return "Focus on synthesis across multiple perspectives - most articles cover single viewpoints"
-        return "High competition - focus on personal experience and unique insights"
-
-    # Medium competition
-    if idea_type == "comparison":
-        return "Compare with real-world examples from your experience"
-    if idea_type == "practical":
-        return "Focus on actionable takeaways with code/templates"
-
-    return "Add personal insights and practical applications to stand out"
-
-
-def suggest_idea_for_topic(
-    topic: str, source_ids: Optional[List[str]] = None, save: bool = True
-) -> Dict[str, Any]:
-    """
-    Generate and score an idea for a specific topic.
-
-    Used when user has a specific idea in mind and wants it evaluated.
-
-    Args:
-        topic: The article topic/title
-        source_ids: Optional specific sources to use
-        save: Whether to save to Firestore
-
-    Returns:
-        Generated idea with scores
-    """
-    logger.info(f"Evaluating topic idea: {topic}")
-
-    # Check for duplicate first
-    existing = check_idea_duplicate(topic, source_ids or [])
-    if existing:
-        logger.info(f"Found existing idea: {existing.get('idea_id')}")
-        return {
-            "idea": existing,
-            "is_duplicate": True,
-            "duplicate_of": existing.get("idea_id"),
-        }
-
-    # If no source_ids provided, search for relevant sources
-    if not source_ids:
-        # Use semantic search to find relevant chunks
-        try:
-            import embeddings
-
-            query_embedding = embeddings.generate_query_embedding(topic)
-            results = firestore_client.find_nearest(query_embedding, limit=10)
-
-            # Extract unique source_ids from results
-            found_sources = set()
-            for result in results:
-                source_id = result.get("source_id")
-                if source_id:
-                    found_sources.add(source_id)
-
-            source_ids = list(found_sources)[:5]
-        except Exception as e:
-            logger.warning(f"Failed to find sources via search: {e}")
-            source_ids = []
-
-    if not source_ids:
-        return {
-            "error": "No relevant sources found for topic",
-            "topic": topic,
-            "suggestion": "Try adding focus_tags or source_ids parameter",
-        }
-
-    # Get source details
-    sources = []
-    all_chunks = []
-    all_relationships = []
-
-    for source_id in source_ids:
-        source = firestore_client.get_source_by_id(source_id)
-        if source:
-            sources.append(source)
-            all_chunks.extend(source.get("chunks", []))
-
-            rels = firestore_client.get_source_relationships(source_id)
-            all_relationships.extend(rels)
-
-    if not sources:
-        return {"error": "Could not load source details", "source_ids": source_ids}
-
-    # Score the idea
-    themes = extract_themes_from_sources(sources)
-    rel_types = [r.get("type", "") for r in all_relationships]
-    has_contradictions = "contradicts" in rel_types
-
-    idea_type = determine_idea_type(len(sources), has_contradictions, rel_types)
-    scores = score_idea(sources, all_chunks, all_relationships)
-
-    idea = {
-        "title": topic,
-        "description": f"Article exploring {topic} based on {len(sources)} sources",
-        "type": idea_type,
-        "source_ids": source_ids,
-        "sources": [
-            {
-                "source_id": s.get("source_id"),
-                "title": s.get("title"),
-                "author": s.get("author"),
-            }
-            for s in sources
-        ],
-        "strength": scores["strength"],
-        "reasoning_details": scores["reasoning_details"],
-        "medium_scores": calculate_medium_scores(
-            source_count=len(sources),
-            chunk_count=len(all_chunks),
-            tag_count=len(themes),
-            has_contradictions=has_contradictions,
-        ),
-        "reason": f"User-proposed topic with {len(sources)} relevant sources and {len(all_chunks)} chunks",
-        "suggested_at": datetime.utcnow().isoformat(),
+    # TODO: Implement Tavily enrichment
+    return {
+        "existing_articles": 0,
+        "trending": False,
+        "competition": "unknown",
+        "suggested_angle": None,
     }
-
-    if save:
-        idea["idea_id"] = save_article_idea(idea)
-    else:
-        idea["idea_id"] = generate_idea_id(topic, source_ids)
-
-    return {"idea": idea, "is_duplicate": False}

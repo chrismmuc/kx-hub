@@ -2525,7 +2525,7 @@ def list_ideas(
     try:
         logger.info(f"list_ideas: status={status}, limit={limit}")
 
-        ideas = article_ideas.list_article_ideas(status=status, limit=limit)
+        ideas = article_ideas.get_article_ideas(status=status, limit=limit)
 
         # Format output with top mediums
         formatted_ideas = []
