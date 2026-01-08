@@ -2,9 +2,47 @@
 
 **Project:** kx-hub - Personal AI Knowledge Base (Google Cloud + Vertex AI)
 
-**Last Updated:** 2025-12-28
+**Last Updated:** 2026-01-08
 
 This document contains planned but not-yet-implemented stories and epics.
+
+---
+
+## Open Stories from Epic 1: Core Pipeline
+
+### Story 1.9: Reader API Integration for Reading Progress
+
+**Status:** Planned
+
+**Summary:** Integrate Readwise Reader API to capture additional reading metadata not available in the Export API: `first_opened_at`, `last_opened_at`, `saved_at`, and `reading_progress`.
+
+**Problem:**
+- Current Export API provides `highlighted_at` (when highlight made) and `created_at` (when synced)
+- Reader API provides richer reading behavior data: when document was opened, reading progress (0-1)
+- This data would enable more accurate "recently read" queries and reading analytics
+
+**Key Features:**
+- Fetch Reader documents via `GET /api/v3/list/`
+- Extract `first_opened_at`, `last_opened_at`, `reading_progress`
+- Store in Firestore for querying
+- Optional: Filter by reading progress (show only partially-read articles)
+
+**Dependencies:** Story 1.8 (Highlighted-At Fix) - prerequisite storage schema
+
+**Technical Approach:**
+- Add Reader API client (`src/ingest/reader_client.py`)
+- Extend normalize step to merge Reader metadata
+- Store additional fields in Firestore chunks
+
+**Success Metrics:**
+- Reader metadata available for 90%+ of articles
+- `reading_progress` queryable for filtering
+- No impact on existing pipeline performance
+
+**Business Value:**
+- More accurate "what am I currently reading" queries
+- Filter recommendations by reading progress
+- Analytics on reading habits
 
 ---
 

@@ -21,8 +21,11 @@ def generate_frontmatter(book: Dict[str, Any]) -> str:
     # Get timestamps - use first and last highlight if available
     created_at = None
     updated_at = None
+    first_highlighted_at = None
+    last_highlighted_at = None
+
     if highlights:
-        # Sort by created_at to get earliest and latest
+        # Sort by created_at to get earliest and latest (sync times)
         sorted_by_created = sorted(
             highlights,
             key=lambda h: h.get("created_at", "")
@@ -34,6 +37,17 @@ def generate_frontmatter(book: Dict[str, Any]) -> str:
             key=lambda h: h.get("updated_at", "")
         )
         updated_at = sorted_by_updated[-1].get("updated_at")
+
+        # Extract actual reading times from highlighted_at (when user made the highlight)
+        highlighted_dates = [
+            h.get("highlighted_at")
+            for h in highlights
+            if h.get("highlighted_at")
+        ]
+        if highlighted_dates:
+            sorted_dates = sorted(highlighted_dates)
+            first_highlighted_at = sorted_dates[0]
+            last_highlighted_at = sorted_dates[-1]
 
     # Extract tags from book_tags (book-level) and highlights (highlight-level)
     tags = []
@@ -75,6 +89,9 @@ def generate_frontmatter(book: Dict[str, Any]) -> str:
         "highlight_url": highlight_url,
         "created_at": created_at,
         "updated_at": updated_at,
+        # Actual reading times (when highlights were made)
+        "first_highlighted_at": first_highlighted_at,
+        "last_highlighted_at": last_highlighted_at,
         "tags": tags,
         "highlight_count": len(highlights),
         "user_book_id": book["user_book_id"],

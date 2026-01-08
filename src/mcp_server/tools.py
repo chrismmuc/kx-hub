@@ -349,6 +349,9 @@ def get_recent(period: str = "last_7_days", limit: int = 10) -> Dict[str, Any]:
     Story 4.3: Consolidates get_recently_added and get_reading_activity into one tool.
     Returns recent chunks with activity summary and cluster distribution.
 
+    Uses last_highlighted_at (actual reading time) instead of created_at (ingestion time)
+    to show what the user actually read recently.
+
     Args:
         period: Time period (default "last_7_days")
         limit: Maximum chunks to return (default 10)
@@ -375,10 +378,10 @@ def get_recent(period: str = "last_7_days", limit: int = 10) -> Dict[str, Any]:
             logger.warning(f"Invalid period '{period}', defaulting to 'last_7_days'")
             period = "last_7_days"
 
-        # Task 1.2: Fetch recently added chunks from Firestore
+        # Fetch recently READ chunks (by last_highlighted_at, not created_at)
         days = PERIOD_TO_DAYS[period]
-        chunks = firestore_client.get_recently_added(limit=limit, days=days)
-        logger.info(f"Fetched {len(chunks)} recent chunks from last {days} days")
+        chunks = firestore_client.get_recently_read(limit=limit, days=days)
+        logger.info(f"Fetched {len(chunks)} recently read chunks from last {days} days")
 
         # Task 1.3: Fetch activity summary from Firestore
         activity_summary = firestore_client.get_activity_summary(period=period)

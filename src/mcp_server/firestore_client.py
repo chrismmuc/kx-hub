@@ -790,7 +790,11 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
 
 def get_recently_added(limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
     """
-    Get most recently added chunks.
+    Get most recently added chunks (by ingestion time).
+
+    Note: This queries by created_at (when chunk was added to KB), not by
+    last_highlighted_at (when user actually read it). Use get_recently_read()
+    for actual reading time.
 
     Args:
         limit: Maximum number of chunks to return
@@ -829,6 +833,56 @@ def get_recently_added(limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to get recently added chunks: {e}")
         return []
+
+
+def get_recently_read(limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
+    """
+    Get most recently read chunks (by actual reading/highlight time).
+
+    Queries by last_highlighted_at field which represents when the user
+    actually made the highlight (reading time), not when it was synced.
+
+    Args:
+        limit: Maximum number of chunks to return
+        days: Look back this many days
+
+    Returns:
+        List of chunks ordered by last_highlighted_at DESC (most recent first)
+    """
+    try:
+        db = get_firestore_client()
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
+
+        now = datetime.utcnow()
+        start_dt = (now - timedelta(days=days)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
+        logger.info(f"Getting {limit} recently read chunks from last {days} days")
+
+        query = db.collection(collection)
+        query = query.where("last_highlighted_at", ">=", start_dt)
+        query = query.order_by(
+            "last_highlighted_at", direction=firestore.Query.DESCENDING
+        )
+        query = query.limit(limit)
+
+        docs = query.stream()
+
+        chunks = []
+        for doc in docs:
+            chunk_data = doc.to_dict()
+            chunk_data["id"] = doc.id
+            chunks.append(chunk_data)
+
+        logger.info(f"Retrieved {len(chunks)} recently read chunks")
+        return chunks
+
+    except Exception as e:
+        logger.error(f"Failed to get recently read chunks: {e}")
+        # Fallback to created_at if last_highlighted_at not available
+        logger.info("Falling back to get_recently_added")
+        return get_recently_added(limit=limit, days=days)
 
 
 # ============================================================================

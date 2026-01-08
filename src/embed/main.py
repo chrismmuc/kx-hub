@@ -376,6 +376,12 @@ def parse_markdown(content: str) -> Tuple[Dict[str, Any], str]:
     if "highlight_url" not in metadata:
         metadata["highlight_url"] = None
 
+    # Normalize highlighted_at fields (actual reading times)
+    if "first_highlighted_at" not in metadata:
+        metadata["first_highlighted_at"] = None
+    if "last_highlighted_at" not in metadata:
+        metadata["last_highlighted_at"] = None
+
     markdown_content = parts[2].strip()
     return metadata, markdown_content
 
@@ -487,6 +493,9 @@ def write_to_firestore(
                 "readwise_url": metadata.get("readwise_url"),
                 "source_url": metadata.get("source_url"),
                 "highlight_url": metadata.get("highlight_url"),
+                # Actual reading times (when highlights were made)
+                "first_highlighted_at": _parse_iso_datetime(metadata.get("first_highlighted_at")),
+                "last_highlighted_at": _parse_iso_datetime(metadata.get("last_highlighted_at")),
                 "content": content,  # NEW: Store full chunk content
                 "embedding_model": "gemini-embedding-001",
                 "content_hash": content_hash,

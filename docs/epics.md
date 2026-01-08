@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-01-07
+**Last Updated:** 2026-01-08
 
 ---
 
@@ -19,6 +19,7 @@
 | 1.5 | **Firestore Vector Search** - Migrate from Vertex AI Vector Search to native Firestore (99% cost reduction) | ✅ Done |
 | 1.6 | **Smart Chunking** - Split long documents into semantic chunks (273 docs → 813 chunks), preserve context | ✅ Done |
 | 1.7 | **MCP Server** - Local Model Context Protocol server for Claude Desktop integration | ✅ Done |
+| 1.8 | **Highlighted-At Fix** - Store actual reading time (`last_highlighted_at`) instead of ingestion time for accurate "recently read" queries | ✅ Done |
 
 ---
 
@@ -112,9 +113,25 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 
 ---
 
+## Epic 9: Recent Knowledge Connections & Daily Digest
+
+**Goal:** Zeige bei neuen Chunks automatisch die Verbindungen zu existierenden Sources. Täglicher Email-Digest mit neuen Learnings und deren Cross-Source Relationships.
+
+**Status:** Planned
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 9.1 | **Extend get_recent** - Add `include_connections` parameter with grouped relationships | Planned |
+| 9.2 | **MCP Server Integration** - Update tool schema and handler | Planned |
+| 9.3 | **Daily Email Digest** - Scheduled email with new chunks and connections | Planned |
+| 9.4 | **Natural Language Summary** - LLM-generated fließtext summary (optional) | Planned |
+
+See [epics/epic9.md](epics/epic9.md) for full details.
+
+---
+
 ## Backlog
 
 See [backlog.md](backlog.md) for future ideas:
-- Email digests
 - Reader article integration
 - MCP tool consolidation
