@@ -111,7 +111,8 @@ class GeminiClient(BaseLLMClient):
 
         # Thinking mode: disabled by default to avoid $3.50/1M token costs
         # Enable explicitly via config.enable_thinking=True for complex reasoning
-        if not config.enable_thinking:
+        # Note: Only gemini-3-flash supports thinking_budget=0, Pro models don't
+        if not config.enable_thinking and "flash" in self.model_id.lower():
             gemini_config["thinking_config"] = {"thinking_budget": 0}
 
         # Safety settings - permissive for content generation

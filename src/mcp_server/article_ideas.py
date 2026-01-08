@@ -631,7 +631,7 @@ def suggest_idea_for_topic(
 
         query_embedding = embeddings.generate_query_embedding(topic)
         search_results = firestore_client.find_nearest(
-            query_embedding=query_embedding,
+            embedding_vector=query_embedding,
             limit=10,
         )
 

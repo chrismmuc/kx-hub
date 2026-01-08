@@ -81,6 +81,16 @@ MODEL_REGISTRY: Dict[str, ModelInfo] = {
         max_output=65536,
         regions=[],  # Global only (preview)
     ),
+    "gemini-3-pro-preview": ModelInfo(
+        model_id="gemini-3-pro-preview",
+        provider=LLMProvider.GEMINI,
+        description="Gemini 3 Pro - Most capable reasoning model",
+        input_cost_per_1m=2.00,
+        output_cost_per_1m=12.00,
+        max_context=1_000_000,
+        max_output=65536,
+        regions=[],  # Global only (preview)
+    ),
     # Claude Models (via Vertex AI)
     "claude-3-5-haiku": ModelInfo(
         model_id="claude-3-5-haiku@20241022",
@@ -129,6 +139,7 @@ MODEL_ALIASES: Dict[str, str] = {
     "gemini": "gemini-2.5-flash",
     "gemini-flash": "gemini-2.5-flash",
     "gemini-3": "gemini-3-flash-preview",
+    "gemini-3-pro": "gemini-3-pro-preview",
     "claude": "claude-haiku-4-5",
     "claude-haiku": "claude-haiku-4-5",
     "claude-sonnet": "claude-sonnet-4-5",
