@@ -402,7 +402,14 @@ def get_recent(period: str = "last_7_days", limit: int = 10) -> Dict[str, Any]:
             content = chunk.get("content", "")
             chunk_index = chunk.get("chunk_index", 0)
             total_chunks = chunk.get("total_chunks", 1)
-            added_date = chunk.get("added_date", "")
+            # Use last_highlighted_at (reading time), fallback to created_at (ingestion time)
+            read_time = chunk.get("last_highlighted_at") or chunk.get("created_at")
+            if read_time and hasattr(read_time, "isoformat"):
+                added_date = read_time.isoformat()
+            elif read_time:
+                added_date = str(read_time)
+            else:
+                added_date = ""
 
             # Content snippet (first 300 chars)
             snippet = content[:300] + "..." if len(content) > 300 else content
