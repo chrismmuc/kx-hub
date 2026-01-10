@@ -1,14 +1,16 @@
 # Epic 10: Guided Problem Definition (Feynman Method)
 
-**Goal:** Replace unguided article idea generation with a problem-first approach based on Richard Feynman's "12 Favorite Problems" method. Users define their top problems with hypotheses, and the system analyzes KB content against these problems - with special emphasis on source relationships (extends/supports/contradicts).
+**Goal:** Replace unguided article idea generation with a problem-first approach based on Richard Feynman's "12 Favorite Problems" method. Users define their top problems, and the system automatically matches KB evidence against them - with emphasis on source relationships (especially contradictions).
 
 **Business Value:**
 - Transforms passive knowledge collection into active problem-solving
-- Ideas become focused and personally relevant instead of generic
-- Source relationships (especially contradictions) become the foundation for unique insights
-- Closes the loop: Define Problem → Read → Highlight → Test Hypothesis → Write
+- Evidence is automatically matched to problems as new highlights are ingested
+- Contradictions between sources surface the most interesting article angles
+- Claude generates article ideas based on rich evidence context
 
-**Dependencies:** Epic 4 (Source Relationships), Epic 6 (Article Ideas - will be replaced)
+**Dependencies:** Epic 4 (Source Relationships)
+
+**Replaces:** Epic 6 Story 6.1 (Blog Idea Extraction)
 
 **Status:** Planned
 
@@ -19,95 +21,75 @@
 > "You have to keep a dozen of your favorite problems constantly present in your mind, although by and large they will lay in a dormant state. Every time you hear or read a new trick or a new result, test it against each of your twelve problems to see whether it helps."
 > — Richard Feynman
 
-### Why This Matters
-
-| Current Approach (Unguided) | New Approach (Problem-First) |
-|----------------------------|------------------------------|
-| Find clusters → Extract takeaways → Generate thesis | Define problem → Search KB → Test hypothesis → Generate thesis |
-| No direction, generic results | Focused, personally relevant |
-| Ignores what user cares about | Starts with user's top questions |
-| Relationships are secondary | Contradictions are gold |
-
 ### Core Principle
 
-**No ideas without problem context.** Every article idea must answer one of your defined problems.
+Define your important questions. As you read and highlight, the system automatically connects relevant evidence to your problems. When ready, Claude helps you turn the evidence into article ideas.
 
 ---
 
 ## Architecture
 
+### Single MCP Tool
+
+```python
+problems(
+    action: str,        # "add" | "list" | "analyze" | "archive"
+    problem: str = None,
+    description: str = None,
+    problem_id: str = None
+)
+```
+
+| Action | Description |
+|--------|-------------|
+| `add` | Create new problem with optional description |
+| `list` | Show all active problems with evidence counts |
+| `analyze` | Get evidence + connections for a problem (or all) |
+| `archive` | Archive a resolved/inactive problem |
+
 ### Data Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  1. USER DEFINES TOP PROBLEMS                                           │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │  Problem: "How can engineering teams ship faster without        │    │
-│  │           sacrificing quality?"                                 │    │
-│  │  Hypothesis: "Feature flags + trunk-based dev + observability"  │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│  1. USER DEFINES PROBLEM                                                │
+│                                                                         │
+│  problems(action="add",                                                 │
+│           problem="Why do feature flags fail?",                         │
+│           description="Teams adopt them but still have issues...")      │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  2. SEMANTIC SEARCH KB                                                  │
-│     Find chunks/sources relevant to the problem                         │
-│     → "deployment", "quality", "velocity", "feature flags"              │
+│  2. DAILY INGEST: NEW CHUNKS MATCHED TO PROBLEMS                        │
+│                                                                         │
+│  For each new chunk:                                                    │
+│    Compare chunk.embedding ↔ problem.embedding                          │
+│    If similarity > 0.7 → Add as evidence                                │
+│    Check source relationships → Flag contradictions                     │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  3. EXPAND VIA CONNECTIONS (The Key Innovation!)                        │
+│  3. USER REQUESTS ANALYSIS                                              │
 │                                                                         │
-│  For each relevant source, fetch ALL relationships:                     │
+│  problems(action="analyze", problem_id="prob_001")                      │
 │                                                                         │
-│  Accelerate ───extends───→ Continuous Delivery                          │
-│      │                                                                  │
-│      └──contradicts──→ "Move Fast and Break Things" (Article)           │
-│                                                                         │
-│  Team Topologies ───supports───→ Accelerate                             │
-│                                                                         │
-│  → Build evidence network with relationship types                       │
+│  Returns:                                                               │
+│  - Problem + description                                                │
+│  - Evidence grouped by type (supporting/contradicting)                  │
+│  - Source relationships (extends/supports/contradicts)                  │
+│  - Connection graph                                                     │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  4. AI ANALYSIS WITH HYPOTHESIS TESTING                                 │
+│  4. CLAUDE GENERATES ARTICLE IDEAS                                      │
 │                                                                         │
-│  PROBLEM: {problem}                                                     │
-│  HYPOTHESIS: {hypothesis}                                               │
+│  Claude sees the evidence and says:                                     │
+│  "Based on the contradiction between Accelerate and 'Move Fast',        │
+│   here's an article idea: 'Feature Flags Are Not Enough'..."            │
 │                                                                         │
-│  SUPPORTING EVIDENCE:                                                   │
-│  ├── Accelerate: "Elite teams deploy 208x more frequently"              │
-│  │   └── extends: Continuous Delivery (adds deployment metrics)         │
-│  └── Team Topologies: "Stream-aligned teams reduce handoffs"            │
-│       └── supports: Accelerate (confirms team structure impact)         │
-│                                                                         │
-│  CONTRADICTING EVIDENCE: ⚡ (Most interesting!)                          │
-│  └── "Move Fast and Break Things": "Speed requires accepting bugs"      │
-│       └── contradicts: Accelerate (different philosophy)                │
-│                                                                         │
-│  AI OUTPUT:                                                             │
-│  - Hypothesis status: PARTIALLY SUPPORTED                               │
-│  - Key tension: Speed vs. Quality tradeoff                              │
-│  - Unique angle: The contradiction reveals the real question            │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  5. ARTICLE IDEA WITH EVIDENCE CHAIN                                    │
-│                                                                         │
-│  Title: "Feature Flags Don't Guarantee Quality - Here's What Does"      │
-│  Thesis: "Feature flags reduce deployment risk by 60%, but only when    │
-│           combined with observability. Without monitoring, you're       │
-│           just hiding bugs faster."                                     │
-│                                                                         │
-│  Evidence:                                                              │
-│  ├── SUPPORTS: Accelerate (Chapter 4) + Team Topologies                 │
-│  ├── CONTRADICTS: "Move Fast" article (shows failure mode)              │
-│  └── EXTENDS: Adds observability requirement (my unique insight)        │
-│                                                                         │
-│  Strength: 0.92 (high due to contradiction = interesting tension)       │
+│  → Ideas are generated in conversation, not stored                      │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -121,841 +103,579 @@
 problems/
   {problem_id}:
     # Core definition
-    problem: "How can engineering teams ship faster without sacrificing quality?"
-    hypothesis: "Feature flags + trunk-based development + observability"
+    problem: "Why do feature flags fail?"
+    description: "Teams adopt feature flags but still have deployment issues.
+                  Interested since reading Team Topologies."
 
-    # Status tracking
-    status: "active" | "resolved" | "archived"
-    resolution: null | "confirmed" | "refuted" | "refined"
-    resolution_notes: "Hypothesis was partially correct, but..."
+    # Embedding for matching (generated from problem + description)
+    embedding: [0.1, 0.2, ...]  # 768 dimensions
 
-    # Linked evidence (auto-updated)
-    evidence: {
-      supporting: [
-        {
-          source_id: "accelerate",
-          chunk_ids: ["chunk_123", "chunk_456"],
-          relationship_context: "extends continuous-delivery",
-          relevance_score: 0.89
-        }
-      ],
-      contradicting: [
-        {
-          source_id: "move-fast-article",
-          chunk_ids: ["chunk_789"],
-          relationship_context: "contradicts accelerate",
-          relevance_score: 0.76
-        }
-      ],
-      extending: [
-        {
-          source_id: "team-topologies",
-          chunk_ids: ["chunk_abc"],
-          relationship_context: "supports accelerate",
-          relevance_score: 0.82
-        }
-      ]
-    }
+    # Status
+    status: "active" | "archived"
 
-    # Generated insights (from AI analysis)
-    insights: [
+    # Evidence (auto-populated by pipeline)
+    evidence: [
       {
-        generated_at: timestamp,
-        insight: "Die Spannung zwischen Accelerate und 'Move Fast' zeigt...",
-        new_sources_analyzed: ["source_xyz"]
+        chunk_id: "chunk_123",
+        source_id: "accelerate",
+        source_title: "Accelerate",
+        quote: "Elite performers deploy 208x more frequently...",
+        similarity: 0.85,
+        added_at: timestamp,
+        relationship: {
+          type: "extends",
+          target_source: "continuous-delivery",
+          context: "Adds empirical metrics"
+        }
+      },
+      {
+        chunk_id: "chunk_456",
+        source_id: "move-fast-article",
+        source_title: "Move Fast and Break Things",
+        quote: "Speed requires accepting some bugs...",
+        similarity: 0.78,
+        added_at: timestamp,
+        relationship: {
+          type: "contradicts",
+          target_source: "accelerate",
+          context: "Different philosophy on quality tradeoffs"
+        },
+        is_contradiction: true  # Flag for highlighting
       }
     ]
 
     # Metadata
-    tags: ["engineering", "productivity", "devops"]
     created_at: timestamp
     updated_at: timestamp
-    last_analyzed_at: timestamp
-```
-
-### Article Ideas Collection (MODIFIED)
-
-```
-article_ideas/
-  {idea_id}:
-    # Link to problem (NEW - required)
-    problem_id: "prob_001"
-
-    # The idea
-    title: "Feature Flags Don't Guarantee Quality"
-    thesis: "Feature flags reduce deployment risk, but only with observability"
-    unique_angle: "The contradiction between Accelerate and 'Move Fast' reveals..."
-
-    # Evidence chain with relationships (ENHANCED)
-    evidence: {
-      supporting: [
-        {
-          source_id: "accelerate",
-          chunk_id: "chunk_123",
-          quote: "Elite teams deploy 208x more frequently...",
-          relationship: {
-            type: "extends",
-            target_source: "continuous-delivery",
-            context: "adds deployment frequency metrics"
-          }
-        }
-      ],
-      contradicting: [
-        {
-          source_id: "move-fast-article",
-          chunk_id: "chunk_789",
-          quote: "Speed requires accepting some bugs will reach production",
-          relationship: {
-            type: "contradicts",
-            target_source: "accelerate",
-            context: "fundamentally different philosophy on quality"
-          }
-        }
-      ],
-      extending: [
-        {
-          source_id: "team-topologies",
-          chunk_id: "chunk_abc",
-          quote: "Stream-aligned teams reduce cognitive load...",
-          relationship: {
-            type: "supports",
-            target_source: "accelerate",
-            context: "confirms team structure impact"
-          }
-        }
-      ]
-    }
-
-    # Hypothesis test result (NEW)
-    hypothesis_status: "partially_supported" | "supported" | "refuted" | "inconclusive"
-    hypothesis_analysis: "The hypothesis is correct for teams with observability, but..."
-
-    # Strength calculation (MODIFIED - contradictions boost score)
-    strength: 0.92
-    strength_breakdown: {
-      contradiction_bonus: 0.4,    # Contradictions = interesting!
-      supporting_evidence: 0.25,
-      extending_evidence: 0.15,
-      relationship_depth: 0.12    # Multi-hop relationships
-    }
-
-    # Rest stays the same
-    medium_scores: {...}
-    status: "suggested" | "accepted" | "rejected" | "converted"
-    suggested_at: timestamp
+    evidence_count: 5
+    contradiction_count: 1
 ```
 
 ---
 
-## Story 10.1: Problems Collection & CRUD
+## Story 10.1: Problems Collection & MCP Tool
 
 **Status:** Planned
 
-**Summary:** Create the problems collection and basic CRUD operations for defining and managing top problems.
+**Summary:** Create the problems collection and the unified `problems` MCP tool with all actions.
 
-### MCP Tool: `add_problem`
+### MCP Tool Implementation
 
 ```python
-add_problem(
-    problem: str,           # The question/problem statement
-    hypothesis: str = None, # Optional initial hypothesis
-    tags: list = None       # Optional tags for categorization
-) -> {
-    "problem_id": "prob_001",
-    "problem": "How can engineering teams ship faster...",
-    "hypothesis": "Feature flags + trunk-based development",
-    "status": "active",
-    "created_at": "2026-01-10T..."
+def problems(
+    action: str,
+    problem: str = None,
+    description: str = None,
+    problem_id: str = None
+) -> dict:
+    """
+    Unified tool for managing Feynman-style problems.
+
+    Actions:
+        add: Create new problem
+        list: Show all active problems with evidence counts
+        analyze: Get evidence + connections for problem(s)
+        archive: Archive a problem
+    """
+```
+
+### Action: `add`
+
+```python
+problems(
+    action="add",
+    problem="Why do feature flags fail?",
+    description="Teams adopt them but still have issues. Interested since Team Topologies."
+)
+```
+
+**Returns:**
+```json
+{
+  "problem_id": "prob_001",
+  "problem": "Why do feature flags fail?",
+  "description": "Teams adopt them but still have issues...",
+  "status": "active",
+  "created_at": "2026-01-10T..."
 }
 ```
 
-**Examples:**
-```
-# With hypothesis
-add_problem(
-    problem="How can I maintain deep focus in an open office?",
-    hypothesis="Noise-canceling headphones + time-blocking + visual signals"
-)
+**Implementation:**
+1. Validate problem text is not empty
+2. Generate embedding from `problem + " " + description`
+3. Create Firestore document
+4. Return confirmation
 
-# Without hypothesis (exploratory)
-add_problem(
-    problem="What makes some books stick while others are forgotten?",
-    tags=["learning", "reading"]
-)
-```
-
-### MCP Tool: `list_problems`
+### Action: `list`
 
 ```python
-list_problems(
-    status: str = "active",  # "active" | "resolved" | "archived" | "all"
-    include_evidence_count: bool = True
-) -> {
-    "problems": [
-        {
-            "problem_id": "prob_001",
-            "problem": "How can engineering teams ship faster...",
-            "hypothesis": "Feature flags + trunk-based development",
-            "status": "active",
-            "evidence_count": {
-                "supporting": 5,
-                "contradicting": 2,
-                "extending": 3
-            },
-            "last_analyzed_at": "2026-01-09T...",
-            "ideas_generated": 2
+problems(action="list")
+```
+
+**Returns:**
+```json
+{
+  "problems": [
+    {
+      "problem_id": "prob_001",
+      "problem": "Why do feature flags fail?",
+      "status": "active",
+      "evidence_count": 5,
+      "contradiction_count": 1,
+      "created_at": "2026-01-10T...",
+      "last_evidence_at": "2026-01-12T..."
+    }
+  ],
+  "total": 3,
+  "active": 3,
+  "archived": 0
+}
+```
+
+### Action: `analyze`
+
+```python
+# Single problem
+problems(action="analyze", problem_id="prob_001")
+
+# All problems (batch)
+problems(action="analyze")
+```
+
+**Returns:**
+```json
+{
+  "problem_id": "prob_001",
+  "problem": "Why do feature flags fail?",
+  "description": "Teams adopt them but still have issues...",
+
+  "evidence": {
+    "supporting": [
+      {
+        "source_title": "Accelerate",
+        "author": "Forsgren, Humble, Kim",
+        "quote": "Elite performers deploy 208x more frequently...",
+        "chunk_id": "chunk_123",
+        "relationship": {
+          "type": "extends",
+          "target": "Continuous Delivery"
         }
+      }
+    ],
+    "contradicting": [
+      {
+        "source_title": "Move Fast and Break Things",
+        "quote": "Speed requires accepting some bugs will reach production",
+        "chunk_id": "chunk_456",
+        "relationship": {
+          "type": "contradicts",
+          "target": "Accelerate"
+        },
+        "why_interesting": "Challenges the 'no tradeoff' claim"
+      }
     ]
+  },
+
+  "connections": [
+    {"from": "Accelerate", "to": "Continuous Delivery", "type": "extends"},
+    {"from": "Move Fast", "to": "Accelerate", "type": "contradicts"}
+  ],
+
+  "summary": {
+    "evidence_count": 5,
+    "contradiction_count": 1,
+    "sources": ["Accelerate", "Team Topologies", "Move Fast"],
+    "ready_for_article": true
+  }
 }
 ```
 
-### MCP Tool: `update_problem`
+**Note:** Claude uses this output to generate article ideas in the conversation.
+
+### Action: `archive`
 
 ```python
-update_problem(
-    problem_id: str,
-    problem: str = None,      # Update problem statement
-    hypothesis: str = None,   # Update/add hypothesis
-    status: str = None,       # Change status
-    resolution_notes: str = None  # Notes when resolving
-) -> {
-    "problem_id": "prob_001",
-    "updated_fields": ["hypothesis", "status"],
-    "status": "resolved"
-}
+problems(action="archive", problem_id="prob_001")
 ```
 
-### MCP Tool: `archive_problem`
-
-```python
-archive_problem(
-    problem_id: str,
-    resolution: str = None,  # "confirmed" | "refuted" | "refined" | "irrelevant"
-    notes: str = None
-) -> {
-    "problem_id": "prob_001",
-    "status": "archived",
-    "resolution": "refined",
-    "notes": "Original hypothesis was too narrow..."
+**Returns:**
+```json
+{
+  "problem_id": "prob_001",
+  "status": "archived",
+  "evidence_preserved": true
 }
 ```
 
 ### Tasks
 
 1. [ ] Create `problems` Firestore collection with schema
-2. [ ] Implement `add_problem` MCP tool
-3. [ ] Implement `list_problems` MCP tool
-4. [ ] Implement `update_problem` MCP tool
-5. [ ] Implement `archive_problem` MCP tool
-6. [ ] Add validation (problem not empty, valid status transitions)
-7. [ ] Write tests for CRUD operations
+2. [ ] Implement embedding generation for problems
+3. [ ] Implement `add` action
+4. [ ] Implement `list` action
+5. [ ] Implement `analyze` action with evidence grouping
+6. [ ] Implement `archive` action
+7. [ ] Add to MCP tool registry
+8. [ ] Write tests
 
 ### Success Metrics
 
-- Problems can be created, listed, updated, archived
-- Evidence counts are accurately tracked
-- Status transitions are validated
-- Response time < 500ms for all operations
+- All 4 actions work correctly
+- Embeddings generated on add
+- Evidence correctly grouped by relationship type
+- Response time < 2s for single problem, < 5s for all
 
 ---
 
-## Story 10.2: Problem-KB Matching with Relationships
+## Story 10.2: Pipeline Integration (Auto-Match)
 
 **Status:** Planned
 
-**Summary:** Semantic search to find relevant KB content for a problem, then expand via source relationships to build a complete evidence network.
+**Summary:** After daily ingest, automatically match new chunks to active problems using embedding similarity.
 
 ### Algorithm
 
-```
-1. SEMANTIC SEARCH
-   - Embed problem + hypothesis
-   - Vector search against chunks
-   - Return top N relevant chunks with scores
-
-2. EXTRACT SOURCES
-   - Get unique source_ids from matching chunks
-   - Fetch source metadata (title, author, chunk_count)
-
-3. EXPAND VIA RELATIONSHIPS (Key Innovation!)
-   For each source:
-   - Fetch all relationships (extends, supports, contradicts)
-   - Add related sources to evidence pool
-   - Track relationship type and context
-
-4. CATEGORIZE EVIDENCE
-   - Supporting: Sources that align with hypothesis
-   - Contradicting: Sources that challenge hypothesis (GOLD!)
-   - Extending: Sources that add new dimensions
-
-5. RANK BY RELEVANCE + RELATIONSHIP VALUE
-   - Direct semantic match: base score
-   - Has contradiction: +0.3 bonus
-   - Part of relationship chain: +0.1 bonus
-```
-
-### MCP Tool: `analyze_problem`
-
 ```python
-analyze_problem(
-    problem_id: str,
-    max_sources: int = 10,
-    include_relationships: bool = True,  # Expand via connections
-    min_relevance: float = 0.5
-) -> {
-    "problem_id": "prob_001",
-    "problem": "How can engineering teams ship faster...",
-    "hypothesis": "Feature flags + trunk-based development",
-
-    "evidence": {
-        "supporting": [
-            {
-                "source_id": "accelerate",
-                "source_title": "Accelerate",
-                "author": "Forsgren, Humble, Kim",
-                "relevance_score": 0.89,
-                "chunks": [
-                    {
-                        "chunk_id": "chunk_123",
-                        "quote": "Elite performers deploy 208x more frequently...",
-                        "takeaway": "High deployment frequency correlates with stability"
-                    }
-                ],
-                "relationships": [
-                    {
-                        "type": "extends",
-                        "target_source": "continuous-delivery",
-                        "context": "Adds empirical metrics to CD principles"
-                    }
-                ]
-            }
-        ],
-        "contradicting": [
-            {
-                "source_id": "move-fast-article",
-                "source_title": "Move Fast and Break Things",
-                "relevance_score": 0.76,
-                "chunks": [...],
-                "relationships": [
-                    {
-                        "type": "contradicts",
-                        "target_source": "accelerate",
-                        "context": "Argues speed requires accepting bugs"
-                    }
-                ],
-                "contradiction_insight": "This challenges the 'no tradeoff' claim in Accelerate"
-            }
-        ],
-        "extending": [...]
-    },
-
-    "relationship_graph": {
-        "nodes": ["accelerate", "continuous-delivery", "team-topologies", "move-fast"],
-        "edges": [
-            {"from": "accelerate", "to": "continuous-delivery", "type": "extends"},
-            {"from": "team-topologies", "to": "accelerate", "type": "supports"},
-            {"from": "move-fast", "to": "accelerate", "type": "contradicts"}
-        ]
-    },
-
-    "summary": {
-        "total_sources": 4,
-        "supporting_count": 2,
-        "contradicting_count": 1,
-        "extending_count": 1,
-        "has_interesting_tensions": true,
-        "recommendation": "Strong foundation for article - contradiction provides unique angle"
-    },
-
-    "analyzed_at": "2026-01-10T..."
-}
-```
-
-### Relationship Expansion Logic
-
-```python
-def expand_via_relationships(source_ids: list, db) -> dict:
+def match_new_chunks_to_problems(new_chunk_ids: list):
     """
-    For each source, fetch relationships and categorize.
-    Contradictions are most valuable for article ideas.
+    Called after ingest pipeline completes.
+    Matches new chunks to active problems using embedding similarity.
     """
-    evidence = {"supporting": [], "contradicting": [], "extending": []}
+    # Get new chunks with embeddings
+    new_chunks = get_chunks_with_embeddings(new_chunk_ids)
 
-    for source_id in source_ids:
-        # Get all relationships for this source
-        relationships = db.collection("source_relationships") \
-            .where("source_id", "==", source_id).get()
+    # Get all active problems with embeddings
+    problems = get_active_problems()
 
-        for rel in relationships:
-            related_source = get_source(rel.target_source_id)
+    matches = []
 
-            if rel.relationship_type == "contradicts":
-                # GOLD - contradictions are most interesting
-                evidence["contradicting"].append({
-                    "source": related_source,
-                    "relationship": rel,
-                    "value_score": 0.9  # High value
+    for chunk in new_chunks:
+        for problem in problems:
+            similarity = cosine_similarity(
+                chunk.embedding,
+                problem.embedding
+            )
+
+            if similarity > SIMILARITY_THRESHOLD:  # 0.7
+                # Get source relationships for this chunk
+                relationships = get_source_relationships(chunk.source_id)
+
+                # Check if contradicts existing evidence
+                is_contradiction = check_for_contradiction(
+                    chunk.source_id,
+                    problem.evidence,
+                    relationships
+                )
+
+                matches.append({
+                    "problem_id": problem.id,
+                    "chunk_id": chunk.id,
+                    "similarity": similarity,
+                    "is_contradiction": is_contradiction,
+                    "relationships": relationships
                 })
-            elif rel.relationship_type == "extends":
-                evidence["extending"].append({
-                    "source": related_source,
-                    "relationship": rel,
-                    "value_score": 0.7
-                })
-            elif rel.relationship_type == "supports":
-                evidence["supporting"].append({
-                    "source": related_source,
-                    "relationship": rel,
-                    "value_score": 0.5
-                })
 
-    return evidence
-```
+    # Batch update problems with new evidence
+    update_problem_evidence(matches)
 
-### Tasks
-
-1. [ ] Implement semantic search for problem text
-2. [ ] Build relationship expansion logic
-3. [ ] Implement evidence categorization (supporting/contradicting/extending)
-4. [ ] Create relationship graph structure
-5. [ ] Implement `analyze_problem` MCP tool
-6. [ ] Add caching for repeated analyses
-7. [ ] Update problem document with evidence links
-8. [ ] Write tests with mock relationships
-
-### Success Metrics
-
-- Semantic search returns relevant chunks (>70% precision)
-- Relationships are correctly expanded and categorized
-- Contradictions are prominently surfaced
-- Analysis completes in < 10 seconds
-- Evidence is persisted to problem document
-
----
-
-## Story 10.3: Problem-Based Idea Generation (Replaces 6.1)
-
-**Status:** Planned
-
-**Summary:** Replace unguided `suggest_article_ideas` with problem-first generation. Every idea must link to a problem and include the evidence chain with relationships.
-
-### Key Changes from Story 6.1
-
-| Aspect | Old (6.1) | New (10.3) |
-|--------|-----------|------------|
-| Input | Cluster detection | Problem ID |
-| Direction | Bottom-up (find clusters) | Top-down (test hypothesis) |
-| Relationships | Secondary | Central (especially contradictions) |
-| Output | Generic thesis | Hypothesis test + evidence chain |
-| Strength | Source count based | Contradiction-boosted |
-
-### MCP Tool: `suggest_article_ideas` (REWRITTEN)
-
-```python
-suggest_article_ideas(
-    # NEW: Problem-first approach
-    problem_id: str = None,      # Generate ideas for specific problem
-
-    # OR: Analyze all active problems
-    all_problems: bool = False,  # Generate ideas for all active problems
-
-    # Filters
-    min_evidence: int = 2,       # Minimum sources in evidence
-    require_contradiction: bool = False,  # Only ideas with tensions
-
-    # Output
-    limit: int = 3,              # Ideas per problem
-    save: bool = True            # Persist to Firestore
-) -> {
-    "ideas": [
-        {
-            "idea_id": "idea_001",
-            "problem_id": "prob_001",
-            "problem": "How can engineering teams ship faster...",
-
-            # Hypothesis test result
-            "hypothesis_status": "partially_supported",
-            "hypothesis_analysis": "The hypothesis holds for teams with strong observability, but fails without monitoring infrastructure.",
-
-            # The article idea
-            "title": "Feature Flags Are Not Enough: The Missing Piece in Deployment Speed",
-            "thesis": "Feature flags reduce deployment risk by 60%, but only when combined with observability. Without monitoring, you're just hiding bugs faster.",
-            "unique_angle": "The contradiction between Accelerate's 'no tradeoff' claim and the 'Move Fast' philosophy reveals that the real variable is observability maturity.",
-
-            # Evidence chain with relationships
-            "evidence": {
-                "supporting": [
-                    {
-                        "source_title": "Accelerate",
-                        "author": "Forsgren et al.",
-                        "quote": "Elite performers deploy 208x more frequently with 7x lower change failure rate",
-                        "relationship": {
-                            "type": "extends",
-                            "target": "Continuous Delivery",
-                            "insight": "Adds empirical validation to CD principles"
-                        }
-                    }
-                ],
-                "contradicting": [
-                    {
-                        "source_title": "Move Fast and Break Things",
-                        "quote": "Speed requires accepting that some bugs will reach production",
-                        "relationship": {
-                            "type": "contradicts",
-                            "target": "Accelerate",
-                            "insight": "Fundamentally different philosophy - accepts tradeoff that Accelerate denies"
-                        },
-                        "why_interesting": "This tension is the heart of the article"
-                    }
-                ],
-                "extending": [...]
-            },
-
-            # Strength with breakdown
-            "strength": 0.92,
-            "strength_breakdown": {
-                "contradiction_bonus": 0.40,  # Has interesting tension
-                "supporting_evidence": 0.25,  # 2 supporting sources
-                "extending_evidence": 0.15,   # 1 extending source
-                "relationship_depth": 0.12    # Multi-hop connections
-            },
-
-            # Best formats
-            "medium_scores": {
-                "linkedin_article": 0.9,  # Tension = good for discussion
-                "blog": 0.85,
-                "substack": 0.8
-            },
-
-            "suggested_at": "2026-01-10T..."
-        }
-    ],
-
-    "summary": {
-        "problems_analyzed": 1,
-        "ideas_generated": 3,
-        "ideas_with_contradictions": 2,
-        "strongest_idea": "idea_001"
+    return {
+        "chunks_processed": len(new_chunks),
+        "matches_found": len(matches),
+        "contradictions_found": sum(1 for m in matches if m["is_contradiction"])
     }
-}
 ```
 
-### Prompt Template (Problem-First)
+### Efficiency
 
-```python
-PROBLEM_BASED_THESIS_PROMPT = """
-You are analyzing a user's knowledge base to generate article ideas.
+```
+Daily ingest: ~5-20 new chunks
+Active problems: ~5-12
 
-THE USER'S PROBLEM:
-{problem}
+Comparisons: 20 × 12 = 240 embedding comparisons
+Time: < 1 second
 
-THE USER'S HYPOTHESIS:
-{hypothesis}
-
-EVIDENCE FROM THEIR KNOWLEDGE BASE:
-
-## Supporting Evidence (aligns with hypothesis):
-{supporting_evidence}
-
-## Contradicting Evidence (challenges hypothesis): ⚡
-{contradicting_evidence}
-
-## Extending Evidence (adds new dimensions):
-{extending_evidence}
-
-SOURCE RELATIONSHIPS:
-{relationship_graph}
-
----
-
-YOUR TASK:
-
-1. HYPOTHESIS TEST: Does the evidence support, refute, or partially support the hypothesis?
-   - Be specific about what parts are supported/refuted
-   - Contradictions are GOLD - they reveal where the interesting story is
-
-2. IDENTIFY THE TENSION: What's the most interesting conflict in the evidence?
-   - Contradictions between sources are the best article angles
-   - "Source A says X, but Source B says Y" = compelling narrative
-
-3. GENERATE THESIS: Create a concrete, testable claim that:
-   - Addresses the user's problem
-   - Incorporates the tension from contradicting evidence
-   - Goes beyond the original hypothesis (adds nuance from contradictions)
-
-   FORBIDDEN: Vague phrases like "balance is key", "it depends", "holistic approach"
-   REQUIRED: Specific claim that can be verified (YES/NO answer possible)
-
-4. UNIQUE ANGLE: Why can only THIS user write this article?
-   - What unusual combination of sources do they have?
-   - What contradiction have they noticed that others miss?
-
-Respond with JSON:
-{
-    "hypothesis_status": "supported" | "partially_supported" | "refuted" | "inconclusive",
-    "hypothesis_analysis": "The hypothesis is [status] because...",
-    "key_tension": "The conflict between [Source A] and [Source B] about [topic]...",
-    "title": "Punchy, specific title that hints at the tension",
-    "thesis": "Concrete claim with specific details from the evidence",
-    "unique_angle": "What makes this user's perspective unique"
-}
-"""
+vs. Full re-analysis: 800 × 12 = 9600 comparisons
 ```
 
-### Strength Calculation (Contradiction-Boosted)
+### Integration Point
+
+In `src/ingest/main.py` after embedding:
 
 ```python
-def calculate_idea_strength(evidence: dict) -> tuple[float, dict]:
-    """
-    Calculate idea strength with bonus for contradictions.
-    Contradictions = interesting tensions = better articles.
-    """
-    breakdown = {}
-    score = 0.0
+# Existing pipeline
+chunks = process_highlights(raw_data)
+embedded_chunks = embed_chunks(chunks)
+stored_ids = store_chunks(embedded_chunks)
 
-    # CONTRADICTIONS ARE GOLD (highest weight)
-    if evidence.get("contradicting"):
-        contradiction_count = len(evidence["contradicting"])
-        breakdown["contradiction_bonus"] = min(contradiction_count * 0.2, 0.4)
-        score += breakdown["contradiction_bonus"]
-    else:
-        breakdown["contradiction_bonus"] = 0.0
-
-    # Supporting evidence
-    supporting_count = len(evidence.get("supporting", []))
-    breakdown["supporting_evidence"] = min(supporting_count * 0.1, 0.25)
-    score += breakdown["supporting_evidence"]
-
-    # Extending evidence
-    extending_count = len(evidence.get("extending", []))
-    breakdown["extending_evidence"] = min(extending_count * 0.1, 0.15)
-    score += breakdown["extending_evidence"]
-
-    # Relationship depth (multi-hop connections)
-    if has_relationship_chains(evidence):
-        breakdown["relationship_depth"] = 0.12
-        score += 0.12
-    else:
-        breakdown["relationship_depth"] = 0.0
-
-    # Source diversity bonus
-    unique_sources = count_unique_sources(evidence)
-    if unique_sources >= 3:
-        breakdown["source_diversity"] = 0.08
-        score += 0.08
-
-    return min(score, 1.0), breakdown
+# NEW: Match to problems
+from problems import match_new_chunks_to_problems
+match_result = match_new_chunks_to_problems(stored_ids)
+logger.info(f"Matched {match_result['matches_found']} chunks to problems")
 ```
 
 ### Tasks
 
-1. [ ] Rewrite `suggest_article_ideas` to require problem_id or all_problems flag
-2. [ ] Implement problem-based thesis prompt
-3. [ ] Add hypothesis testing logic
-4. [ ] Integrate relationship data into evidence structure
-5. [ ] Implement contradiction-boosted strength calculation
-6. [ ] Update article_ideas schema with problem_id and evidence chain
-7. [ ] Remove old cluster-based idea generation code
-8. [ ] Update `list_ideas` to show problem context
-9. [ ] Write tests for problem-based generation
-10. [ ] Migrate existing ideas (add problem_id where possible)
+1. [ ] Add embedding field to problems schema
+2. [ ] Implement `match_new_chunks_to_problems` function
+3. [ ] Implement `check_for_contradiction` using source relationships
+4. [ ] Add batch update for problem evidence
+5. [ ] Integrate into ingest pipeline
+6. [ ] Add logging and monitoring
+7. [ ] Write integration tests
 
 ### Success Metrics
 
-- Every generated idea links to a problem
-- Ideas with contradictions have higher strength scores
-- Thesis statements are specific and testable (no vague language)
-- Evidence chain includes relationship context
-- Generation time < 15 seconds per problem
+- New evidence added within 24h of ingest
+- Contradiction detection accuracy > 90%
+- Pipeline overhead < 2 seconds
+- No false positives at 0.7 threshold
 
 ---
 
-## Story 10.4: Auto-Connect New Highlights to Problems
-
-**Status:** Planned (Optional - Pipeline Integration)
-
-**Summary:** When new highlights are ingested, automatically test them against active problems and notify if relevant evidence is found.
-
-### Trigger Points
-
-1. **Daily Pipeline**: After new chunks are embedded
-2. **Manual**: User can trigger re-analysis
-
-### Algorithm
-
-```
-For each new chunk:
-  For each active problem:
-    1. Semantic similarity check (chunk embedding vs problem embedding)
-    2. If similarity > threshold:
-       - Add to problem's evidence
-       - Determine category (supporting/contradicting/extending)
-       - Generate insight if contradiction found
-       - Queue notification
-```
-
-### MCP Tool: `refresh_problem_evidence`
-
-```python
-refresh_problem_evidence(
-    problem_id: str = None,  # Specific problem, or all if None
-    since_days: int = 7      # Only check recent chunks
-) -> {
-    "problems_updated": 2,
-    "new_evidence_found": [
-        {
-            "problem_id": "prob_001",
-            "new_supporting": 1,
-            "new_contradicting": 1,
-            "new_extending": 0,
-            "highlight": "Found contradiction with existing hypothesis!"
-        }
-    ]
-}
-```
-
-### Tasks
-
-1. [ ] Add problem embedding storage (for efficient comparison)
-2. [ ] Implement chunk-to-problem relevance check
-3. [ ] Add evidence categorization for new chunks
-4. [ ] Create `refresh_problem_evidence` MCP tool
-5. [ ] Optional: Pipeline integration for auto-refresh
-6. [ ] Optional: Notification system for new evidence
-
-### Success Metrics
-
-- New relevant evidence is detected within 24h of ingestion
-- False positive rate < 20%
-- Contradictions are correctly identified
-- Problem evidence stays up-to-date
-
----
-
-## Story 10.5: Problem Dashboard & Insights
+## Story 10.3: Cleanup Legacy Ideas System
 
 **Status:** Planned
 
-**Summary:** Provide overview of all problems with evidence status, stale detection, and AI-generated insights.
+**Summary:** Remove the old article ideas system (suggest_article_ideas, list_ideas, accept_idea, reject_idea) and clean up the database.
 
-### MCP Tool: `get_problem_dashboard`
+### Tools to Remove
+
+| Tool | File | Action |
+|------|------|--------|
+| `suggest_article_ideas` | `tools.py`, `article_ideas.py` | Delete |
+| `list_ideas` | `tools.py` | Delete |
+| `accept_idea` | `tools.py` | Delete |
+| `reject_idea` | `tools.py` | Delete |
+
+### Files to Remove/Modify
+
+```
+src/mcp_server/
+├── article_ideas.py      # DELETE entire file
+├── tools.py              # Remove idea-related functions
+└── server.py             # Remove tool registrations
+```
+
+### Database Cleanup
 
 ```python
-get_problem_dashboard() -> {
-    "active_problems": 5,
-    "problems": [
-        {
-            "problem_id": "prob_001",
-            "problem": "How can engineering teams...",
-            "status": "active",
-            "health": "strong",  # strong | needs_evidence | stale
-            "evidence_summary": {
-                "supporting": 3,
-                "contradicting": 1,
-                "extending": 2
-            },
-            "last_new_evidence": "2026-01-08",
-            "ideas_generated": 2,
-            "ideas_accepted": 1,
-            "recommendation": "Ready for article - strong contradiction found"
-        }
-    ],
-    "insights": [
-        {
-            "type": "new_contradiction",
-            "problem_id": "prob_001",
-            "message": "New source 'Scaling Teams' contradicts your hypothesis about feature flags"
-        },
-        {
-            "type": "stale_problem",
-            "problem_id": "prob_003",
-            "message": "No new evidence in 30 days - consider refining hypothesis"
-        }
-    ],
-    "suggested_actions": [
-        "Generate ideas for prob_001 (strong evidence)",
-        "Add hypothesis to prob_002 (currently exploratory)",
-        "Archive or refine prob_003 (stale)"
-    ]
-}
+def cleanup_article_ideas_collection():
+    """
+    One-time migration to remove article_ideas collection.
+    Run after Epic 10 is deployed.
+    """
+    db = firestore.Client()
+
+    # Export for backup (optional)
+    ideas = db.collection("article_ideas").stream()
+    backup = [{"id": doc.id, **doc.to_dict()} for doc in ideas]
+    save_to_gcs("backups/article_ideas_backup.json", backup)
+
+    # Delete collection
+    delete_collection(db, "article_ideas")
+
+    logger.info(f"Deleted article_ideas collection ({len(backup)} documents backed up)")
+```
+
+### MCP Tool Count Change
+
+```
+Before: 18 tools (including 4 idea tools)
+After:  15 tools (removed 4, added 1 problems tool)
+
+Net: -3 tools (simpler interface)
 ```
 
 ### Tasks
 
-1. [ ] Implement problem health calculation
-2. [ ] Add staleness detection (no new evidence in N days)
-3. [ ] Create insight generation logic
-4. [ ] Implement `get_problem_dashboard` MCP tool
-5. [ ] Add suggested actions based on problem state
+1. [ ] Backup article_ideas collection to GCS
+2. [ ] Remove `article_ideas.py`
+3. [ ] Remove idea tools from `tools.py`
+4. [ ] Remove tool registrations from `server.py`
+5. [ ] Delete article_ideas Firestore collection
+6. [ ] Update tool documentation
+7. [ ] Update tests (remove idea tests, add problem tests)
 
 ### Success Metrics
 
-- Dashboard provides actionable overview
-- Stale problems are correctly identified
-- Health scores are meaningful
-- Response time < 2 seconds
+- All idea-related code removed
+- No orphaned references
+- Tests pass
+- Backup verified in GCS
 
 ---
 
-## Migration Plan
+## Story 10.4: Update Epic 6 Integration
 
-### Phase 1: Add Problems Infrastructure (Story 10.1)
-- Create problems collection
-- Implement CRUD tools
-- No breaking changes to existing flow
+**Status:** Planned
 
-### Phase 2: Add Analysis (Story 10.2)
-- Implement problem-KB matching
-- Add relationship expansion
-- Existing idea generation still works
+**Summary:** Update Epic 6 (Blogging Engine) to work with the new problems-based approach.
 
-### Phase 3: Replace Idea Generation (Story 10.3)
-- Rewrite `suggest_article_ideas`
-- Deprecate unguided mode
-- Migrate existing ideas where possible
+### Changes to Epic 6
 
-### Phase 4: Optional Enhancements (Stories 10.4, 10.5)
-- Auto-connect pipeline integration
-- Dashboard and insights
+| Story | Change |
+|-------|--------|
+| 6.1 | ~~Blog Idea Extraction~~ → **Removed** (replaced by Epic 10) |
+| 6.2 | Article Outline → Works with problem context from `problems(action="analyze")` |
+| 6.3-6.7 | No changes - work with articles, not ideas |
 
-### Deprecation Notice
+### New Workflow for Article Creation
 
-After Story 10.3 is complete:
-- `suggest_article_ideas()` without `problem_id` will show deprecation warning
-- After 30 days: require `problem_id` or `all_problems=True`
-- Old cluster-based logic will be removed
+```
+1. problems(action="analyze", problem_id="prob_001")
+   → Claude sees evidence + contradictions
+
+2. Claude: "Based on this evidence, here's an article idea:
+   'Feature Flags Are Not Enough'. Want me to create an outline?"
+
+3. User: "Yes"
+
+4. create_article_outline(
+       title="Feature Flags Are Not Enough",
+       source_ids=["accelerate", "move-fast", "team-topologies"]
+   )
+   → Uses sources from problem evidence
+```
+
+### Tasks
+
+1. [ ] Update epic6.md to reflect 6.1 removal
+2. [ ] Document new workflow in epic6.md
+3. [ ] Ensure outline generation accepts source_ids from evidence
+
+---
+
+## MCP Interface Summary
+
+### Before (4 tools)
+
+```python
+suggest_article_ideas(min_sources, focus_tags, limit, save, topic, source_ids)
+list_ideas(status, limit)
+accept_idea(idea_id)
+reject_idea(idea_id)
+```
+
+### After (1 tool)
+
+```python
+problems(
+    action: str,        # "add" | "list" | "analyze" | "archive"
+    problem: str = None,
+    description: str = None,
+    problem_id: str = None
+)
+```
+
+### Token Efficiency
+
+```
+Before: 4 tool definitions in system prompt
+After:  1 tool definition in system prompt
+
+Reduction: ~75% fewer tokens for tool definitions
+```
+
+---
+
+## Example Workflows
+
+### Creating a Problem
+
+```
+User: "I want to explore why feature flags often fail"
+
+Claude: problems(action="add",
+                 problem="Why do feature flags fail?",
+                 description="Teams adopt them but still have deployment issues")
+
+Claude: "I've created this as a problem to track. As you read and highlight
+         relevant content, I'll automatically connect it to this problem.
+         You can check progress anytime with 'analyze my problems'."
+```
+
+### Checking Problem Status
+
+```
+User: "What's the status of my problems?"
+
+Claude: problems(action="list")
+
+Claude: "You have 3 active problems:
+         1. 'Why do feature flags fail?' - 5 evidence pieces, 1 contradiction!
+         2. 'How to scale engineering teams?' - 3 evidence pieces
+         3. 'What makes books stick?' - 2 evidence pieces
+
+         Problem 1 has a contradiction - want me to analyze it?"
+```
+
+### Getting Article Ideas
+
+```
+User: "Analyze the feature flags problem"
+
+Claude: problems(action="analyze", problem_id="prob_001")
+
+Claude: "Here's what your knowledge base says about feature flags:
+
+         **Supporting Evidence:**
+         - Accelerate: 'Elite performers deploy 208x more frequently...'
+           (extends Continuous Delivery principles)
+
+         **Contradicting Evidence:** ⚡
+         - 'Move Fast and Break Things': 'Speed requires accepting bugs'
+           (contradicts Accelerate's 'no tradeoff' claim)
+
+         This contradiction is interesting! It suggests an article angle:
+
+         **Article Idea:** 'Feature Flags Are Not Enough'
+         **Thesis:** Feature flags reduce deployment risk, but only when
+                     combined with observability. The tension between
+                     Accelerate and 'Move Fast' reveals that monitoring
+                     is the missing piece.
+
+         Want me to create an outline?"
+```
+
+---
+
+## Implementation Plan
+
+### Phase 1: Core (Stories 10.1, 10.3)
+1. Create problems collection + MCP tool
+2. Remove legacy ideas system
+3. Basic workflow working
+
+### Phase 2: Automation (Story 10.2)
+1. Pipeline integration
+2. Auto-matching new chunks
+3. Contradiction detection
+
+### Phase 3: Integration (Story 10.4)
+1. Update Epic 6 workflow
+2. Documentation
+3. User testing
 
 ---
 
 ## Summary
 
-| Story | Description | Priority | Effort |
-|-------|-------------|----------|--------|
-| 10.1 | Problems Collection & CRUD | High | 3-4h |
-| 10.2 | Problem-KB Matching with Relationships | High | 6-8h |
-| 10.3 | Problem-Based Idea Generation | High | 8-10h |
-| 10.4 | Auto-Connect New Highlights | Medium | 4-6h |
-| 10.5 | Problem Dashboard & Insights | Medium | 3-4h |
+| Story | Description | Effort |
+|-------|-------------|--------|
+| 10.1 | Problems Collection & MCP Tool | 4-6h |
+| 10.2 | Pipeline Integration (Auto-Match) | 4-6h |
+| 10.3 | Cleanup Legacy Ideas System | 2-3h |
+| 10.4 | Update Epic 6 Integration | 1-2h |
 
-**Total Estimated Effort:** 24-32 hours
+**Total Effort:** 11-17 hours
 
 **Key Deliverables:**
-- `problems` Firestore collection
-- 6-8 new/modified MCP tools
-- Problem-first idea generation (replaces Story 6.1)
-- Relationship-centric evidence analysis
-- Contradiction-boosted strength scoring
+- 1 new MCP tool (`problems` with 4 actions)
+- 4 tools removed (suggest_article_ideas, list_ideas, accept_idea, reject_idea)
+- Automatic evidence matching in pipeline
+- Contradiction highlighting
+- Cleaner, more focused workflow
 
 ---
 
-## Open Questions
-
-1. **Problem Limit**: Should there be a max number of active problems (like Feynman's 12)?
-2. **Sharing**: Could problems be shared/templated for common use cases?
-3. **Problem Hierarchy**: Support for sub-problems or problem trees?
-4. **External Input**: Allow adding evidence manually (not just from KB)?
-5. **Hypothesis Evolution**: Track how hypothesis changes over time?
-
----
-
-*This epic replaces Story 6.1 from Epic 6. See [epic6.md](epic6.md) for remaining blogging engine stories (6.2-6.7).*
+*This epic replaces Story 6.1 from Epic 6. The remaining stories (6.2-6.7) continue to work with the new problems-based approach.*

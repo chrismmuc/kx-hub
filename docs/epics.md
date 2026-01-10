@@ -132,19 +132,22 @@ See [epics/epic9.md](epics/epic9.md) for full details.
 
 ## Epic 10: Guided Problem Definition (Feynman Method) 🚧
 
-**Goal:** Replace unguided idea generation with problem-first approach based on Feynman's "12 Favorite Problems". Users define top problems with hypotheses, KB content is analyzed against these - with emphasis on source relationships (especially contradictions).
+**Goal:** Replace unguided idea generation with problem-first approach based on Feynman's "12 Favorite Problems". Users define top problems, evidence is automatically matched from KB - with emphasis on source relationships (especially contradictions). Claude generates article ideas from evidence.
 
 **Status:** Planned
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 10.1 | **Problems Collection & CRUD** - `add_problem`, `list_problems`, `update_problem`, `archive_problem` | Planned |
-| 10.2 | **Problem-KB Matching** - Semantic search + relationship expansion (contradictions = gold) | Planned |
-| 10.3 | **Problem-Based Ideas** - Rewrite `suggest_article_ideas` to require problem context | Planned |
-| 10.4 | **Auto-Connect Highlights** - Pipeline integration for new evidence detection | Planned |
-| 10.5 | **Problem Dashboard** - Overview with health, staleness, insights | Planned |
+| 10.1 | **Problems Tool** - Single `problems` tool with actions: add, list, analyze, archive | Planned |
+| 10.2 | **Pipeline Integration** - Auto-match new chunks to problems after ingest | Planned |
+| 10.3 | **Cleanup Legacy** - Remove suggest_article_ideas, list_ideas, accept/reject_idea + DB cleanup | Planned |
+| 10.4 | **Epic 6 Integration** - Update blogging workflow to use problems-based approach | Planned |
 
-**Key Innovation:** Contradictions between sources are surfaced as the most valuable evidence - they reveal where the interesting article angles are.
+**Key Changes:**
+- 1 new tool (`problems`) replaces 4 tools (suggest_article_ideas, list_ideas, accept_idea, reject_idea)
+- Evidence auto-matched via pipeline (efficient: only new chunks × active problems)
+- Contradictions highlighted as most valuable for article angles
+- Claude generates ideas in conversation, not stored
 
 See [epics/epic10.md](epics/epic10.md) for full details.
 
