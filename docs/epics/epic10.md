@@ -639,6 +639,101 @@ Claude: "Here's what your knowledge base says about feature flags:
 
 ---
 
+## Story 10.5: Infographic Generation (Optional)
+
+**Status:** Planned (Optional)
+
+**Summary:** Generate visual infographics for problems using Gemini 3 Pro Image, visualizing the evidence and contradictions.
+
+### Pricing (Gemini 3 Pro Image)
+
+| Resolution | Tokens | Cost per Image |
+|------------|--------|----------------|
+| 1K-2K (1024-2048px) | 1,120 | **$0.134** |
+| 2K-3K (HD) | ~1,500 | **$0.18** |
+| 4K (4096px) | 2,000 | **$0.24** |
+
+**Free tier:** 1,500 images/day in Google AI Studio (dev/testing)
+
+### Usage
+
+```python
+problems(
+    action="analyze",
+    problem_id="prob_001",
+    generate_infographic=True  # Optional parameter
+)
+```
+
+**Returns (additional field):**
+```json
+{
+  "infographic": {
+    "url": "gs://kx-hub-infographics/prob_001.png",
+    "resolution": "2048x2048",
+    "cost": "$0.134",
+    "generated_at": "2026-01-10T..."
+  }
+}
+```
+
+### Infographic Content
+
+The generated infographic visualizes:
+- Problem statement (center)
+- Supporting evidence (green, with source attributions)
+- Contradicting evidence (red, highlighted as tension)
+- Connection arrows showing relationships
+- Key quotes from sources
+
+### Prompt Template
+
+```python
+INFOGRAPHIC_PROMPT = """
+Create a professional infographic visualizing this research problem.
+
+PROBLEM: {problem}
+DESCRIPTION: {description}
+
+SUPPORTING EVIDENCE:
+{supporting_evidence_formatted}
+
+CONTRADICTING EVIDENCE (highlight as tension!):
+{contradicting_evidence_formatted}
+
+CONNECTIONS:
+{connections_formatted}
+
+STYLE:
+- Clean, modern, minimalist design
+- Problem as central focal point
+- Green for supporting, red/orange for contradicting
+- Include source attributions for credibility
+- Show connection arrows between sources
+- Professional typography, readable at 1080p
+
+OUTPUT: 2048x2048 PNG
+"""
+```
+
+### Tasks
+
+1. [ ] Add `generate_infographic` parameter to analyze action
+2. [ ] Implement Gemini 3 Pro Image client
+3. [ ] Create infographic prompt template
+4. [ ] Upload generated images to GCS
+5. [ ] Return image URL in response
+6. [ ] Add cost tracking/logging
+
+### Success Metrics
+
+- Infographics are visually clear and accurate
+- Generation time < 30 seconds
+- Cost tracked per generation
+- Images accessible via GCS URL
+
+---
+
 ## Implementation Plan
 
 ### Phase 1: Core (Stories 10.1, 10.3)
@@ -666,8 +761,9 @@ Claude: "Here's what your knowledge base says about feature flags:
 | 10.2 | Pipeline Integration (Auto-Match) | 4-6h |
 | 10.3 | Cleanup Legacy Ideas System | 2-3h |
 | 10.4 | Update Epic 6 Integration | 1-2h |
+| 10.5 | Infographic Generation (Optional) | 2-3h |
 
-**Total Effort:** 11-17 hours
+**Total Effort:** 13-20 hours (11-17h without infographics)
 
 **Key Deliverables:**
 - 1 new MCP tool (`problems` with 4 actions)
