@@ -720,11 +720,13 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
         db = get_firestore_client()
         collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
-        # Query all chunks in period (no limit)
+        # Query all chunks in period by actual reading time (last_highlighted_at)
         query = db.collection(collection)
-        query = query.where("created_at", ">=", start_dt)
-        query = query.where("created_at", "<=", now)
-        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
+        query = query.where("last_highlighted_at", ">=", start_dt)
+        query = query.where("last_highlighted_at", "<=", now)
+        query = query.order_by(
+            "last_highlighted_at", direction=firestore.Query.DESCENDING
+        )
 
         docs = query.stream()
 
@@ -737,10 +739,10 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
             data = doc.to_dict()
             total_chunks += 1
 
-            # Group by day
-            created_at = data.get("created_at")
-            if created_at:
-                day_key = created_at.strftime("%Y-%m-%d")
+            # Group by day using last_highlighted_at (actual reading time)
+            highlighted_at = data.get("last_highlighted_at")
+            if highlighted_at:
+                day_key = highlighted_at.strftime("%Y-%m-%d")
                 chunks_by_day[day_key] = chunks_by_day.get(day_key, 0) + 1
 
             # Track sources

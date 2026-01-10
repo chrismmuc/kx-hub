@@ -835,13 +835,13 @@ class TestGetRecent(unittest.TestCase):
     """Test suite for get_recent tool (Story 4.3)."""
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_default_parameters(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent with default parameters (AC 1)."""
         # Mock recently added chunks
-        mock_get_recently_added.return_value = [
+        mock_get_recently_read.return_value = [
             {
                 "id": "chunk-1",
                 "chunk_id": "chunk-1",
@@ -873,7 +873,7 @@ class TestGetRecent(unittest.TestCase):
 
         # AC 1: Verify default parameters used
         self.assertEqual(result["period"], "last_7_days")
-        mock_get_recently_added.assert_called_once_with(limit=10, days=7)
+        mock_get_recently_read.assert_called_once_with(limit=10, days=7)
 
         # AC 2: Verify recent chunks included
         self.assertIn("recent_chunks", result)
@@ -885,13 +885,13 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result["activity_summary"]["total_chunks_added"], 15)
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_with_knowledge_cards(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent includes knowledge cards for chunks (AC 6)."""
         # Mock chunk with knowledge card
-        mock_get_recently_added.return_value = [
+        mock_get_recently_read.return_value = [
             {
                 "id": "chunk-1",
                 "chunk_id": "chunk-1",
@@ -928,13 +928,13 @@ class TestGetRecent(unittest.TestCase):
         )
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_with_custom_period(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent with different period values (AC 5)."""
         # Mock empty results
-        mock_get_recently_added.return_value = []
+        mock_get_recently_read.return_value = []
         mock_get_activity_summary.return_value = {
             "period": "last_3_days",
             "total_chunks_added": 0,
@@ -944,17 +944,17 @@ class TestGetRecent(unittest.TestCase):
         result = tools.get_recent(period="last_3_days", limit=10)
 
         # AC 5: Verify period mapped correctly (last_3_days -> 3 days)
-        mock_get_recently_added.assert_called_once_with(limit=10, days=3)
+        mock_get_recently_read.assert_called_once_with(limit=10, days=3)
         self.assertEqual(result["period"], "last_3_days")
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_with_custom_limit(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent with custom limit parameter (AC 7)."""
         # Mock 5 chunks
-        mock_get_recently_added.return_value = [
+        mock_get_recently_read.return_value = [
             {
                 "id": f"chunk-{i}",
                 "chunk_id": f"chunk-{i}",
@@ -978,17 +978,17 @@ class TestGetRecent(unittest.TestCase):
         result = tools.get_recent(period="last_7_days", limit=5)
 
         # AC 7: Verify limit parameter used
-        mock_get_recently_added.assert_called_once_with(limit=5, days=7)
+        mock_get_recently_read.assert_called_once_with(limit=5, days=7)
         self.assertEqual(len(result["recent_chunks"]), 5)
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_empty_results(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent with no recent chunks (AC 8)."""
         # Mock empty results
-        mock_get_recently_added.return_value = []
+        mock_get_recently_read.return_value = []
         mock_get_activity_summary.return_value = {
             "period": "last_7_days",
             "total_chunks_added": 0,
@@ -1005,13 +1005,13 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result["activity_summary"]["total_chunks_added"], 0)
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_url_fields_included(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent includes all URL fields (AC 9)."""
         # Mock chunk with all URL fields
-        mock_get_recently_added.return_value = [
+        mock_get_recently_read.return_value = [
             {
                 "id": "chunk-1",
                 "chunk_id": "chunk-1",
@@ -1046,13 +1046,13 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(chunk["highlight_url"], "https://readwise.io/highlight/789")
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_top_sources_and_authors(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent includes top sources and authors in activity summary (AC 10)."""
         # Mock chunks
-        mock_get_recently_added.return_value = []
+        mock_get_recently_read.return_value = []
 
         # Mock activity summary with top sources/authors
         mock_get_activity_summary.return_value = {
@@ -1089,13 +1089,13 @@ class TestGetRecent(unittest.TestCase):
         self.assertEqual(result["activity_summary"]["top_authors"][0]["count"], 10)
 
     @patch("mcp_server.tools.firestore_client.get_activity_summary")
-    @patch("mcp_server.tools.firestore_client.get_recently_added")
+    @patch("mcp_server.tools.firestore_client.get_recently_read")
     def test_get_recent_period_mapping(
-        self, mock_get_recently_added, mock_get_activity_summary
+        self, mock_get_recently_read, mock_get_activity_summary
     ):
         """Test get_recent maps all period values to correct days (AC 5)."""
         # Mock empty results
-        mock_get_recently_added.return_value = []
+        mock_get_recently_read.return_value = []
         mock_get_activity_summary.return_value = {
             "period": "today",
             "total_chunks_added": 0,
@@ -1113,11 +1113,11 @@ class TestGetRecent(unittest.TestCase):
         }
 
         for period, expected_days in period_mappings.items():
-            mock_get_recently_added.reset_mock()
+            mock_get_recently_read.reset_mock()
             result = tools.get_recent(period=period, limit=10)
 
             # Verify correct days mapping
-            mock_get_recently_added.assert_called_once_with(
+            mock_get_recently_read.assert_called_once_with(
                 limit=10, days=expected_days
             )
             self.assertEqual(result["period"], period)
