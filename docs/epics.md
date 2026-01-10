@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-10
 
 ---
 
@@ -85,7 +85,7 @@ See [epic4.md](epic4.md) for full details.
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 6.1 | **Blog Idea Extraction** - `suggest_article_ideas`, `list_ideas`, `accept_idea`, `reject_idea` | ✅ Done |
+| 6.1 | ~~Blog Idea Extraction~~ | ⚠️ **Replaced by Epic 10** |
 | 6.2 | **Article Outline Generation** - Structure and outline creation | Planned |
 | 6.3 | **AI-Assisted Drafting** - Section expansion and refinement | Planned |
 | 6.4 | **Article Development Log** - Session tracking and history | Planned |
@@ -127,6 +127,26 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 | 9.4 | **Natural Language Summary** - LLM-generated fließtext summary (optional) | Planned |
 
 See [epics/epic9.md](epics/epic9.md) for full details.
+
+---
+
+## Epic 10: Guided Problem Definition (Feynman Method) 🚧
+
+**Goal:** Replace unguided idea generation with problem-first approach based on Feynman's "12 Favorite Problems". Users define top problems with hypotheses, KB content is analyzed against these - with emphasis on source relationships (especially contradictions).
+
+**Status:** Planned
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 10.1 | **Problems Collection & CRUD** - `add_problem`, `list_problems`, `update_problem`, `archive_problem` | Planned |
+| 10.2 | **Problem-KB Matching** - Semantic search + relationship expansion (contradictions = gold) | Planned |
+| 10.3 | **Problem-Based Ideas** - Rewrite `suggest_article_ideas` to require problem context | Planned |
+| 10.4 | **Auto-Connect Highlights** - Pipeline integration for new evidence detection | Planned |
+| 10.5 | **Problem Dashboard** - Overview with health, staleness, insights | Planned |
+
+**Key Innovation:** Contradictions between sources are surfaced as the most valuable evidence - they reveal where the interesting article angles are.
+
+See [epics/epic10.md](epics/epic10.md) for full details.
 
 ---
 
