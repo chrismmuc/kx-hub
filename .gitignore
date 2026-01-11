@@ -17,6 +17,7 @@ terraform/.terraform.lock.hcl
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 terraform/*.tfplan
+terraform/tfplan
 terraform/.terraform.tfstate.lock.info
 terraform/mcp-remote/.terraform/
 terraform/mcp-remote/.terraform.lock.hcl
