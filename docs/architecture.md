@@ -171,13 +171,13 @@ The MCP server exposes the following tools to Claude:
 }
 ```
 
-**Article Ideas (Story 6.1):**
+**Feynman Problems (Epic 10):**
 | Tool | Purpose |
 |------|---------|
-| `suggest_article_ideas` | Generate blog ideas from KB sources or evaluate specific topic |
-| `list_ideas` | List article ideas with optional status filter |
-| `accept_idea` | Accept an idea for development |
-| `reject_idea` | Reject an idea with optional reason |
+| `problems(action="add")` | Add a new problem with optional description |
+| `problems(action="list")` | List all active problems with evidence counts |
+| `problems(action="analyze")` | Get evidence + connections for a problem |
+| `problems(action="archive")` | Archive a resolved/inactive problem |
 
 **Hot Sites Categories** (domain filtering):
 - `tech` - Engineering blogs (25 domains)
@@ -285,7 +285,7 @@ config/
 | `kb_items` | Knowledge chunks with embeddings | `source_id`, `embedding`, `knowledge_card` |
 | `sources` | Books/articles metadata | `title`, `author`, `chunk_ids` |
 | `relationships` | Cross-source semantic connections | `source_id`, `target_id`, `type` |
-| `article_ideas` | Blog idea suggestions (Epic 6) | `status`, `suggested_at`, `medium_scores` |
+| `problems` | Feynman-style problems (Epic 10) | `problem`, `embedding`, `evidence`, `status` |
 | `async_jobs` | Background job tracking (Epic 7) | `job_type`, `status`, `progress`, `result` |
 | `config/*` | System configuration | Various settings |
 
@@ -295,7 +295,7 @@ Managed via Terraform in `terraform/firestore_indexes.tf`:
 
 | Index | Collection | Fields | Purpose |
 |-------|------------|--------|---------|
-| `article_ideas_status` | `article_ideas` | `status` ASC, `suggested_at` DESC | Filter ideas by status with date ordering |
+| `problems_status` | `problems` | `status` ASC, `created_at` DESC | Filter problems by status with date ordering |
 
 **Adding new indexes:** Define in `firestore_indexes.tf` and run `terraform apply`.
 

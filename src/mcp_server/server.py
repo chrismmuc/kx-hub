@@ -218,69 +218,6 @@ Two-step pattern: search_kb → scan cards → get_chunk for details.""",
             },
         },
     },
-    # Story 6.1: Blog Idea Extraction
-    {
-        "name": "suggest_article_ideas",
-        "description": """Generate article ideas from KB sources or evaluate a specific topic.
-
-Unified tool for:
-- Auto-generate ideas from KB analysis (no topic param)
-- Evaluate a specific topic (with topic param)
-- List existing ideas (list_existing=true)
-- Calculate medium suitability scores (linkedin_post, linkedin_article, blog, newsletter, twitter_thread, substack)
-- Optional web enrichment for market analysis (enrich_with_web=true)
-
-Usage patterns:
-- suggest_article_ideas() → Auto-generate 5 ideas from entire KB
-- suggest_article_ideas(list_existing=true) → Show previously generated ideas
-- suggest_article_ideas(focus_tags=["productivity"]) → Ideas only from productivity sources
-- suggest_article_ideas(topic="Deep Work for Developers") → Evaluate THIS idea
-- suggest_article_ideas(enrich_with_web=true) → Include market/competition analysis""",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "list_existing": {
-                    "type": "boolean",
-                    "description": "List previously generated ideas instead of generating new ones",
-                    "default": False,
-                },
-                "min_sources": {
-                    "type": "integer",
-                    "description": "Minimum KB sources per idea (default 2)",
-                    "default": 2,
-                },
-                "focus_tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Filter by specific tags (use get_stats() to see available)",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum ideas to generate or list (default 5)",
-                    "default": 5,
-                },
-                "save": {
-                    "type": "boolean",
-                    "description": "Save ideas to Firestore (false = preview only)",
-                    "default": True,
-                },
-                "enrich_with_web": {
-                    "type": "boolean",
-                    "description": "Add Tavily market analysis (slower, uses API)",
-                    "default": False,
-                },
-                "topic": {
-                    "type": "string",
-                    "description": "Specific topic to evaluate (replaces auto-generation)",
-                },
-                "source_ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Specific sources to use with topic",
-                },
-            },
-        },
-    },
     # Story 7.1: Async Recommendations
     {
         "name": "recommendations",
@@ -318,6 +255,50 @@ Usage:
                     "default": 14,
                 },
             },
+        },
+    },
+    # Epic 10: Feynman-style Problems
+    {
+        "name": "problems",
+        "description": """Manage Feynman-style problems for knowledge-driven article ideation.
+
+Based on Richard Feynman's "12 Favorite Problems" method: define your important questions,
+and the system automatically matches relevant evidence from your reading.
+
+Actions:
+- add: Create a new problem with optional description
+- list: Show all active problems with evidence counts
+- analyze: Get evidence + connections for a problem (or all problems if no ID)
+- archive: Archive a resolved/inactive problem
+
+Usage patterns:
+- problems(action="add", problem="Why do feature flags fail?", description="Teams adopt them but...")
+- problems(action="list")
+- problems(action="analyze", problem_id="prob_001")
+- problems(action="analyze")  # All active problems
+- problems(action="archive", problem_id="prob_001")""",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action to perform",
+                    "enum": ["add", "list", "analyze", "archive"],
+                },
+                "problem": {
+                    "type": "string",
+                    "description": "Problem statement (required for 'add')",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional context/motivation for the problem",
+                },
+                "problem_id": {
+                    "type": "string",
+                    "description": "Problem ID (for 'analyze' single or 'archive')",
+                },
+            },
+            "required": ["action"],
         },
     },
 ]
@@ -386,19 +367,6 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
     elif name == "get_contradictions":
         return tools.get_contradictions(limit=arguments.get("limit", 10))
-
-    # Story 6.1: Blog Idea Extraction
-    elif name == "suggest_article_ideas":
-        return tools.suggest_article_ideas(
-            list_existing=arguments.get("list_existing", False),
-            min_sources=arguments.get("min_sources", 2),
-            focus_tags=arguments.get("focus_tags"),
-            limit=arguments.get("limit", 5),
-            save=arguments.get("save", True),
-            enrich_with_web=arguments.get("enrich_with_web", False),
-            topic=arguments.get("topic"),
-            source_ids=arguments.get("source_ids"),
-        )
     # Story 7.1: Async Recommendations, Story 7.2: Simplified interface
     elif name == "recommendations":
         return tools.recommendations(
@@ -408,6 +376,14 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif name == "recommendations_history":
         return tools.recommendations_history(
             days=arguments.get("days", 14),
+        )
+    # Epic 10: Feynman-style Problems
+    elif name == "problems":
+        return tools.problems(
+            action=arguments.get("action", ""),
+            problem=arguments.get("problem"),
+            description=arguments.get("description"),
+            problem_id=arguments.get("problem_id"),
         )
     else:
         raise ValueError(f"Unknown tool: {name}")

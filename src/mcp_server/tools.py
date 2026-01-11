@@ -2360,168 +2360,6 @@ def search_within_source(source_id: str, query: str, limit: int = 10) -> Dict[st
         }
 
 
-# ============================================================================
-# Story 6.1: Blog Idea Extraction from Knowledge Base
-# ============================================================================
-
-
-def suggest_article_ideas(
-    list_existing: bool = False,
-    min_sources: int = 2,
-    focus_tags: Optional[List[str]] = None,
-    limit: int = 5,
-    save: bool = True,
-    enrich_with_web: bool = False,
-    topic: Optional[str] = None,
-    source_ids: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """
-    Generate article ideas from KB sources or evaluate a specific topic.
-
-    Story 6.1: Blog Idea Extraction from Knowledge Base
-
-    Unified tool for:
-    - Automatic idea discovery from KB analysis
-    - Manual topic evaluation and scoring
-    - List existing ideas (list_existing=True)
-    - Medium suitability calculation
-    - Optional web enrichment for market analysis
-
-    Args:
-        list_existing: List previously generated ideas instead of generating new ones
-        min_sources: Minimum KB sources per idea (default 2)
-        focus_tags: Filter by specific tags (use get_stats() to see available)
-        limit: Maximum ideas to generate or list (default 5)
-        save: Save ideas to Firestore (False = preview only)
-        enrich_with_web: Add Tavily market analysis (slower, uses API)
-        topic: Specific topic to evaluate (replaces auto-generation)
-        source_ids: Specific sources to use with topic
-
-    Returns:
-        Dictionary with generated ideas including:
-        - ideas: List of idea objects with scores
-        - Each idea contains: title, thesis, unique_angle, sources, strength,
-          medium_scores, key_highlights, timeliness, suggested_at
-        - If enrich_with_web=True: web_analysis with competition info
-
-    Examples:
-        # List existing ideas
-        >>> suggest_article_ideas(list_existing=True)
-        {"mode": "list", "idea_count": 5, "ideas": [...]}
-
-        # Auto-generate ideas
-        >>> suggest_article_ideas()
-        {"idea_count": 5, "ideas": [...]}
-
-        # Filter by tags
-        >>> suggest_article_ideas(focus_tags=["productivity", "pkm"])
-
-        # Evaluate specific topic
-        >>> suggest_article_ideas(topic="Deep Work for Developers")
-
-        # With market analysis
-        >>> suggest_article_ideas(topic="AI in PKM", enrich_with_web=True)
-    """
-    import article_ideas
-
-    try:
-        logger.info(
-            f"suggest_article_ideas: list_existing={list_existing}, topic={topic}, "
-            f"min_sources={min_sources}, tags={focus_tags}"
-        )
-
-        # List existing ideas
-        if list_existing:
-            ideas = article_ideas.get_article_ideas(limit=limit)
-
-            # Format for display
-            formatted_ideas = []
-            for idea in ideas:
-                medium_scores = idea.get("medium_scores", {})
-                sorted_mediums = sorted(
-                    medium_scores.items(), key=lambda x: x[1], reverse=True
-                )[:3]
-                top_mediums = [{"medium": m, "score": s} for m, s in sorted_mediums]
-
-                formatted_ideas.append(
-                    {
-                        "idea_id": idea.get("idea_id"),
-                        "title": idea.get("title"),
-                        "thesis": idea.get("thesis"),
-                        "suggested_at": idea.get("suggested_at"),
-                        "strength": idea.get("strength", 0),
-                        "source_count": len(idea.get("sources", [])),
-                        "top_mediums": top_mediums,
-                    }
-                )
-
-            return {
-                "mode": "list",
-                "idea_count": len(formatted_ideas),
-                "ideas": formatted_ideas,
-            }
-
-        # If topic provided, evaluate that specific idea
-        if topic:
-            result = article_ideas.suggest_idea_for_topic(
-                topic=topic,
-                source_ids=source_ids,
-                save=save,
-            )
-
-            if "error" in result:
-                return result
-
-            idea = result.get("idea", {})
-            ideas = [idea] if idea else []
-
-            # Web enrichment if requested
-            if enrich_with_web and ideas:
-                for idea in ideas:
-                    idea["web_analysis"] = article_ideas.enrich_idea_with_web(idea)
-
-            return {
-                "mode": "topic_evaluation",
-                "topic": topic,
-                "is_duplicate": result.get("is_duplicate", False),
-                "duplicate_of": result.get("duplicate_of"),
-                "idea_count": len(ideas),
-                "ideas": ideas,
-            }
-
-        # Auto-generate ideas from KB
-        ideas = article_ideas.suggest_ideas_from_sources(
-            min_sources=min_sources,
-            focus_tags=focus_tags,
-            limit=limit,
-            save=save,
-        )
-
-        # Web enrichment if requested
-        if enrich_with_web:
-            for idea in ideas:
-                idea["web_analysis"] = article_ideas.enrich_idea_with_web(idea)
-
-        return {
-            "mode": "auto_discovery",
-            "filters": {
-                "min_sources": min_sources,
-                "focus_tags": focus_tags,
-            },
-            "saved": save,
-            "idea_count": len(ideas),
-            "ideas": ideas,
-        }
-
-    except Exception as e:
-        logger.error(f"suggest_article_ideas failed: {e}")
-        return {
-            "error": str(e),
-            "idea_count": 0,
-            "ideas": [],
-        }
-
-
 # ==================== Async Recommendations (Epic 7) ====================
 
 import json as json_module
@@ -2753,3 +2591,235 @@ def recommendations_history(days: int = 14) -> Dict[str, Any]:
     """
     logger.info(f"Getting recommendations history: days={days}")
     return firestore_client.get_recommendations_history(days=days)
+
+
+# ==================== Problems Tool (Epic 10) ====================
+
+
+def problems(
+    action: str,
+    problem: Optional[str] = None,
+    description: Optional[str] = None,
+    problem_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Unified tool for managing Feynman-style problems.
+
+    Epic 10 Story 10.1: Implements the "12 Favorite Problems" method.
+    Problems collect evidence automatically as new content is ingested.
+    Claude generates article ideas based on the evidence in conversation.
+
+    Args:
+        action: One of "add", "list", "analyze", "archive"
+        problem: Problem statement (required for "add")
+        description: Optional context/motivation (for "add")
+        problem_id: Problem ID (required for "analyze" single, "archive")
+
+    Returns:
+        Dictionary with action-specific results
+
+    Actions:
+        add: Create a new problem
+            >>> problems(action="add", problem="Why do feature flags fail?",
+            ...          description="Teams adopt them but still have issues")
+
+        list: Show all active problems with evidence counts
+            >>> problems(action="list")
+
+        analyze: Get evidence + connections for a problem (or all)
+            >>> problems(action="analyze", problem_id="prob_001")
+            >>> problems(action="analyze")  # All active problems
+
+        archive: Archive a resolved/inactive problem
+            >>> problems(action="archive", problem_id="prob_001")
+    """
+    try:
+        logger.info(f"problems: action={action}, problem_id={problem_id}")
+
+        if action == "add":
+            return _problems_add(problem, description)
+        elif action == "list":
+            return _problems_list()
+        elif action == "analyze":
+            return _problems_analyze(problem_id)
+        elif action == "archive":
+            return _problems_archive(problem_id)
+        else:
+            return {"error": f"Unknown action: {action}. Use: add, list, analyze, archive"}
+
+    except Exception as e:
+        logger.error(f"problems failed: {e}")
+        return {"error": str(e)}
+
+
+def _problems_add(
+    problem: Optional[str],
+    description: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Create a new problem.
+
+    Generates an embedding from problem + description for matching.
+    """
+    if not problem:
+        return {"error": "Problem statement is required for action='add'"}
+
+    # Default description if not provided
+    description = description or ""
+
+    # Generate embedding from combined text
+    embedding_text = f"{problem} {description}".strip()
+
+    try:
+        embedding = embeddings.generate_query_embedding(embedding_text)
+        logger.info(f"Generated embedding for problem: {len(embedding)} dimensions")
+    except Exception as e:
+        logger.error(f"Failed to generate embedding: {e}")
+        return {"error": f"Failed to generate embedding: {e}"}
+
+    # Create the problem in Firestore
+    result = firestore_client.create_problem(
+        problem=problem,
+        description=description,
+        embedding=embedding,
+    )
+
+    return result
+
+
+def _problems_list() -> Dict[str, Any]:
+    """
+    List all active problems with evidence counts.
+    """
+    # Get active problems
+    active = firestore_client.list_problems(status="active")
+    archived = firestore_client.list_problems(status="archived")
+
+    return {
+        "problems": active,
+        "total": len(active) + len(archived),
+        "active": len(active),
+        "archived": len(archived),
+    }
+
+
+def _problems_analyze(problem_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Analyze evidence for a problem or all problems.
+
+    Returns evidence grouped by supporting/contradicting.
+    """
+    if problem_id:
+        # Analyze single problem
+        return _analyze_single_problem(problem_id)
+    else:
+        # Analyze all active problems
+        return _analyze_all_problems()
+
+
+def _analyze_single_problem(problem_id: str) -> Dict[str, Any]:
+    """
+    Analyze a single problem with its evidence.
+    """
+    problem_data = firestore_client.get_problem(problem_id)
+
+    if not problem_data:
+        return {"error": f"Problem not found: {problem_id}"}
+
+    evidence = problem_data.get("evidence", [])
+
+    # Group evidence by type
+    supporting = []
+    contradicting = []
+
+    for ev in evidence:
+        formatted_ev = {
+            "source_title": ev.get("source_title", "Unknown"),
+            "quote": ev.get("quote", ""),
+            "chunk_id": ev.get("chunk_id"),
+            "similarity": ev.get("similarity", 0.0),
+        }
+
+        # Add relationship if present
+        if ev.get("relationship"):
+            formatted_ev["relationship"] = {
+                "type": ev["relationship"].get("type"),
+                "target": ev["relationship"].get("target_source"),
+            }
+
+        if ev.get("is_contradiction", False):
+            contradicting.append(formatted_ev)
+        else:
+            supporting.append(formatted_ev)
+
+    # Extract unique source connections
+    connections = []
+    seen_connections = set()
+
+    for ev in evidence:
+        rel = ev.get("relationship")
+        if rel:
+            source = ev.get("source_title", "Unknown")
+            target = rel.get("target_source", "Unknown")
+            rel_type = rel.get("type", "related")
+            key = f"{source}->{target}:{rel_type}"
+
+            if key not in seen_connections:
+                seen_connections.add(key)
+                connections.append({
+                    "from": source,
+                    "to": target,
+                    "type": rel_type,
+                })
+
+    # Get unique sources
+    unique_sources = list(set(ev.get("source_title", "Unknown") for ev in evidence))
+
+    return {
+        "problem_id": problem_id,
+        "problem": problem_data.get("problem", ""),
+        "description": problem_data.get("description", ""),
+        "evidence": {
+            "supporting": supporting,
+            "contradicting": contradicting,
+        },
+        "connections": connections,
+        "summary": {
+            "evidence_count": len(evidence),
+            "contradiction_count": len(contradicting),
+            "sources": unique_sources,
+            "ready_for_article": len(evidence) >= 3 and len(contradicting) >= 1,
+        },
+    }
+
+
+def _analyze_all_problems() -> Dict[str, Any]:
+    """
+    Analyze all active problems.
+    """
+    active_problems = firestore_client.list_problems(status="active")
+
+    results = []
+    for problem in active_problems:
+        analysis = _analyze_single_problem(problem["problem_id"])
+        if "error" not in analysis:
+            results.append({
+                "problem_id": analysis["problem_id"],
+                "problem": analysis["problem"],
+                "summary": analysis["summary"],
+            })
+
+    return {
+        "problems": results,
+        "total_analyzed": len(results),
+    }
+
+
+def _problems_archive(problem_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Archive a problem.
+    """
+    if not problem_id:
+        return {"error": "problem_id is required for action='archive'"}
+
+    return firestore_client.archive_problem(problem_id)

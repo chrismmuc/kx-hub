@@ -779,6 +779,37 @@ def embed(request):
             doc_ref.set(failure_update, merge=True)
             stats["failed"] += 1
 
+    # Epic 10 Story 10.2: Match new chunks to active problems
+    if stats["processed"] > 0:
+        try:
+            from problem_matcher import match_chunks_to_problems
+
+            # Collect all successfully processed chunk IDs
+            processed_chunk_ids = []
+            for snapshot in candidate_snapshots:
+                doc = snapshot.to_dict() or {}
+                if doc.get("embedding_status") == "complete":
+                    chunk_id = doc.get("id", snapshot.id)
+                    processed_chunk_ids.append(chunk_id)
+
+            if processed_chunk_ids:
+                match_result = match_chunks_to_problems(processed_chunk_ids)
+                stats["problem_matches"] = match_result.get("matches_found", 0)
+                stats["problem_contradictions"] = match_result.get(
+                    "contradictions_found", 0
+                )
+                stats["problems_updated"] = len(
+                    match_result.get("problems_updated", [])
+                )
+                logger.info(
+                    f"Problem matching: {stats['problem_matches']} matches, "
+                    f"{stats['problem_contradictions']} contradictions"
+                )
+        except ImportError:
+            logger.info("Problem matcher not available, skipping problem matching")
+        except Exception as e:
+            logger.warning(f"Problem matching failed (non-fatal): {e}")
+
     logger.info(f"Embed processing complete: {stats}")
     return stats, 200
 

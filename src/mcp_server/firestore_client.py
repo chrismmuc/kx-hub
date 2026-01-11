@@ -2525,3 +2525,364 @@ def get_recommendations_history(
     except Exception as e:
         logger.error(f"Failed to get recommendations history: {e}")
         return {"days": days, "total_count": 0, "recommendations": [], "error": str(e)}
+
+
+# ==================== Problems Collection (Epic 10) ====================
+
+
+def create_problem(
+    problem: str,
+    description: str,
+    embedding: List[float],
+) -> Dict[str, Any]:
+    """
+    Create a new problem in the problems collection.
+
+    Epic 10 Story 10.1: Feynman-style problem tracking.
+
+    Args:
+        problem: The problem statement (e.g., "Why do feature flags fail?")
+        description: Additional context and motivation
+        embedding: 768-dimensional embedding for matching
+
+    Returns:
+        Dictionary with problem_id, problem, description, status, created_at
+    """
+    try:
+        db = get_firestore_client()
+        now = datetime.utcnow()
+
+        # Generate a readable problem ID
+        problem_id = f"prob_{uuid.uuid4().hex[:12]}"
+
+        problem_doc = {
+            "problem": problem,
+            "description": description,
+            "embedding": embedding,
+            "status": "active",
+            "evidence": [],
+            "evidence_count": 0,
+            "contradiction_count": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        db.collection("problems").document(problem_id).set(problem_doc)
+        logger.info(f"Created problem {problem_id}: {problem[:50]}...")
+
+        return {
+            "problem_id": problem_id,
+            "problem": problem,
+            "description": description,
+            "status": "active",
+            "created_at": now.isoformat() + "Z",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create problem: {e}")
+        raise
+
+
+def get_problem(problem_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get a problem by ID.
+
+    Args:
+        problem_id: Problem document ID
+
+    Returns:
+        Problem data or None if not found
+    """
+    try:
+        db = get_firestore_client()
+        doc = db.collection("problems").document(problem_id).get()
+
+        if not doc.exists:
+            return None
+
+        data = doc.to_dict()
+        data["problem_id"] = doc.id
+
+        # Convert timestamps
+        for field in ["created_at", "updated_at"]:
+            if data.get(field):
+                data[field] = data[field].isoformat() + "Z"
+
+        return data
+
+    except Exception as e:
+        logger.error(f"Failed to get problem {problem_id}: {e}")
+        return None
+
+
+def list_problems(
+    status: Optional[str] = None,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """
+    List all problems, optionally filtered by status.
+
+    Args:
+        status: Filter by status ("active" or "archived"), None for all
+        limit: Maximum problems to return
+
+    Returns:
+        List of problems with metadata (excludes embedding)
+    """
+    try:
+        db = get_firestore_client()
+
+        query = db.collection("problems")
+
+        if status:
+            query = query.where("status", "==", status)
+
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
+        query = query.limit(limit)
+
+        problems = []
+        for doc in query.stream():
+            data = doc.to_dict()
+
+            # Get last evidence timestamp
+            evidence = data.get("evidence", [])
+            last_evidence_at = None
+            if evidence:
+                # Find most recent evidence
+                for ev in evidence:
+                    added_at = ev.get("added_at")
+                    if added_at and (
+                        last_evidence_at is None or added_at > last_evidence_at
+                    ):
+                        last_evidence_at = added_at
+
+            problems.append(
+                {
+                    "problem_id": doc.id,
+                    "problem": data.get("problem", ""),
+                    "description": data.get("description", ""),
+                    "status": data.get("status", "active"),
+                    "evidence_count": data.get("evidence_count", 0),
+                    "contradiction_count": data.get("contradiction_count", 0),
+                    "created_at": data.get("created_at").isoformat() + "Z"
+                    if data.get("created_at")
+                    else None,
+                    "last_evidence_at": last_evidence_at.isoformat() + "Z"
+                    if last_evidence_at
+                    else None,
+                }
+            )
+
+        logger.info(f"Listed {len(problems)} problems (status={status})")
+        return problems
+
+    except Exception as e:
+        logger.error(f"Failed to list problems: {e}")
+        return []
+
+
+def get_active_problems_with_embeddings() -> List[Dict[str, Any]]:
+    """
+    Get all active problems with their embeddings for pipeline matching.
+
+    Epic 10 Story 10.2: Used by ingest pipeline to match new chunks.
+
+    Returns:
+        List of active problems with problem_id, problem, embedding
+    """
+    try:
+        db = get_firestore_client()
+
+        query = db.collection("problems").where("status", "==", "active")
+
+        problems = []
+        for doc in query.stream():
+            data = doc.to_dict()
+            problems.append(
+                {
+                    "problem_id": doc.id,
+                    "problem": data.get("problem", ""),
+                    "embedding": data.get("embedding", []),
+                }
+            )
+
+        logger.info(f"Retrieved {len(problems)} active problems with embeddings")
+        return problems
+
+    except Exception as e:
+        logger.error(f"Failed to get active problems: {e}")
+        return []
+
+
+def add_evidence_to_problem(
+    problem_id: str,
+    evidence: Dict[str, Any],
+) -> bool:
+    """
+    Add evidence to a problem.
+
+    Args:
+        problem_id: Problem ID to add evidence to
+        evidence: Evidence dictionary with:
+            - chunk_id, source_id, source_title, quote, similarity, added_at
+            - relationship: optional {type, target_source, context}
+            - is_contradiction: bool
+
+    Returns:
+        True if successful
+    """
+    try:
+        db = get_firestore_client()
+
+        doc_ref = db.collection("problems").document(problem_id)
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            logger.error(f"Problem {problem_id} not found")
+            return False
+
+        data = doc.to_dict()
+        existing_evidence = data.get("evidence", [])
+
+        # Check for duplicate (same chunk_id)
+        chunk_id = evidence.get("chunk_id")
+        for ev in existing_evidence:
+            if ev.get("chunk_id") == chunk_id:
+                logger.info(
+                    f"Evidence for chunk {chunk_id} already exists in problem {problem_id}"
+                )
+                return True  # Already exists, not an error
+
+        # Add new evidence
+        existing_evidence.append(evidence)
+
+        # Update counts
+        evidence_count = len(existing_evidence)
+        contradiction_count = sum(
+            1 for ev in existing_evidence if ev.get("is_contradiction", False)
+        )
+
+        doc_ref.update(
+            {
+                "evidence": existing_evidence,
+                "evidence_count": evidence_count,
+                "contradiction_count": contradiction_count,
+                "updated_at": datetime.utcnow(),
+            }
+        )
+
+        logger.info(
+            f"Added evidence to problem {problem_id}: chunk={chunk_id}, "
+            f"is_contradiction={evidence.get('is_contradiction', False)}"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to add evidence to problem {problem_id}: {e}")
+        return False
+
+
+def batch_add_evidence_to_problems(
+    matches: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Batch add evidence to multiple problems.
+
+    Epic 10 Story 10.2: Called by pipeline after matching new chunks.
+
+    Args:
+        matches: List of match dictionaries with:
+            - problem_id: Problem to add evidence to
+            - chunk_id, source_id, source_title, quote, similarity
+            - is_contradiction: bool
+            - relationship: optional {type, target_source, context}
+
+    Returns:
+        Dictionary with success count and errors
+    """
+    try:
+        success_count = 0
+        errors = []
+
+        for match in matches:
+            problem_id = match.get("problem_id")
+            if not problem_id:
+                continue
+
+            evidence = {
+                "chunk_id": match.get("chunk_id"),
+                "source_id": match.get("source_id"),
+                "source_title": match.get("source_title"),
+                "quote": match.get("quote", ""),
+                "similarity": match.get("similarity", 0.0),
+                "added_at": datetime.utcnow(),
+                "is_contradiction": match.get("is_contradiction", False),
+            }
+
+            # Add relationship if present
+            if match.get("relationship"):
+                evidence["relationship"] = match["relationship"]
+
+            if add_evidence_to_problem(problem_id, evidence):
+                success_count += 1
+            else:
+                errors.append(
+                    {
+                        "problem_id": problem_id,
+                        "chunk_id": match.get("chunk_id"),
+                        "error": "Failed to add evidence",
+                    }
+                )
+
+        logger.info(
+            f"Batch added evidence: {success_count}/{len(matches)} successful, {len(errors)} errors"
+        )
+
+        return {
+            "success_count": success_count,
+            "error_count": len(errors),
+            "errors": errors if errors else None,
+        }
+
+    except Exception as e:
+        logger.error(f"Batch add evidence failed: {e}")
+        return {"success_count": 0, "error_count": len(matches), "error": str(e)}
+
+
+def archive_problem(problem_id: str) -> Dict[str, Any]:
+    """
+    Archive a problem (sets status to 'archived').
+
+    Args:
+        problem_id: Problem ID to archive
+
+    Returns:
+        Dictionary with problem_id, status, evidence_preserved
+    """
+    try:
+        db = get_firestore_client()
+
+        doc_ref = db.collection("problems").document(problem_id)
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            return {"success": False, "error": f"Problem {problem_id} not found"}
+
+        doc_ref.update(
+            {
+                "status": "archived",
+                "updated_at": datetime.utcnow(),
+            }
+        )
+
+        logger.info(f"Archived problem {problem_id}")
+
+        return {
+            "problem_id": problem_id,
+            "status": "archived",
+            "evidence_preserved": True,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to archive problem {problem_id}: {e}")
+        return {"success": False, "error": str(e)}
