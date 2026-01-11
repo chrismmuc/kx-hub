@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-10
 
 ---
 
@@ -85,7 +85,7 @@ See [epic4.md](epic4.md) for full details.
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 6.1 | **Blog Idea Extraction** - `suggest_article_ideas`, `list_ideas`, `accept_idea`, `reject_idea` | ✅ Done |
+| 6.1 | ~~Blog Idea Extraction~~ | ⚠️ **Replaced by Epic 10** |
 | 6.2 | **Article Outline Generation** - Structure and outline creation | Planned |
 | 6.3 | **AI-Assisted Drafting** - Section expansion and refinement | Planned |
 | 6.4 | **Article Development Log** - Session tracking and history | Planned |
@@ -127,6 +127,30 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 | 9.4 | **Natural Language Summary** - LLM-generated fließtext summary (optional) | Planned |
 
 See [epics/epic9.md](epics/epic9.md) for full details.
+
+---
+
+## Epic 10: Guided Problem Definition (Feynman Method) 🚧
+
+**Goal:** Replace unguided idea generation with problem-first approach based on Feynman's "12 Favorite Problems". Users define top problems, evidence is automatically matched from KB - with emphasis on source relationships (especially contradictions). Claude generates article ideas from evidence.
+
+**Status:** Planned
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 10.1 | **Problems Tool** - Single `problems` tool with actions: add, list, analyze, archive | Planned |
+| 10.2 | **Pipeline Integration** - Auto-match new chunks to problems after ingest | Planned |
+| 10.3 | **Cleanup Legacy** - Remove suggest_article_ideas, list_ideas, accept/reject_idea + DB cleanup | Planned |
+| 10.4 | **Epic 6 Integration** - Update blogging workflow to use problems-based approach | Planned |
+| 10.5 | **Infographic Generation** - Gemini 3 Pro Image ($0.13-$0.24/image) | Optional |
+
+**Key Changes:**
+- 1 new tool (`problems`) replaces 4 tools (suggest_article_ideas, list_ideas, accept_idea, reject_idea)
+- Evidence auto-matched via pipeline (efficient: only new chunks × active problems)
+- Contradictions highlighted as most valuable for article angles
+- Claude generates ideas in conversation, not stored
+
+See [epics/epic10.md](epics/epic10.md) for full details.
 
 ---
 
