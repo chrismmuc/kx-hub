@@ -720,7 +720,7 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
         db = get_firestore_client()
         collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
 
-        # Query all chunks in period by actual reading time (last_highlighted_at)
+        # Try querying by actual reading time (last_highlighted_at) first
         query = db.collection(collection)
         query = query.where("last_highlighted_at", ">=", start_dt)
         query = query.where("last_highlighted_at", "<=", now)
@@ -728,7 +728,20 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
             "last_highlighted_at", direction=firestore.Query.DESCENDING
         )
 
-        docs = query.stream()
+        docs = list(query.stream())
+        date_field = "last_highlighted_at"
+
+        # Fallback to created_at if no chunks found with last_highlighted_at
+        if not docs:
+            logger.info("No chunks with last_highlighted_at, falling back to created_at")
+            query = db.collection(collection)
+            query = query.where("created_at", ">=", start_dt)
+            query = query.where("created_at", "<=", now)
+            query = query.order_by(
+                "created_at", direction=firestore.Query.DESCENDING
+            )
+            docs = list(query.stream())
+            date_field = "created_at"
 
         chunks_by_day = {}
         top_sources = {}
@@ -739,10 +752,10 @@ def get_activity_summary(period: str = "last_7_days") -> Dict[str, Any]:
             data = doc.to_dict()
             total_chunks += 1
 
-            # Group by day using last_highlighted_at (actual reading time)
-            highlighted_at = data.get("last_highlighted_at")
-            if highlighted_at:
-                day_key = highlighted_at.strftime("%Y-%m-%d")
+            # Group by day using the appropriate date field
+            date_value = data.get(date_field)
+            if date_value:
+                day_key = date_value.strftime("%Y-%m-%d")
                 chunks_by_day[day_key] = chunks_by_day.get(day_key, 0) + 1
 
             # Track sources
@@ -878,6 +891,12 @@ def get_recently_read(limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
             chunks.append(chunk_data)
 
         logger.info(f"Retrieved {len(chunks)} recently read chunks")
+
+        # Fallback to created_at if no chunks found with last_highlighted_at
+        if not chunks:
+            logger.info("No chunks with last_highlighted_at, falling back to get_recently_added")
+            return get_recently_added(limit=limit, days=days)
+
         return chunks
 
     except Exception as e:
