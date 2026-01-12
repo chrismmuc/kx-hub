@@ -1,0 +1,4 @@
+functions-framework>=3.10.0
+google-cloud-firestore>=2.22.0
+google-cloud-aiplatform>=1.130.0
+numpy>=1.26.0
