@@ -483,7 +483,12 @@ class DocumentChunker:
         }
 
         # Copy key fields from parent
-        for key in ['title', 'author', 'source', 'category', 'tags', 'url']:
+        # Note: Include highlighted_at and URL fields for proper querying/filtering
+        for key in [
+            'title', 'author', 'source', 'category', 'tags', 'url',
+            'first_highlighted_at', 'last_highlighted_at',
+            'readwise_url', 'source_url', 'highlight_url'
+        ]:
             if key in parent_frontmatter:
                 chunk_fm[key] = parent_frontmatter[key]
 

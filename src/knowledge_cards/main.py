@@ -86,14 +86,23 @@ def update_firestore_with_cards(cards: list[Dict[str, Any]], dry_run=False):
 
     for card_data in cards:
         try:
-            chunk_id = card_data["chunk_id"]
-            knowledge_card = card_data["knowledge_card"]
+            # Handle both tuple format (from generator) and dict format
+            if isinstance(card_data, tuple):
+                chunk_id, knowledge_card = card_data
+            else:
+                chunk_id = card_data["chunk_id"]
+                knowledge_card = card_data["knowledge_card"]
+
+            # Convert KnowledgeCard to dict if needed
+            if hasattr(knowledge_card, "to_dict"):
+                knowledge_card = knowledge_card.to_dict()
 
             doc_ref = collection_ref.document(chunk_id)
             doc_ref.set({"knowledge_card": knowledge_card}, merge=True)
             updated += 1
         except Exception as e:
-            logger.error(f"Failed to update {card_data.get('chunk_id')}: {e}")
+            chunk_id_str = card_data[0] if isinstance(card_data, tuple) else card_data.get('chunk_id', 'unknown')
+            logger.error(f"Failed to update {chunk_id_str}: {e}")
             failed += 1
 
     logger.info(f"Firestore update complete: {updated} succeeded, {failed} failed")
