@@ -26,8 +26,8 @@ from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
 
-# Similarity threshold for matching chunks to problems
-DEFAULT_SIMILARITY_THRESHOLD = 0.7
+# Similarity threshold for matching chunks to problems (0.65 works better for German problems vs English content)
+DEFAULT_SIMILARITY_THRESHOLD = 0.65
 
 # Global Firestore client (lazy initialization)
 _firestore_client = None
@@ -129,21 +129,19 @@ def get_chunk_with_embedding(chunk_id: str) -> Optional[Dict[str, Any]]:
 
 def get_source_relationships(source_id: str) -> List[Dict[str, Any]]:
     """
-    Get relationships for a source (for contradiction detection).
+    Get ALL relationships for a source (both directions).
 
     Args:
         source_id: Source document ID
 
     Returns:
-        List of relationship dictionaries
+        List of relationship dictionaries with type, target_source, context
     """
     try:
         db = get_firestore_client()
-
-        # Query relationships where this source is involved
         relationships = []
 
-        # Get relationships where this source is the source
+        # Get relationships where this source is the SOURCE
         source_query = db.collection("relationships").where(
             "source_source_id", "==", source_id
         )
@@ -152,7 +150,25 @@ def get_source_relationships(source_id: str) -> List[Dict[str, Any]]:
             relationships.append({
                 "type": data.get("type"),
                 "target_source": data.get("target_source_id"),
+                "target_title": data.get("target_title", ""),
                 "context": data.get("explanation", ""),
+                "direction": "outgoing",
+            })
+
+        # Get relationships where this source is the TARGET
+        target_query = db.collection("relationships").where(
+            "target_source_id", "==", source_id
+        )
+        for doc in target_query.stream():
+            data = doc.to_dict()
+            # Reverse the relationship direction
+            rel_type = data.get("type")
+            relationships.append({
+                "type": rel_type,
+                "target_source": data.get("source_source_id"),
+                "target_title": data.get("source_title", ""),
+                "context": data.get("explanation", ""),
+                "direction": "incoming",
             })
 
         return relationships
@@ -160,6 +176,44 @@ def get_source_relationships(source_id: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"Failed to get relationships for source {source_id}: {e}")
         return []
+
+
+def find_relationships_to_evidence(
+    chunk_source_id: str,
+    existing_evidence: List[Dict[str, Any]],
+    relationships: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Find ALL relationships between chunk's source and existing evidence sources.
+
+    Args:
+        chunk_source_id: Source ID of the new chunk
+        existing_evidence: List of existing evidence for the problem
+        relationships: List of relationships for the chunk's source
+
+    Returns:
+        List of matching relationships (all types: extends, supports, contradicts, applies_to)
+    """
+    # Get source IDs from existing evidence
+    existing_source_ids = {}
+    for ev in existing_evidence:
+        source_id = ev.get("source_id")
+        if source_id:
+            existing_source_ids[source_id] = ev.get("source_title", "Unknown")
+
+    # Find all relationships that connect to existing evidence
+    matching_relationships = []
+    for rel in relationships:
+        target = rel.get("target_source")
+        if target in existing_source_ids:
+            matching_relationships.append({
+                "type": rel.get("type"),
+                "target_source": target,
+                "target_title": existing_source_ids.get(target, rel.get("target_title", "")),
+                "context": rel.get("context", ""),
+            })
+
+    return matching_relationships
 
 
 def check_for_contradiction(
@@ -178,21 +232,10 @@ def check_for_contradiction(
     Returns:
         True if contradiction found
     """
-    # Get source IDs from existing evidence
-    existing_source_ids = set()
-    for ev in existing_evidence:
-        source_id = ev.get("source_id")
-        if source_id:
-            existing_source_ids.add(source_id)
-
-    # Check if any relationship is a contradiction with existing sources
-    for rel in relationships:
-        if rel.get("type") == "contradicts":
-            target = rel.get("target_source")
-            if target in existing_source_ids:
-                return True
-
-    return False
+    matching_rels = find_relationships_to_evidence(
+        chunk_source_id, existing_evidence, relationships
+    )
+    return any(rel.get("type") == "contradicts" for rel in matching_rels)
 
 
 def add_evidence_to_problem(
@@ -340,11 +383,18 @@ def match_chunks_to_problems(
             similarity = cosine_similarity(chunk_embedding, problem_embedding)
 
             if similarity >= similarity_threshold:
-                # Check for contradiction
-                is_contradiction = check_for_contradiction(
+                existing_evidence = problem.get("evidence", [])
+
+                # Find ALL relationships to existing evidence (not just contradictions)
+                matching_rels = find_relationships_to_evidence(
                     chunk_source_id,
-                    problem.get("evidence", []),
+                    existing_evidence,
                     relationships,
+                )
+
+                # Check for contradiction
+                is_contradiction = any(
+                    rel.get("type") == "contradicts" for rel in matching_rels
                 )
 
                 # Build evidence object
@@ -358,12 +408,18 @@ def match_chunks_to_problems(
                     "is_contradiction": is_contradiction,
                 }
 
-                # Add relationship info if this is a contradiction
-                if is_contradiction and relationships:
-                    for rel in relationships:
-                        if rel.get("type") == "contradicts":
-                            evidence["relationship"] = rel
-                            break
+                # Add ALL matching relationships (extends, supports, contradicts, applies_to)
+                if matching_rels:
+                    # Store the most significant relationship (contradicts > extends > supports > applies_to)
+                    priority = {"contradicts": 0, "extends": 1, "supports": 2, "applies_to": 3}
+                    sorted_rels = sorted(
+                        matching_rels,
+                        key=lambda r: priority.get(r.get("type", ""), 99)
+                    )
+                    evidence["relationship"] = sorted_rels[0]
+                    # Also store all relationships if there are multiple
+                    if len(matching_rels) > 1:
+                        evidence["all_relationships"] = matching_rels
 
                 # Add evidence to problem
                 if add_evidence_to_problem(problem["problem_id"], evidence):
