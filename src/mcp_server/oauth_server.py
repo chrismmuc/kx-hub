@@ -277,14 +277,26 @@ class OAuthServer:
 
         Shows login/consent page to user.
         """
-        # Parse query parameters
-        client_id = request.query_params.get("client_id")
-        redirect_uri = request.query_params.get("redirect_uri")
-        response_type = request.query_params.get("response_type")
-        state = request.query_params.get("state")
-        scope = request.query_params.get("scope", "")
-        code_challenge = request.query_params.get("code_challenge")
-        code_challenge_method = request.query_params.get("code_challenge_method", "S256")
+        form_data = None
+        if request.method == "POST":
+            form_data = await request.form()
+
+        def pick_param(name: str):
+            value = request.query_params.get(name)
+            if value is not None:
+                return value
+            if form_data is not None:
+                return form_data.get(name)
+            return None
+
+        # Parse query parameters (fallback to form fields for POST)
+        client_id = pick_param("client_id")
+        redirect_uri = pick_param("redirect_uri")
+        response_type = pick_param("response_type")
+        state = pick_param("state")
+        scope = pick_param("scope")
+        code_challenge = pick_param("code_challenge")
+        code_challenge_method = pick_param("code_challenge_method") or "S256"
 
         logger.info(f"Authorization request: client_id={client_id}, redirect_uri={redirect_uri}, scope={scope}")
 
@@ -321,10 +333,19 @@ class OAuthServer:
             error_url = f"{redirect_uri}?error=unsupported_response_type&state={state}"
             return RedirectResponse(url=error_url)
 
+        scope_value = scope or ""
+        oauth_params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": response_type,
+            "state": state,
+            "scope": scope_value,
+            "code_challenge": code_challenge,
+            "code_challenge_method": code_challenge_method,
+        }
+
         # Handle POST (user submits password or consent)
         if request.method == "POST":
-            form_data = await request.form()
-
             # Check if this is consent approval (after successful login)
             if form_data.get("consent") == "approve":
                 # User approved, create authorization code
@@ -333,7 +354,7 @@ class OAuthServer:
                 code = self.storage.create_authorization_code(
                     client_id=client_id,
                     redirect_uri=redirect_uri,
-                    scope=scope,
+                    scope=scope_value,
                     user_id=user_id,
                     code_challenge=code_challenge,
                     code_challenge_method=code_challenge_method
@@ -341,16 +362,10 @@ class OAuthServer:
 
                 # Build redirect URL with authorization code
                 redirect_url = f"{redirect_uri}?code={code}&state={state}"
-                logger.info(f"Authorization granted for client: {client['client_name']}, redirecting to: {redirect_uri}")
+                logger.info(f"Authorization granted for client: {client['client_name']}, redirecting to: {redirect_url}")
 
-                # Show success page with auto-redirect (better UX than immediate redirect)
-                logger.info(f"Showing success page for client: {client['client_name']}")
-                return HTMLResponse(
-                    content=get_success_page(
-                        redirect_url=redirect_url,
-                        client_name=client["client_name"]
-                    )
-                )
+                # Use 302 redirect to send authorization code to callback
+                return RedirectResponse(url=redirect_url, status_code=302)
 
             # Check password (login form submitted)
             password = form_data.get("password")
@@ -359,8 +374,10 @@ class OAuthServer:
                 return HTMLResponse(
                     content=get_login_page(
                         client_name=client["client_name"],
-                        scope=scope,
-                        error="Password is required"
+                        scope=scope_value,
+                        oauth_params=oauth_params,
+                        action_url="/authorize",
+                        error="Password is required",
                     )
                 )
 
@@ -371,8 +388,10 @@ class OAuthServer:
                 return HTMLResponse(
                     content=get_login_page(
                         client_name=client["client_name"],
-                        scope=scope,
-                        error="Invalid password"
+                        scope=scope_value,
+                        oauth_params=oauth_params,
+                        action_url="/authorize",
+                        error="Invalid password",
                     )
                 )
 
@@ -380,8 +399,10 @@ class OAuthServer:
             return HTMLResponse(
                 content=get_consent_page(
                     client_name=client["client_name"],
-                    scope=scope or "Read access to kx-hub knowledge base",
-                    user_email=self.authorized_user_email
+                    scope=scope_value or "Read access to kx-hub knowledge base",
+                    user_email=self.authorized_user_email,
+                    oauth_params=oauth_params,
+                    action_url="/authorize",
                 )
             )
 
@@ -389,7 +410,9 @@ class OAuthServer:
         return HTMLResponse(
             content=get_login_page(
                 client_name=client["client_name"],
-                scope=scope or "Read access to kx-hub knowledge base"
+                scope=scope_value or "Read access to kx-hub knowledge base",
+                oauth_params=oauth_params,
+                action_url="/authorize",
             )
         )
 

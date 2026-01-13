@@ -5,7 +5,35 @@ Provides simple, functional HTML pages for user authentication and consent.
 """
 
 
-def get_login_page(client_name: str, scope: str, error: str = None) -> str:
+import html
+
+
+def _render_oauth_hidden_inputs(oauth_params: dict) -> str:
+    if not oauth_params:
+        return ""
+
+    fields = [
+        "client_id",
+        "redirect_uri",
+        "response_type",
+        "state",
+        "scope",
+        "code_challenge",
+        "code_challenge_method",
+    ]
+    hidden_inputs = []
+    for field in fields:
+        value = oauth_params.get(field)
+        if value is None:
+            continue
+        # HTML-escape values to prevent injection
+        escaped_value = html.escape(str(value), quote=True)
+        hidden_inputs.append(f'<input type="hidden" name="{field}" value="{escaped_value}">')
+
+    return "\n            ".join(hidden_inputs)
+
+
+def get_login_page(client_name: str, scope: str, oauth_params: dict, action_url: str, error: str = None) -> str:
     """
     Generate login page HTML.
 
@@ -18,6 +46,7 @@ def get_login_page(client_name: str, scope: str, error: str = None) -> str:
         HTML page
     """
     error_html = f'<div class="error">{error}</div>' if error else ""
+    hidden_inputs_html = _render_oauth_hidden_inputs(oauth_params)
 
     return f"""
 <!DOCTYPE html>
@@ -151,7 +180,8 @@ def get_login_page(client_name: str, scope: str, error: str = None) -> str:
             </div>
         </div>
 
-        <form method="POST">
+        <form method="POST" action="{action_url}">
+            {hidden_inputs_html}
             <div class="form-group">
                 <label for="password">Password</label>
                 <input type="password" id="password" name="password" required autofocus>
@@ -170,7 +200,7 @@ def get_login_page(client_name: str, scope: str, error: str = None) -> str:
     """
 
 
-def get_consent_page(client_name: str, scope: str, user_email: str) -> str:
+def get_consent_page(client_name: str, scope: str, user_email: str, oauth_params: dict, action_url: str) -> str:
     """
     Generate consent page HTML (shown after successful login).
 
@@ -306,17 +336,26 @@ def get_consent_page(client_name: str, scope: str, user_email: str) -> str:
             </ul>
         </div>
 
-        <form method="POST">
+        <form id="consent-form" method="POST" action="{action_url}">
             <input type="hidden" name="consent" value="approve">
+            {_render_oauth_hidden_inputs(oauth_params)}
             <div class="button-group">
                 <button type="button" class="btn-cancel" onclick="window.location.href='?error=access_denied'">
                     Cancel
                 </button>
-                <button type="submit" class="btn-authorize">
+                <button type="submit" class="btn-authorize" onclick="submitForm(event)">
                     Authorize
                 </button>
             </div>
         </form>
+        <script>
+            function submitForm(e) {{
+                e.preventDefault();
+                var form = document.getElementById('consent-form');
+                console.log('Submitting form to:', form.action);
+                form.submit();
+            }}
+        </script>
 
         <p class="info">
             You can revoke this access at any time from your kx-hub settings.
@@ -413,13 +452,19 @@ def get_success_page(redirect_url: str, client_name: str) -> str:
     Returns:
         HTML page
     """
+    # Escape URL for HTML attributes and JavaScript
+    escaped_url = html.escape(redirect_url, quote=True)
+    escaped_client = html.escape(client_name)
+    # For JavaScript, we need to escape backslashes and quotes
+    js_url = redirect_url.replace("\\", "\\\\").replace('"', '\\"').replace("'", "\\'")
+
     return f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="3;url={redirect_url}">
+    <meta http-equiv="refresh" content="3;url={escaped_url}">
     <title>Authorization Successful</title>
     <style>
         body {{
@@ -490,25 +535,25 @@ def get_success_page(redirect_url: str, client_name: str) -> str:
         <div class="success-icon">✅</div>
         <h1>Authorization Successful!</h1>
         <p>
-            You have successfully authorized <strong>{client_name}</strong> to access your kx-hub knowledge base.
+            You have successfully authorized <strong>{escaped_client}</strong> to access your kx-hub knowledge base.
         </p>
         <p>
-            You will be redirected back to {client_name} in 3 seconds...
+            You will be redirected back to {escaped_client} in 3 seconds...
         </p>
 
         <div class="redirect-info">
             If you are not redirected automatically, click the button below:
         </div>
 
-        <a href="{redirect_url}" class="manual-link">
-            Return to {client_name}
+        <a href="{escaped_url}" class="manual-link">
+            Return to {escaped_client}
         </a>
     </div>
 
     <script>
         // Auto-redirect after 3 seconds
         setTimeout(function() {{
-            window.location.href = "{redirect_url}";
+            window.location.href = "{js_url}";
         }}, 3000);
     </script>
 </body>
