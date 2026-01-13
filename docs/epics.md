@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-01-12
 
 ---
 
@@ -42,7 +42,7 @@
 
 **Goal:** Multi-device access and personalized reading recommendations.
 
-**Status:** Complete
+**Status:** Complete (Recommendations superseded by Epic 11)
 
 | Story | Description | Status |
 |-------|-------------|--------|
@@ -50,6 +50,8 @@
 | 3.1.1 | **OAuth 2.1 Authentication** - Secure authentication for Claude Mobile/Web with token refresh | ✅ Done |
 | 3.4 | **Source Relationships** - Discover and store relationships between sources (moved to Epic 4) | ✅ Done |
 | 3.5 | **Reading Recommendations** - AI-powered article recommendations via Tavily search based on interests | ✅ Done |
+
+*Note: Story 3.5 recommendations are tag/source-based ("more of the same"). Epic 11 replaces this with problem-driven recommendations.*
 
 ---
 
@@ -101,13 +103,15 @@ See [epics/epic6.md](epics/epic6.md) for full details.
 
 **Goal:** Replace long-running synchronous MCP tools with async job pattern to prevent client timeouts.
 
-**Status:** Complete
+**Status:** Complete (Infrastructure reused by Epic 11)
 
 | Story | Description | Status |
 |-------|-------------|--------|
 | 7.1 | **Async Recommendations** - `recommendations`, `recommendations_history` via Cloud Tasks | ✅ Done |
 | 7.2 | **Simplified Interface** - Config-based defaults, optional `topic` override | ✅ Done |
 | 7.3 | **Async Article Ideas** - Apply pattern to article ideas if needed | Optional |
+
+*Note: Async infrastructure (Cloud Tasks, job polling) is preserved. Epic 11 changes query generation and filtering to be problem-driven.*
 
 See [epics/epic7.md](epics/epic7.md) for full details.
 
@@ -151,6 +155,28 @@ See [epics/epic9.md](epics/epic9.md) for full details.
 - Claude generates ideas in conversation, not stored
 
 See [epics/epic10.md](epics/epic10.md) for full details.
+
+---
+
+## Epic 11: Problem-Driven Recommendations 🚧
+
+**Goal:** Transform recommendations from "more of the same" to "what helps me grow" - aligned with Feynman problems and enhanced with knowledge graph connections.
+
+**Status:** Planned
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 11.1 | **Problem-Based Query Generation** - Replace tag-based queries with problem-based queries (translated to EN) | Planned |
+| 11.2 | **Graph-Enhanced Filtering** - Use knowledge graph to boost relevant recommendations (extends, contradicts) | Planned |
+| 11.3 | **Updated MCP Tool Interface** - Add `problems` and `mode` parameters, token-efficient output | Planned |
+| 11.4 | **Evidence Deduplication** - Don't recommend content already in problem's evidence | Planned |
+
+**Key Features:**
+- Two modes: `deepen` (more on topics with evidence) vs `explore` (fill knowledge gaps)
+- Graph connections: "This EXTENDS your reading of Culture Map"
+- Token-efficient: ~80 tokens/recommendation (vs ~500 current)
+
+See [epics/epic11.md](epics/epic11.md) for full details.
 
 ---
 
