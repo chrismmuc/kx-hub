@@ -1382,6 +1382,7 @@ def _get_reading_recommendations(
     predictable: bool = False,
     tavily_days: Optional[int] = None,
     topic: Optional[str] = None,
+    problems: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Internal: Get AI-powered reading recommendations based on KB content.
@@ -1395,17 +1396,20 @@ def _get_reading_recommendations(
     Story 4.4: Removed cluster dependency
     Story 7.1: Made internal, called via Cloud Tasks
     Story 7.2: Simplified interface with topic override
+    Story 11.3: Problem-driven recommendations with graph enhancement
 
     Args:
         days: Lookback period for recent reads (default 14)
         limit: Maximum recommendations to return (default 10)
         user_id: User identifier for shown tracking (default "default")
         hot_sites: Optional source category: "tech", "tech_de", "ai", "devops", "business", "all"
-        mode: Discovery mode: "balanced", "fresh", "deep", "surprise_me" (default "balanced")
+        mode: Discovery mode for Epic 11: "deepen" | "explore" | "balanced"
+              Legacy modes ("fresh", "deep", "surprise_me") mapped to balanced
         include_seen: Include previously shown recommendations (default False)
         predictable: Disable query variation for reproducible results (default False)
         tavily_days: Override tavily search days (default: from mode config)
-        topic: Optional topic override for query generation
+        topic: Optional topic override for query generation (deprecated, use problems)
+        problems: Optional list of problem IDs to focus recommendations on
 
     Returns:
         Dictionary with recommendations and metadata.
@@ -1416,19 +1420,26 @@ def _get_reading_recommendations(
     try:
         logger.info(
             f"Generating reading recommendations: days={days}, limit={limit}, "
-            f"mode={mode}, hot_sites={hot_sites}"
+            f"mode={mode}, hot_sites={hot_sites}, problems={problems}"
         )
 
-        # Validate mode
-        valid_modes = ["balanced", "fresh", "deep", "surprise_me"]
-        if mode not in valid_modes:
+        # Story 11.3: Map modes - Epic 11 modes take precedence
+        epic11_modes = ["deepen", "explore", "balanced"]
+        legacy_modes = ["fresh", "deep", "surprise_me"]
+
+        if mode in legacy_modes:
+            # Map legacy modes to balanced for backwards compatibility
+            logger.info(f"Mapping legacy mode '{mode}' to 'balanced'")
+            mode = "balanced"
+        elif mode not in epic11_modes:
             return {
-                "error": f"Invalid mode: {mode}. Must be one of {valid_modes}",
+                "error": f"Invalid mode: {mode}. Must be one of {epic11_modes}",
                 "recommendations": [],
             }
 
         # Import recommendation modules
         import recommendation_filter
+        import recommendation_problems
         import recommendation_queries
         import tavily_client
 
@@ -1517,12 +1528,32 @@ def _get_reading_recommendations(
             f"KB credibility: {len(known_authors)} authors, {len(known_domains)} domains"
         )
 
-        # Story 4.4: Simplified query generation (no cluster dependency)
-        # Story 7.2: Support topic override
+        # Story 11.3: Problem-driven query generation
+        # Falls back to topic or legacy queries if no problems
         use_variation = not predictable
+        problem_evidence = []  # For graph-enhanced filtering
 
-        if topic:
-            # Topic override: generate simple topic-based queries
+        # Try problem-based queries first (Epic 11)
+        problem_queries = recommendation_problems.generate_problem_queries(
+            problems=problems,
+            mode=mode,
+            max_queries=8,
+        )
+
+        if problem_queries:
+            logger.info(f"Using {len(problem_queries)} problem-based queries")
+            queries = problem_queries
+            filters_applied["query_source"] = "problems"
+            filters_applied["problems_used"] = list(set(q.get("problem_id") for q in problem_queries))
+
+            # Collect evidence for graph filtering
+            for pid in filters_applied["problems_used"]:
+                evidence = firestore_client.get_problem_evidence_sources(pid)
+                problem_evidence.extend(evidence)
+            logger.info(f"Collected {len(problem_evidence)} evidence sources for graph filtering")
+
+        elif topic:
+            # Topic override: generate simple topic-based queries (deprecated)
             logger.info(f"Using topic override: {topic}")
             queries = [
                 {"query": f"{topic} best practices 2025", "source": "topic_override"},
@@ -1530,12 +1561,15 @@ def _get_reading_recommendations(
                 {"query": f"advanced {topic} techniques", "source": "topic_override"},
             ]
             filters_applied["topic"] = topic
+            filters_applied["query_source"] = "topic"
         else:
+            # Fallback to legacy tag/source-based queries
             queries = recommendation_queries.generate_search_queries(
                 days=days,
                 max_queries=8,
                 use_variation=use_variation,
             )
+            filters_applied["query_source"] = "legacy"
 
         if not queries:
             return {
@@ -1551,15 +1585,20 @@ def _get_reading_recommendations(
                 "filtered_out": {},
             }
 
-        query_strings = [q["query"] for q in queries]
+        query_strings = [q.get("query", str(q)) for q in queries]
         logger.info(f"Generated {len(queries)} search queries")
 
         # Step 4: Search Tavily
         all_results = []
         all_contexts = []
+        query_source = filters_applied.get("query_source", "legacy")
 
         for query_dict in queries:
-            query_str = recommendation_queries.format_query_for_tavily(query_dict)
+            # Story 11.3: Use appropriate formatter based on query source
+            if query_source == "problems":
+                query_str = recommendation_problems.format_query_for_tavily(query_dict)
+            else:
+                query_str = recommendation_queries.format_query_for_tavily(query_dict)
 
             try:
                 # Story 3.9: Determine include_domains for Tavily
@@ -1629,16 +1668,44 @@ def _get_reading_recommendations(
             }
 
         # Step 5: Filter for quality and deduplicate
-        filter_result = recommendation_filter.filter_recommendations(
-            recommendations=all_results,
-            query_contexts=all_contexts,
-            min_depth_score=min_depth_score,  # Story 3.9: mode-specific
-            max_per_domain=diversity_settings.get("max_per_domain", 2),
-            check_duplicates=True,
-            known_authors=known_authors,
-            known_sources=known_domains,
-            trusted_sources=quality_domains,
-        )
+        # Story 11.4: Use evidence dedup + graph-enhanced filtering when we have problems
+        problems_used = filters_applied.get("problems_used", [])
+        if problem_evidence or problems_used:
+            logger.info(
+                f"Using evidence dedup + graph filtering with "
+                f"{len(problem_evidence)} evidence sources, {len(problems_used)} problems"
+            )
+            filter_result = recommendation_filter.filter_recommendations_with_evidence_dedup(
+                recommendations=all_results,
+                query_contexts=all_contexts,
+                problem_ids=problems_used,
+                problem_evidence=problem_evidence,
+                mode=mode,
+                min_depth_score=min_depth_score,
+                max_per_domain=diversity_settings.get("max_per_domain", 2),
+                check_duplicates=True,
+                known_authors=known_authors,
+                known_sources=known_domains,
+                trusted_sources=quality_domains,
+            )
+            graph_stats = filter_result.get("graph_stats", {})
+            filters_applied["graph_stats"] = graph_stats
+
+            # Story 11.4: Track evidence duplicates in stats
+            already_evidence = filter_result.get("filtered_out", {}).get("already_evidence", 0)
+            if already_evidence > 0:
+                filters_applied["evidence_duplicates_filtered"] = already_evidence
+        else:
+            filter_result = recommendation_filter.filter_recommendations(
+                recommendations=all_results,
+                query_contexts=all_contexts,
+                min_depth_score=min_depth_score,  # Story 3.9: mode-specific
+                max_per_domain=diversity_settings.get("max_per_domain", 2),
+                check_duplicates=True,
+                known_authors=known_authors,
+                known_sources=known_domains,
+                trusted_sources=quality_domains,
+            )
 
         filtered_recs = filter_result.get("recommendations", [])
         filtered_out = filter_result.get("filtered_out", {})
@@ -2431,23 +2498,25 @@ def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
 
     Args:
         job_id: Job identifier
-        params: Job parameters (days, limit, hot_sites, mode, include_seen, tavily_days, topic)
+        params: Job parameters (days, limit, hot_sites, mode, include_seen, tavily_days, topic, problems)
     """
     try:
         # Mark as running
         firestore_client.update_async_job(job_id, status="running", progress=0.1)
 
         # Execute the actual recommendations logic
+        # Story 11.3: Added problems parameter
         result = _get_reading_recommendations(
             days=params.get("days", 14),
             limit=params.get("limit", 10),
             user_id=params.get("user_id", "default"),
             hot_sites=params.get("hot_sites"),
-            mode=params.get("mode", "fresh"),
+            mode=params.get("mode", "balanced"),
             include_seen=params.get("include_seen", False),
             predictable=params.get("predictable", False),
             tavily_days=params.get("tavily_days"),
             topic=params.get("topic"),
+            problems=params.get("problems"),
         )
 
         # Check for error in result
@@ -2468,35 +2537,45 @@ def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
 def recommendations(
     job_id: Optional[str] = None,
     topic: Optional[str] = None,
+    problems: Optional[List[str]] = None,
+    mode: str = "balanced",
 ) -> Dict[str, Any]:
     """
     Async recommendations: start a new job or poll for results.
 
     Story 7.1: Async Recommendations
     Story 7.2: Simplified interface with config-based defaults
+    Story 11.3: Problem-driven recommendations with mode selection
 
     Usage:
-    - recommendations() - Start job with defaults from config
-    - recommendations(topic="kubernetes") - Override with specific topic
+    - recommendations() - Start job with defaults (all active problems, balanced mode)
+    - recommendations(problems=["prob_123"]) - Focus on specific problems
+    - recommendations(mode="deepen") - Go deeper on well-researched topics
+    - recommendations(mode="explore") - Fill knowledge gaps
     - recommendations(job_id="...") - Poll for results
 
     Args:
         job_id: Job ID to poll (if provided, returns status/results)
-        topic: Optional topic override (e.g., "kubernetes security")
-               If not provided, uses topics from config/recommendations
+        topic: Optional topic override (deprecated, use problems instead)
+        problems: Optional list of problem IDs to focus recommendations on.
+                  If not provided, uses all active problems.
+        mode: Discovery mode:
+              - "balanced" (default): Mix of deepen and explore
+              - "deepen": Go deeper on topics with existing evidence
+              - "explore": Fill knowledge gaps, find new perspectives
 
     Returns:
         When starting (no job_id):
         - job_id: Unique job identifier
         - status: "pending"
         - poll_after_seconds: Suggested wait time before polling
-        - config_used: Settings from config/recommendations
+        - config_used: Settings including problems and mode
 
         When polling (with job_id):
         - job_id: Job identifier
         - status: "pending" | "running" | "completed" | "failed"
         - progress: 0.0 - 1.0
-        - result: Full recommendations (when completed)
+        - result: Recommendations with graph context (when completed)
     """
     # Poll mode: get existing job status
     if job_id:
@@ -2531,18 +2610,25 @@ def recommendations(
     limit = defaults.get("limit", 10)
     tavily_days = defaults.get("tavily_days", 30)
 
+    # Story 11.3: Validate mode
+    valid_modes = ["deepen", "explore", "balanced"]
+    if mode not in valid_modes:
+        return {"error": f"Invalid mode: {mode}. Must be one of {valid_modes}"}
+
     logger.info(
-        f"Starting recommendations job: topic={topic}, hot_sites={hot_sites}, limit={limit}"
+        f"Starting recommendations job: mode={mode}, problems={problems}, "
+        f"hot_sites={hot_sites}, limit={limit}"
     )
 
     params = {
         "days": 14,  # KB lookback always 14 days
         "limit": limit,
         "hot_sites": hot_sites,
-        "mode": "fresh",  # Always fresh mode
+        "mode": mode,  # Story 11.3: Use Epic 11 mode
         "include_seen": False,
         "tavily_days": tavily_days,
-        "topic": topic,  # Optional override
+        "topic": topic,  # Deprecated, kept for backwards compatibility
+        "problems": problems,  # Story 11.3: Problem filter
     }
 
     # Create job in Firestore
@@ -2562,10 +2648,11 @@ def recommendations(
         "estimated_duration_seconds": 60,
         "created_at": job_info["created_at"],
         "config_used": {
+            "mode": mode,
+            "problems": problems,
             "hot_sites": hot_sites,
             "limit": limit,
             "tavily_days": tavily_days,
-            "topic": topic,
         },
     }
 

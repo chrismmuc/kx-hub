@@ -218,17 +218,19 @@ Two-step pattern: search_kb → scan cards → get_chunk for details.""",
             },
         },
     },
-    # Story 7.1: Async Recommendations
+    # Story 7.1: Async Recommendations, Story 11.3: Problem-driven
     {
         "name": "recommendations",
-        "description": """Get reading recommendations based on your KB content.
+        "description": """Get reading recommendations aligned with your Feynman problems.
 
 Simple interface - settings come from config/recommendations in Firestore.
 
 Usage:
 1. recommendations() → starts job, returns {job_id, poll_after_seconds}
 2. recommendations(job_id="...") → poll for results
-3. recommendations(topic="kubernetes") → one-time topic override""",
+3. recommendations(topic="kubernetes") → one-time topic override
+4. recommendations(mode="deepen") → go deeper on well-researched topics
+5. recommendations(problems=["prob_123"]) → focus on specific problems""",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -239,6 +241,17 @@ Usage:
                 "topic": {
                     "type": "string",
                     "description": "Optional topic override (e.g., 'kubernetes security')",
+                },
+                "problems": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of problem IDs to focus on",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["deepen", "explore", "balanced"],
+                    "description": "Discovery mode: 'deepen' (go deeper), 'explore' (fill gaps), 'balanced' (mix)",
+                    "default": "balanced",
                 },
             },
         },
@@ -367,11 +380,13 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
     elif name == "get_contradictions":
         return tools.get_contradictions(limit=arguments.get("limit", 10))
-    # Story 7.1: Async Recommendations, Story 7.2: Simplified interface
+    # Story 7.1: Async Recommendations, Story 11.3: Problem-driven
     elif name == "recommendations":
         return tools.recommendations(
             job_id=arguments.get("job_id"),
             topic=arguments.get("topic"),
+            problems=arguments.get("problems"),
+            mode=arguments.get("mode", "balanced"),
         )
     elif name == "recommendations_history":
         return tools.recommendations_history(

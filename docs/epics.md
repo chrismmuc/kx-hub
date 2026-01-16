@@ -158,18 +158,18 @@ See [epics/epic10.md](epics/epic10.md) for full details.
 
 ---
 
-## Epic 11: Problem-Driven Recommendations 🚧
+## Epic 11: Problem-Driven Recommendations ✅
 
 **Goal:** Transform recommendations from "more of the same" to "what helps me grow" - aligned with Feynman problems and enhanced with knowledge graph connections.
 
-**Status:** Planned
+**Status:** Complete
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 11.1 | **Problem-Based Query Generation** - Replace tag-based queries with problem-based queries (translated to EN) | Planned |
-| 11.2 | **Graph-Enhanced Filtering** - Use knowledge graph to boost relevant recommendations (extends, contradicts) | Planned |
-| 11.3 | **Updated MCP Tool Interface** - Add `problems` and `mode` parameters, token-efficient output | Planned |
-| 11.4 | **Evidence Deduplication** - Don't recommend content already in problem's evidence | Planned |
+| 11.1 | **Problem-Based Query Generation** - Replace tag-based queries with problem-based queries (translated to EN) | ✅ Done |
+| 11.2 | **Graph-Enhanced Filtering** - Use knowledge graph to boost relevant recommendations (extends, contradicts) | ✅ Done |
+| 11.3 | **Updated MCP Tool Interface** - Add `problems` and `mode` parameters, graph context in output | ✅ Done |
+| 11.4 | **Evidence Deduplication** - Don't recommend content already in problem's evidence | ✅ Done |
 
 **Key Features:**
 - Two modes: `deepen` (more on topics with evidence) vs `explore` (fill knowledge gaps)

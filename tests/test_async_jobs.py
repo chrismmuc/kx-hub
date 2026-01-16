@@ -214,7 +214,10 @@ class TestRecommendationsTool:
     def test_recommendations_start_job(
         self, mock_enqueue, mock_create_job, mock_get_defaults
     ):
-        """Test starting a new recommendations job."""
+        """Test starting a new recommendations job.
+
+        Story 11.3: Updated to use Epic 11 modes (balanced instead of fresh).
+        """
         import tools
 
         mock_get_defaults.return_value = {
@@ -238,6 +241,7 @@ class TestRecommendationsTool:
         assert "config_used" in result
         assert result["config_used"]["hot_sites"] == "tech"
         assert result["config_used"]["limit"] == 10
+        assert result["config_used"]["mode"] == "balanced"  # Story 11.3: default mode
 
         # Verify Cloud Task was enqueued with correct params
         mock_enqueue.assert_called_once()
@@ -245,7 +249,7 @@ class TestRecommendationsTool:
         assert call_args[0] == "rec-new123"
         assert call_args[1] == "recommendations"
         assert call_args[2]["hot_sites"] == "tech"
-        assert call_args[2]["mode"] == "fresh"
+        assert call_args[2]["mode"] == "balanced"  # Story 11.3: Epic 11 mode
         assert call_args[2]["tavily_days"] == 30
 
     @patch("firestore_client.get_recommendations_defaults")
@@ -254,7 +258,10 @@ class TestRecommendationsTool:
     def test_recommendations_start_job_with_topic(
         self, mock_enqueue, mock_create_job, mock_get_defaults
     ):
-        """Test starting a recommendations job with topic override."""
+        """Test starting a recommendations job with topic override.
+
+        Story 11.3: topic is deprecated but still supported for backwards compatibility.
+        """
         import tools
 
         mock_get_defaults.return_value = {
@@ -272,11 +279,46 @@ class TestRecommendationsTool:
         result = tools.recommendations(topic="kubernetes security")
 
         assert result["job_id"] == "rec-topic123"
-        assert result["config_used"]["topic"] == "kubernetes security"
+        # Story 11.3: topic is no longer in config_used, but still passed to params
 
         # Verify topic is passed to Cloud Task
         call_args = mock_enqueue.call_args[0]
         assert call_args[2]["topic"] == "kubernetes security"
+
+    @patch("firestore_client.get_recommendations_defaults")
+    @patch("firestore_client.create_async_job")
+    @patch("tools._enqueue_cloud_task")
+    def test_recommendations_start_job_with_mode_and_problems(
+        self, mock_enqueue, mock_create_job, mock_get_defaults
+    ):
+        """Test starting a recommendations job with mode and problems (Story 11.3)."""
+        import tools
+
+        mock_get_defaults.return_value = {
+            "hot_sites": "tech",
+            "tavily_days": 30,
+            "limit": 10,
+        }
+
+        mock_create_job.return_value = {
+            "job_id": "rec-prob123",
+            "status": "pending",
+            "created_at": "2026-01-06T10:00:00Z",
+        }
+
+        result = tools.recommendations(
+            mode="deepen",
+            problems=["prob_123", "prob_456"],
+        )
+
+        assert result["job_id"] == "rec-prob123"
+        assert result["config_used"]["mode"] == "deepen"
+        assert result["config_used"]["problems"] == ["prob_123", "prob_456"]
+
+        # Verify mode and problems are passed to Cloud Task
+        call_args = mock_enqueue.call_args[0]
+        assert call_args[2]["mode"] == "deepen"
+        assert call_args[2]["problems"] == ["prob_123", "prob_456"]
 
 
 class TestRecommendationsHistory:

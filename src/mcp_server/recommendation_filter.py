@@ -1125,3 +1125,551 @@ Respond with a JSON array of scores:
             if "depth_score" not in item:
                 item["depth_score"] = 3
         return items
+
+
+# ============================================================================
+# Story 11.2: Graph-Enhanced Filtering
+# ============================================================================
+
+
+def get_graph_context(
+    url: str,
+    title: str,
+    author: str,
+    domain: str,
+    problem_evidence: List[Dict[str, Any]],
+    mode: str = "balanced",
+) -> Dict[str, Any]:
+    """
+    Get graph context for a recommendation candidate.
+
+    Story 11.2: Graph-Enhanced Filtering
+
+    Checks:
+    1. If author/source exists in KB
+    2. If there are relationships to problem's evidence sources
+    3. Calculates graph_bonus based on relationship types and mode
+
+    Args:
+        url: Recommendation URL
+        title: Recommendation title
+        author: Recommendation author (may be extracted from content)
+        domain: Recommendation domain
+        problem_evidence: List of evidence sources from the problem
+        mode: "deepen" | "explore" | "balanced"
+
+    Returns:
+        Dictionary with:
+        - author_in_kb: bool
+        - source_in_kb: bool
+        - relation: relationship type if found (extends, contradicts, supports)
+        - connects_to: source title if relationship found
+        - graph_bonus: calculated bonus (0.0 - 0.3)
+    """
+    try:
+        from urllib.parse import urlparse
+
+        result = {
+            "author_in_kb": False,
+            "source_in_kb": False,
+            "relation": None,
+            "connects_to": None,
+            "graph_bonus": 0.0,
+        }
+
+        # Extract evidence source IDs for relationship lookup
+        evidence_source_ids = {ev.get("source_id") for ev in problem_evidence if ev.get("source_id")}
+        evidence_source_titles = {ev.get("source_title", "").lower(): ev for ev in problem_evidence}
+
+        # 1. Check if author exists in KB
+        if author and len(author) > 2:
+            kb_sources = firestore_client.find_sources_by_author(author, limit=5)
+            if kb_sources:
+                result["author_in_kb"] = True
+                result["graph_bonus"] = 0.1
+
+                # Check for relationships to evidence sources
+                for kb_source in kb_sources:
+                    kb_source_id = kb_source.get("source_id")
+                    if kb_source_id in evidence_source_ids:
+                        # Direct match: author's work is already evidence
+                        result["relation"] = "extends"
+                        result["connects_to"] = kb_source.get("title")
+                        result["graph_bonus"] = 0.2
+                        break
+
+                    # Check relationships from this source to evidence
+                    relationships = firestore_client.get_relationships_for_source(kb_source_id)
+                    for rel in relationships:
+                        if rel.get("target_source_id") in evidence_source_ids:
+                            result["relation"] = rel.get("type")
+                            result["connects_to"] = rel.get("target_title")
+
+                            # Calculate bonus based on relationship type and mode
+                            result["graph_bonus"] = _calculate_graph_bonus(
+                                rel.get("type"), mode, result["author_in_kb"]
+                            )
+                            break
+
+                    if result["relation"]:
+                        break
+
+        # 2. Check if domain/source exists in KB
+        if domain and len(domain) > 3 and not result["source_in_kb"]:
+            domain_clean = domain.replace("www.", "").lower()
+            kb_domain_sources = firestore_client.find_sources_by_domain(domain_clean, limit=3)
+            if kb_domain_sources:
+                result["source_in_kb"] = True
+                if result["graph_bonus"] < 0.1:
+                    result["graph_bonus"] = 0.1
+
+        # 3. Check for title-based matches (e.g., "Beyond The Culture Map" matches "The Culture Map")
+        if not result["relation"]:
+            title_lower = title.lower()
+            for ev_title, ev in evidence_source_titles.items():
+                # Check if recommendation title contains evidence source title or vice versa
+                if ev_title and len(ev_title) > 5:
+                    if ev_title in title_lower or title_lower in ev_title:
+                        result["relation"] = "extends"
+                        result["connects_to"] = ev.get("source_title")
+                        result["graph_bonus"] = _calculate_graph_bonus(
+                            "extends", mode, result["author_in_kb"]
+                        )
+                        break
+
+        logger.debug(
+            f"Graph context for '{title[:30]}...': "
+            f"author_in_kb={result['author_in_kb']}, "
+            f"relation={result['relation']}, bonus={result['graph_bonus']}"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.warning(f"Failed to get graph context: {e}")
+        return {
+            "author_in_kb": False,
+            "source_in_kb": False,
+            "relation": None,
+            "connects_to": None,
+            "graph_bonus": 0.0,
+        }
+
+
+def _calculate_graph_bonus(
+    relation_type: str,
+    mode: str,
+    author_in_kb: bool,
+) -> float:
+    """
+    Calculate graph bonus based on relationship type and mode.
+
+    Story 11.2: Graph-Enhanced Filtering
+
+    Graph Bonus Logic:
+    - extends + deepen mode: 0.3
+    - contradicts + explore mode: 0.3
+    - supports: 0.15
+    - author_in_kb only: 0.1
+
+    Args:
+        relation_type: extends, contradicts, supports, or None
+        mode: deepen, explore, or balanced
+        author_in_kb: whether author is known in KB
+
+    Returns:
+        Bonus value between 0.0 and 0.3
+    """
+    if not relation_type:
+        return 0.1 if author_in_kb else 0.0
+
+    if relation_type == "extends":
+        if mode == "deepen":
+            return 0.3
+        elif mode == "balanced":
+            return 0.2
+        else:  # explore
+            return 0.15
+
+    elif relation_type == "contradicts":
+        if mode == "explore":
+            return 0.3
+        elif mode == "balanced":
+            return 0.25
+        else:  # deepen
+            return 0.15
+
+    elif relation_type == "supports":
+        return 0.15
+
+    return 0.1 if author_in_kb else 0.0
+
+
+def filter_recommendations_with_graph(
+    recommendations: List[Dict[str, Any]],
+    query_contexts: List[Dict[str, Any]],
+    problem_evidence: Optional[List[Dict[str, Any]]] = None,
+    mode: str = "balanced",
+    min_depth_score: int = MIN_DEPTH_SCORE,
+    max_per_domain: int = MAX_PER_DOMAIN,
+    check_duplicates: bool = True,
+    known_authors: Optional[List[str]] = None,
+    known_sources: Optional[List[str]] = None,
+    trusted_sources: Optional[List[str]] = None,
+    max_age_days: int = 90,
+) -> Dict[str, Any]:
+    """
+    Filter and score recommendations with graph-enhanced context.
+
+    Story 11.2: Graph-Enhanced Filtering
+
+    Extends filter_recommendations() with:
+    - Graph context lookup for each recommendation
+    - Graph bonus integration into combined score
+    - Graph field in output
+
+    Args:
+        recommendations: List of raw recommendations from Tavily
+        query_contexts: Query context for each recommendation
+        problem_evidence: Evidence sources from the active problem(s)
+        mode: "deepen" | "explore" | "balanced"
+        min_depth_score: Minimum depth score to include (default 3)
+        max_per_domain: Max recommendations per domain (default 2)
+        check_duplicates: Whether to check KB for duplicates
+        known_authors: Authors from user's KB (credibility signal)
+        known_sources: Sources/domains from user's KB (credibility signal)
+        trusted_sources: Publicly credible sources whitelist
+        max_age_days: Maximum age in days for articles (default 90)
+
+    Returns:
+        Dictionary with:
+        - recommendations: Filtered recommendations with graph context
+        - filtered_out: Counts of filtered items by reason
+        - graph_stats: Statistics about graph connections found
+    """
+    try:
+        logger.info(f"Filtering {len(recommendations)} recommendations with graph context")
+
+        # First, apply standard filtering
+        base_result = filter_recommendations(
+            recommendations=recommendations,
+            query_contexts=query_contexts,
+            min_depth_score=min_depth_score,
+            max_per_domain=max_per_domain,
+            check_duplicates=check_duplicates,
+            known_authors=known_authors,
+            known_sources=known_sources,
+            trusted_sources=trusted_sources,
+            max_age_days=max_age_days,
+        )
+
+        filtered_recs = base_result.get("recommendations", [])
+        filtered_out = base_result.get("filtered_out", {})
+
+        if not filtered_recs:
+            return base_result
+
+        # Graph stats
+        graph_stats = {
+            "total_checked": len(filtered_recs),
+            "with_author_in_kb": 0,
+            "with_source_in_kb": 0,
+            "with_relationship": 0,
+            "relationship_types": {},
+        }
+
+        # If no problem evidence provided, skip graph enhancement
+        if not problem_evidence:
+            logger.info("No problem evidence provided, skipping graph enhancement")
+            return base_result
+
+        # Add graph context to each recommendation
+        enhanced_recs = []
+        for rec in filtered_recs:
+            # Extract author from snippet/title if not available
+            author = _extract_author_from_rec(rec)
+
+            # Get graph context
+            graph_context = get_graph_context(
+                url=rec.get("url", ""),
+                title=rec.get("title", ""),
+                author=author,
+                domain=rec.get("domain", ""),
+                problem_evidence=problem_evidence,
+                mode=mode,
+            )
+
+            # Update stats
+            if graph_context.get("author_in_kb"):
+                graph_stats["with_author_in_kb"] += 1
+            if graph_context.get("source_in_kb"):
+                graph_stats["with_source_in_kb"] += 1
+            if graph_context.get("relation"):
+                graph_stats["with_relationship"] += 1
+                rel_type = graph_context.get("relation")
+                graph_stats["relationship_types"][rel_type] = (
+                    graph_stats["relationship_types"].get(rel_type, 0) + 1
+                )
+
+            # Add graph field to recommendation
+            rec["graph"] = {
+                "relation": graph_context.get("relation"),
+                "connects_to": graph_context.get("connects_to"),
+                "author_in_kb": graph_context.get("author_in_kb"),
+            }
+
+            # Integrate graph bonus into combined score
+            graph_bonus = graph_context.get("graph_bonus", 0.0)
+            if graph_bonus > 0:
+                # Update combined score with graph bonus
+                current_score = rec.get("combined_score", rec.get("relevance_score", 0.5))
+                rec["combined_score"] = min(1.0, current_score + graph_bonus)
+                rec["graph_bonus"] = graph_bonus
+
+            enhanced_recs.append(rec)
+
+        # Re-sort by combined score (with graph bonus integrated)
+        enhanced_recs.sort(key=lambda x: x.get("combined_score", 0), reverse=True)
+
+        logger.info(
+            f"Graph enhancement complete: "
+            f"{graph_stats['with_relationship']} with relationships, "
+            f"{graph_stats['with_author_in_kb']} with known authors"
+        )
+
+        return {
+            "recommendations": enhanced_recs,
+            "filtered_out": filtered_out,
+            "graph_stats": graph_stats,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to filter recommendations with graph: {e}")
+        # Fall back to standard filtering
+        return filter_recommendations(
+            recommendations=recommendations,
+            query_contexts=query_contexts,
+            min_depth_score=min_depth_score,
+            max_per_domain=max_per_domain,
+            check_duplicates=check_duplicates,
+            known_authors=known_authors,
+            known_sources=known_sources,
+            trusted_sources=trusted_sources,
+            max_age_days=max_age_days,
+        )
+
+
+def _extract_author_from_rec(rec: Dict[str, Any]) -> str:
+    """
+    Extract author name from recommendation metadata or content.
+
+    Args:
+        rec: Recommendation dictionary
+
+    Returns:
+        Author name or empty string
+    """
+    # Check common author fields
+    author = rec.get("author", "")
+    if author:
+        return author
+
+    # Try to extract from snippet using common patterns
+    snippet = rec.get("snippet", rec.get("content", ""))
+    if not snippet:
+        return ""
+
+    # Common author patterns: "by Author Name", "Author Name writes"
+    import re
+
+    patterns = [
+        r"by ([A-Z][a-z]+ [A-Z][a-z]+)",
+        r"^([A-Z][a-z]+ [A-Z][a-z]+) writes",
+        r"^([A-Z][a-z]+ [A-Z][a-z]+),? author",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, snippet[:200])
+        if match:
+            return match.group(1)
+
+    return ""
+
+
+# ============================================================================
+# Story 11.4: Evidence Deduplication
+# ============================================================================
+
+
+def filter_evidence_duplicates(
+    recommendations: List[Dict[str, Any]],
+    evidence_urls: set,
+    url_to_problem: Dict[str, str],
+) -> Dict[str, Any]:
+    """
+    Filter out recommendations that are already evidence for problems.
+
+    Story 11.4: Evidence Deduplication
+
+    Args:
+        recommendations: List of recommendation dictionaries
+        evidence_urls: Set of normalized evidence URLs
+        url_to_problem: Dict mapping URL to problem_id
+
+    Returns:
+        Dictionary with:
+        - recommendations: Filtered recommendations
+        - filtered_out: Count and details of filtered items
+    """
+    if not evidence_urls:
+        return {"recommendations": recommendations, "filtered_out": {"already_evidence": 0}}
+
+    filtered_recs = []
+    filtered_count = 0
+    filtered_details = []
+
+    for rec in recommendations:
+        rec_url = rec.get("url", "")
+        if not rec_url:
+            filtered_recs.append(rec)
+            continue
+
+        # Normalize URL for comparison
+        normalized = firestore_client._normalize_url_for_dedup(rec_url)
+
+        if normalized in evidence_urls:
+            filtered_count += 1
+            problem_id = url_to_problem.get(normalized, "unknown")
+            filtered_details.append({
+                "url": rec_url,
+                "title": rec.get("title", "Unknown"),
+                "problem_id": problem_id,
+            })
+            logger.debug(f"Filtered evidence duplicate: {rec.get('title')} (problem: {problem_id})")
+        else:
+            filtered_recs.append(rec)
+
+    logger.info(f"Filtered {filtered_count} evidence duplicates from {len(recommendations)} recommendations")
+
+    return {
+        "recommendations": filtered_recs,
+        "filtered_out": {
+            "already_evidence": filtered_count,
+            "evidence_details": filtered_details[:5],  # Limit details to first 5
+        },
+    }
+
+
+def filter_recommendations_with_evidence_dedup(
+    recommendations: List[Dict[str, Any]],
+    query_contexts: List[Dict[str, Any]],
+    problem_ids: Optional[List[str]] = None,
+    problem_evidence: Optional[List[Dict[str, Any]]] = None,
+    mode: str = "balanced",
+    min_depth_score: int = MIN_DEPTH_SCORE,
+    max_per_domain: int = MAX_PER_DOMAIN,
+    check_duplicates: bool = True,
+    known_authors: Optional[List[str]] = None,
+    known_sources: Optional[List[str]] = None,
+    trusted_sources: Optional[List[str]] = None,
+    max_age_days: int = 90,
+) -> Dict[str, Any]:
+    """
+    Filter recommendations with evidence deduplication and graph enhancement.
+
+    Story 11.4: Evidence Deduplication
+
+    Complete filtering pipeline:
+    1. Filter out evidence duplicates (11.4)
+    2. Apply graph-enhanced filtering (11.2)
+    3. Standard filtering (depth, domain, etc.)
+
+    Args:
+        recommendations: List of raw recommendations from Tavily
+        query_contexts: Query context for each recommendation
+        problem_ids: List of problem IDs to check evidence against
+        problem_evidence: Evidence sources for graph context
+        mode: "deepen" | "explore" | "balanced"
+        min_depth_score: Minimum depth score to include (default 3)
+        max_per_domain: Max recommendations per domain (default 2)
+        check_duplicates: Whether to check KB for duplicates
+        known_authors: Authors from user's KB (credibility signal)
+        known_sources: Sources/domains from user's KB (credibility signal)
+        trusted_sources: Publicly credible sources whitelist
+        max_age_days: Maximum age in days for articles (default 90)
+
+    Returns:
+        Dictionary with:
+        - recommendations: Filtered recommendations with graph context
+        - filtered_out: Counts of filtered items by reason
+        - graph_stats: Statistics about graph connections found
+    """
+    try:
+        logger.info(f"Filtering {len(recommendations)} recommendations with evidence dedup")
+
+        # Initialize filtered_out
+        all_filtered_out = {}
+
+        # Step 1: Evidence deduplication (Story 11.4)
+        if problem_ids:
+            evidence_data = firestore_client.get_evidence_urls_for_problems(problem_ids)
+            evidence_urls = evidence_data.get("urls", set())
+            url_to_problem = evidence_data.get("url_to_problem", {})
+
+            if evidence_urls:
+                dedup_result = filter_evidence_duplicates(
+                    recommendations=recommendations,
+                    evidence_urls=evidence_urls,
+                    url_to_problem=url_to_problem,
+                )
+                recommendations = dedup_result["recommendations"]
+                all_filtered_out.update(dedup_result["filtered_out"])
+
+        if not recommendations:
+            return {
+                "recommendations": [],
+                "filtered_out": all_filtered_out,
+                "graph_stats": {},
+            }
+
+        # Step 2: Graph-enhanced filtering (Story 11.2)
+        graph_result = filter_recommendations_with_graph(
+            recommendations=recommendations,
+            query_contexts=query_contexts,
+            problem_evidence=problem_evidence,
+            mode=mode,
+            min_depth_score=min_depth_score,
+            max_per_domain=max_per_domain,
+            check_duplicates=check_duplicates,
+            known_authors=known_authors,
+            known_sources=known_sources,
+            trusted_sources=trusted_sources,
+            max_age_days=max_age_days,
+        )
+
+        # Merge filtered_out stats
+        graph_filtered_out = graph_result.get("filtered_out", {})
+        all_filtered_out.update(graph_filtered_out)
+
+        return {
+            "recommendations": graph_result.get("recommendations", []),
+            "filtered_out": all_filtered_out,
+            "graph_stats": graph_result.get("graph_stats", {}),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to filter with evidence dedup: {e}")
+        # Fall back to graph-enhanced filtering without evidence dedup
+        return filter_recommendations_with_graph(
+            recommendations=recommendations,
+            query_contexts=query_contexts,
+            problem_evidence=problem_evidence,
+            mode=mode,
+            min_depth_score=min_depth_score,
+            max_per_domain=max_per_domain,
+            check_duplicates=check_duplicates,
+            known_authors=known_authors,
+            known_sources=known_sources,
+            trusted_sources=trusted_sources,
+            max_age_days=max_age_days,
+        )

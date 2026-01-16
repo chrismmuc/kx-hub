@@ -2886,3 +2886,337 @@ def archive_problem(problem_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to archive problem {problem_id}: {e}")
         return {"success": False, "error": str(e)}
+
+
+# ==================== Graph Context Functions (Epic 11) ====================
+
+
+def find_sources_by_author(author: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Find sources by author name (case-insensitive partial match).
+
+    Story 11.2: Graph-Enhanced Filtering
+
+    Args:
+        author: Author name to search for
+        limit: Maximum sources to return
+
+    Returns:
+        List of sources with source_id, title, author
+    """
+    if not author or len(author) < 2:
+        return []
+
+    try:
+        db = get_firestore_client()
+        author_lower = author.lower()
+
+        # Firestore doesn't support case-insensitive queries directly
+        # We need to fetch sources and filter client-side
+        query = db.collection("sources").limit(200)
+
+        sources = []
+        for doc in query.stream():
+            data = doc.to_dict()
+            doc_author = data.get("author", "")
+
+            if not doc_author:
+                continue
+
+            # Partial case-insensitive match
+            if author_lower in doc_author.lower() or doc_author.lower() in author_lower:
+                sources.append({
+                    "source_id": doc.id,
+                    "title": data.get("title", "Untitled"),
+                    "author": doc_author,
+                    "type": data.get("type", "unknown"),
+                })
+
+                if len(sources) >= limit:
+                    break
+
+        logger.debug(f"Found {len(sources)} sources for author '{author}'")
+        return sources
+
+    except Exception as e:
+        logger.error(f"Failed to find sources by author '{author}': {e}")
+        return []
+
+
+def find_sources_by_domain(domain: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Find sources whose URL contains the given domain.
+
+    Story 11.2: Graph-Enhanced Filtering
+
+    Args:
+        domain: Domain to search for (e.g., "martinfowler.com")
+        limit: Maximum sources to return
+
+    Returns:
+        List of sources with source_id, title, author, source_url
+    """
+    if not domain or len(domain) < 3:
+        return []
+
+    try:
+        db = get_firestore_client()
+        domain_lower = domain.lower().replace("www.", "")
+
+        # We need to search in chunks for source_url since sources may not have it
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
+        query = db.collection(collection).limit(500)
+
+        found_source_ids = set()
+        sources = []
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            source_url = data.get("source_url", "")
+
+            if not source_url:
+                continue
+
+            # Check if domain matches
+            try:
+                parsed = urlparse(source_url.lower())
+                url_domain = parsed.netloc.replace("www.", "")
+
+                if domain_lower == url_domain or url_domain.endswith("." + domain_lower):
+                    source_id = data.get("source_id")
+                    if source_id and source_id not in found_source_ids:
+                        found_source_ids.add(source_id)
+                        sources.append({
+                            "source_id": source_id,
+                            "title": data.get("title", "Untitled"),
+                            "author": data.get("author", "Unknown"),
+                            "source_url": source_url,
+                        })
+
+                        if len(sources) >= limit:
+                            break
+            except Exception:
+                continue
+
+        logger.debug(f"Found {len(sources)} sources for domain '{domain}'")
+        return sources
+
+    except Exception as e:
+        logger.error(f"Failed to find sources by domain '{domain}': {e}")
+        return []
+
+
+def get_relationships_for_source(source_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all relationships involving a specific source.
+
+    Story 11.2: Graph-Enhanced Filtering
+
+    Args:
+        source_id: The source ID to find relationships for
+
+    Returns:
+        List of relationships with type, target_source_id, target_title
+    """
+    try:
+        db = get_firestore_client()
+
+        # Get chunk IDs for this source
+        source_doc = db.collection("sources").document(source_id).get()
+        if not source_doc.exists:
+            return []
+
+        source_data = source_doc.to_dict()
+        chunk_ids = source_data.get("chunk_ids", [])
+
+        if not chunk_ids:
+            return []
+
+        relationships = []
+        seen_relationships = set()
+
+        # Get relationships for each chunk (limit to first 5 chunks for performance)
+        for chunk_id in chunk_ids[:5]:
+            chunk_rels = get_chunk_relationships(chunk_id)
+
+            for rel in chunk_rels:
+                # Get target chunk to find its source
+                target_chunk_id = rel["connected_chunk_id"]
+                target_chunk = get_chunk_by_id(target_chunk_id)
+
+                if not target_chunk:
+                    continue
+
+                target_source_id = target_chunk.get("source_id", "")
+
+                # Skip same-source relationships and duplicates
+                if target_source_id == source_id:
+                    continue
+
+                rel_key = (rel["type"], target_source_id)
+                if rel_key in seen_relationships:
+                    continue
+
+                seen_relationships.add(rel_key)
+                relationships.append({
+                    "type": rel["type"],
+                    "target_source_id": target_source_id,
+                    "target_title": target_chunk.get("title", "Unknown"),
+                    "target_author": target_chunk.get("author", "Unknown"),
+                    "explanation": rel.get("explanation", ""),
+                })
+
+        logger.debug(f"Found {len(relationships)} relationships for source {source_id}")
+        return relationships
+
+    except Exception as e:
+        logger.error(f"Failed to get relationships for source {source_id}: {e}")
+        return []
+
+
+def get_problem_evidence_sources(problem_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all evidence source IDs and titles for a problem.
+
+    Story 11.2: Graph-Enhanced Filtering
+
+    Args:
+        problem_id: Problem ID to get evidence for
+
+    Returns:
+        List of evidence dictionaries with source_id, source_title, chunk_id
+    """
+    try:
+        problem = get_problem(problem_id)
+        if not problem:
+            return []
+
+        evidence = problem.get("evidence", [])
+
+        # Return unique sources from evidence
+        seen_sources = set()
+        sources = []
+
+        for ev in evidence:
+            source_id = ev.get("source_id")
+            if source_id and source_id not in seen_sources:
+                seen_sources.add(source_id)
+                sources.append({
+                    "source_id": source_id,
+                    "source_title": ev.get("source_title", "Unknown"),
+                    "chunk_id": ev.get("chunk_id"),
+                })
+
+        return sources
+
+    except Exception as e:
+        logger.error(f"Failed to get evidence sources for problem {problem_id}: {e}")
+        return []
+
+
+def get_evidence_urls_for_problems(problem_ids: List[str]) -> Dict[str, Any]:
+    """
+    Get all evidence URLs for a list of problems.
+
+    Story 11.4: Evidence Deduplication
+
+    Collects all URLs from evidence chunks to filter out
+    recommendations that are already in the user's evidence.
+
+    Args:
+        problem_ids: List of problem IDs to collect evidence URLs from
+
+    Returns:
+        Dictionary with:
+        - urls: Set of unique evidence URLs
+        - url_to_problem: Dict mapping URL to problem_id
+        - chunks_checked: Total chunks examined
+    """
+    try:
+        db = get_firestore_client()
+        collection = os.getenv("FIRESTORE_COLLECTION", "kb_items")
+
+        all_urls = set()
+        url_to_problem = {}
+        chunks_checked = 0
+
+        for problem_id in problem_ids:
+            problem = get_problem(problem_id)
+            if not problem:
+                continue
+
+            evidence = problem.get("evidence", [])
+
+            for ev in evidence:
+                chunk_id = ev.get("chunk_id")
+                if not chunk_id:
+                    continue
+
+                chunks_checked += 1
+
+                # Get chunk to find source_url
+                chunk = get_chunk_by_id(chunk_id)
+                if not chunk:
+                    continue
+
+                source_url = chunk.get("source_url")
+                if source_url:
+                    # Normalize URL for comparison
+                    normalized_url = _normalize_url_for_dedup(source_url)
+                    all_urls.add(normalized_url)
+                    url_to_problem[normalized_url] = problem_id
+
+        logger.info(
+            f"Collected {len(all_urls)} evidence URLs from "
+            f"{len(problem_ids)} problems ({chunks_checked} chunks)"
+        )
+
+        return {
+            "urls": all_urls,
+            "url_to_problem": url_to_problem,
+            "chunks_checked": chunks_checked,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get evidence URLs: {e}")
+        return {"urls": set(), "url_to_problem": {}, "chunks_checked": 0}
+
+
+def _normalize_url_for_dedup(url: str) -> str:
+    """
+    Normalize URL for deduplication comparison.
+
+    Story 11.4: Evidence Deduplication
+
+    Removes common variations:
+    - Protocol (http vs https)
+    - www prefix
+    - Trailing slashes
+    - Query parameters
+    - Fragment identifiers
+
+    Args:
+        url: URL to normalize
+
+    Returns:
+        Normalized URL string
+    """
+    try:
+        from urllib.parse import urlparse, urlunparse
+
+        parsed = urlparse(url.lower())
+
+        # Remove www prefix
+        netloc = parsed.netloc.replace("www.", "")
+
+        # Remove trailing slash from path
+        path = parsed.path.rstrip("/")
+
+        # Reconstruct without query/fragment
+        normalized = urlunparse(("", netloc, path, "", "", ""))
+
+        # Remove leading //
+        return normalized.lstrip("/")
+
+    except Exception:
+        return url.lower()

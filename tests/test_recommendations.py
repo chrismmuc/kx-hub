@@ -1270,5 +1270,746 @@ class TestRankingConfig(unittest.TestCase):
         self.assertIn("sum to 1.0", result["error"])
 
 
+# ============================================================================
+# Story 11.2: Graph-Enhanced Filtering Tests
+# ============================================================================
+
+
+class TestGraphBonusCalculation(unittest.TestCase):
+    """Test suite for graph bonus calculation (Story 11.2)."""
+
+    def test_extends_deepen_mode(self):
+        """Extends relationship in deepen mode should give max bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus("extends", "deepen", author_in_kb=True)
+        self.assertEqual(bonus, 0.3)
+
+    def test_extends_explore_mode(self):
+        """Extends relationship in explore mode should give lower bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus("extends", "explore", author_in_kb=True)
+        self.assertEqual(bonus, 0.15)
+
+    def test_contradicts_explore_mode(self):
+        """Contradicts relationship in explore mode should give max bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus("contradicts", "explore", author_in_kb=True)
+        self.assertEqual(bonus, 0.3)
+
+    def test_contradicts_deepen_mode(self):
+        """Contradicts relationship in deepen mode should give lower bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus("contradicts", "deepen", author_in_kb=True)
+        self.assertEqual(bonus, 0.15)
+
+    def test_supports_any_mode(self):
+        """Supports relationship should give moderate bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        for mode in ["deepen", "explore", "balanced"]:
+            bonus = _calculate_graph_bonus("supports", mode, author_in_kb=True)
+            self.assertEqual(bonus, 0.15)
+
+    def test_no_relation_with_author(self):
+        """No relationship but author in KB should give small bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus(None, "balanced", author_in_kb=True)
+        self.assertEqual(bonus, 0.1)
+
+    def test_no_relation_no_author(self):
+        """No relationship and no author in KB should give no bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus(None, "balanced", author_in_kb=False)
+        self.assertEqual(bonus, 0.0)
+
+    def test_balanced_mode_extends(self):
+        """Extends in balanced mode should give medium bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus("extends", "balanced", author_in_kb=True)
+        self.assertEqual(bonus, 0.2)
+
+    def test_balanced_mode_contradicts(self):
+        """Contradicts in balanced mode should give high bonus."""
+        from mcp_server.recommendation_filter import _calculate_graph_bonus
+
+        bonus = _calculate_graph_bonus("contradicts", "balanced", author_in_kb=True)
+        self.assertEqual(bonus, 0.25)
+
+
+class TestExtractAuthorFromRec(unittest.TestCase):
+    """Test suite for author extraction from recommendations."""
+
+    def test_extract_author_from_field(self):
+        """Author from explicit field."""
+        from mcp_server.recommendation_filter import _extract_author_from_rec
+
+        rec = {"author": "Martin Fowler", "title": "Test"}
+        author = _extract_author_from_rec(rec)
+        self.assertEqual(author, "Martin Fowler")
+
+    def test_extract_author_from_by_pattern(self):
+        """Author from 'by Author Name' pattern."""
+        from mcp_server.recommendation_filter import _extract_author_from_rec
+
+        rec = {
+            "title": "Platform Engineering Guide",
+            "snippet": "An in-depth guide by Martin Fowler on building platforms...",
+        }
+        author = _extract_author_from_rec(rec)
+        self.assertEqual(author, "Martin Fowler")
+
+    def test_extract_author_empty_rec(self):
+        """Empty recommendation should return empty string."""
+        from mcp_server.recommendation_filter import _extract_author_from_rec
+
+        rec = {"title": "Test", "snippet": "No author mentioned here"}
+        author = _extract_author_from_rec(rec)
+        self.assertEqual(author, "")
+
+
+class TestGetGraphContext(unittest.TestCase):
+    """Test suite for get_graph_context function (Story 11.2)."""
+
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_author")
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_domain")
+    @patch("mcp_server.recommendation_filter.firestore_client.get_relationships_for_source")
+    def test_author_in_kb_no_relationship(
+        self, mock_get_rels, mock_find_domain, mock_find_author
+    ):
+        """Author in KB but no relationship to evidence."""
+        from mcp_server.recommendation_filter import get_graph_context
+
+        mock_find_author.return_value = [
+            {"source_id": "src_123", "title": "Other Book", "author": "Test Author"}
+        ]
+        mock_find_domain.return_value = []
+        mock_get_rels.return_value = []
+
+        result = get_graph_context(
+            url="https://example.com/article",
+            title="New Article",
+            author="Test Author",
+            domain="example.com",
+            problem_evidence=[{"source_id": "src_456", "source_title": "Evidence Book"}],
+            mode="balanced",
+        )
+
+        self.assertTrue(result["author_in_kb"])
+        self.assertIsNone(result["relation"])
+        self.assertEqual(result["graph_bonus"], 0.1)
+
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_author")
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_domain")
+    @patch("mcp_server.recommendation_filter.firestore_client.get_relationships_for_source")
+    def test_author_work_is_evidence(
+        self, mock_get_rels, mock_find_domain, mock_find_author
+    ):
+        """Author's work is already evidence - extends relationship."""
+        from mcp_server.recommendation_filter import get_graph_context
+
+        mock_find_author.return_value = [
+            {"source_id": "src_evidence", "title": "Evidence Book", "author": "Erin Meyer"}
+        ]
+        mock_find_domain.return_value = []
+        mock_get_rels.return_value = []
+
+        result = get_graph_context(
+            url="https://example.com/article",
+            title="Beyond The Culture Map",
+            author="Erin Meyer",
+            domain="example.com",
+            problem_evidence=[{"source_id": "src_evidence", "source_title": "The Culture Map"}],
+            mode="deepen",
+        )
+
+        self.assertTrue(result["author_in_kb"])
+        self.assertEqual(result["relation"], "extends")
+        self.assertEqual(result["connects_to"], "Evidence Book")
+        self.assertEqual(result["graph_bonus"], 0.2)
+
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_author")
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_domain")
+    @patch("mcp_server.recommendation_filter.firestore_client.get_relationships_for_source")
+    def test_relationship_to_evidence(
+        self, mock_get_rels, mock_find_domain, mock_find_author
+    ):
+        """Author's source has relationship to evidence."""
+        from mcp_server.recommendation_filter import get_graph_context
+
+        mock_find_author.return_value = [
+            {"source_id": "src_author", "title": "Author Book", "author": "Test Author"}
+        ]
+        mock_find_domain.return_value = []
+        mock_get_rels.return_value = [
+            {
+                "type": "extends",
+                "target_source_id": "src_evidence",
+                "target_title": "Evidence Book",
+            }
+        ]
+
+        result = get_graph_context(
+            url="https://example.com/article",
+            title="New Article",
+            author="Test Author",
+            domain="example.com",
+            problem_evidence=[{"source_id": "src_evidence", "source_title": "Evidence Book"}],
+            mode="deepen",
+        )
+
+        self.assertTrue(result["author_in_kb"])
+        self.assertEqual(result["relation"], "extends")
+        self.assertEqual(result["connects_to"], "Evidence Book")
+        self.assertEqual(result["graph_bonus"], 0.3)
+
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_author")
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_domain")
+    def test_title_based_match(self, mock_find_domain, mock_find_author):
+        """Title contains evidence source title."""
+        from mcp_server.recommendation_filter import get_graph_context
+
+        mock_find_author.return_value = []
+        mock_find_domain.return_value = []
+
+        result = get_graph_context(
+            url="https://example.com/article",
+            title="Beyond The Culture Map: Advanced Techniques",
+            author="",
+            domain="example.com",
+            problem_evidence=[{"source_id": "src_1", "source_title": "The Culture Map"}],
+            mode="deepen",
+        )
+
+        self.assertEqual(result["relation"], "extends")
+        self.assertEqual(result["connects_to"], "The Culture Map")
+        self.assertEqual(result["graph_bonus"], 0.3)
+
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_author")
+    @patch("mcp_server.recommendation_filter.firestore_client.find_sources_by_domain")
+    def test_no_graph_context(self, mock_find_domain, mock_find_author):
+        """No graph context found."""
+        from mcp_server.recommendation_filter import get_graph_context
+
+        mock_find_author.return_value = []
+        mock_find_domain.return_value = []
+
+        result = get_graph_context(
+            url="https://example.com/article",
+            title="Completely New Topic",
+            author="Unknown Author",
+            domain="example.com",
+            problem_evidence=[{"source_id": "src_1", "source_title": "Evidence Book"}],
+            mode="balanced",
+        )
+
+        self.assertFalse(result["author_in_kb"])
+        self.assertFalse(result["source_in_kb"])
+        self.assertIsNone(result["relation"])
+        self.assertEqual(result["graph_bonus"], 0.0)
+
+
+class TestFilterRecommendationsWithGraph(unittest.TestCase):
+    """Test suite for filter_recommendations_with_graph (Story 11.2)."""
+
+    @patch("mcp_server.recommendation_filter.filter_recommendations")
+    @patch("mcp_server.recommendation_filter.get_graph_context")
+    def test_graph_enhancement_applied(self, mock_graph_context, mock_filter):
+        """Graph context should be applied to recommendations."""
+        from mcp_server.recommendation_filter import filter_recommendations_with_graph
+
+        mock_filter.return_value = {
+            "recommendations": [
+                {
+                    "title": "Test Article",
+                    "url": "https://example.com/article",
+                    "domain": "example.com",
+                    "relevance_score": 0.7,
+                    "depth_score": 4,
+                }
+            ],
+            "filtered_out": {"duplicate_count": 0},
+        }
+
+        mock_graph_context.return_value = {
+            "author_in_kb": True,
+            "source_in_kb": False,
+            "relation": "extends",
+            "connects_to": "Evidence Book",
+            "graph_bonus": 0.3,
+        }
+
+        result = filter_recommendations_with_graph(
+            recommendations=[{"title": "Test Article", "url": "https://example.com/article"}],
+            query_contexts=[{"source": "search", "context": {}}],
+            problem_evidence=[{"source_id": "src_1", "source_title": "Evidence Book"}],
+            mode="deepen",
+        )
+
+        rec = result["recommendations"][0]
+        self.assertIn("graph", rec)
+        self.assertEqual(rec["graph"]["relation"], "extends")
+        self.assertEqual(rec["graph"]["connects_to"], "Evidence Book")
+        self.assertTrue(rec["graph"]["author_in_kb"])
+        self.assertEqual(rec["graph_bonus"], 0.3)
+        self.assertGreater(rec["combined_score"], 0.7)
+
+    @patch("mcp_server.recommendation_filter.filter_recommendations")
+    def test_no_evidence_skips_graph(self, mock_filter):
+        """No problem evidence should skip graph enhancement."""
+        from mcp_server.recommendation_filter import filter_recommendations_with_graph
+
+        mock_filter.return_value = {
+            "recommendations": [
+                {"title": "Test", "url": "https://example.com", "relevance_score": 0.7}
+            ],
+            "filtered_out": {},
+        }
+
+        result = filter_recommendations_with_graph(
+            recommendations=[{"title": "Test"}],
+            query_contexts=[{}],
+            problem_evidence=None,
+        )
+
+        # Should return base result without graph enhancement
+        rec = result["recommendations"][0]
+        self.assertNotIn("graph", rec)
+
+    @patch("mcp_server.recommendation_filter.filter_recommendations")
+    @patch("mcp_server.recommendation_filter.get_graph_context")
+    def test_graph_stats_tracked(self, mock_graph_context, mock_filter):
+        """Graph stats should be tracked correctly."""
+        from mcp_server.recommendation_filter import filter_recommendations_with_graph
+
+        mock_filter.return_value = {
+            "recommendations": [
+                {"title": "Article 1", "url": "https://example.com/1", "domain": "example.com"},
+                {"title": "Article 2", "url": "https://example.com/2", "domain": "example.com"},
+            ],
+            "filtered_out": {},
+        }
+
+        # First call returns author in KB with extends
+        # Second call returns no graph context
+        mock_graph_context.side_effect = [
+            {
+                "author_in_kb": True,
+                "source_in_kb": False,
+                "relation": "extends",
+                "connects_to": "Book",
+                "graph_bonus": 0.3,
+            },
+            {
+                "author_in_kb": False,
+                "source_in_kb": True,
+                "relation": None,
+                "connects_to": None,
+                "graph_bonus": 0.1,
+            },
+        ]
+
+        result = filter_recommendations_with_graph(
+            recommendations=[{"title": "1"}, {"title": "2"}],
+            query_contexts=[{}, {}],
+            problem_evidence=[{"source_id": "s1", "source_title": "Book"}],
+        )
+
+        stats = result["graph_stats"]
+        self.assertEqual(stats["total_checked"], 2)
+        self.assertEqual(stats["with_author_in_kb"], 1)
+        self.assertEqual(stats["with_source_in_kb"], 1)
+        self.assertEqual(stats["with_relationship"], 1)
+        self.assertEqual(stats["relationship_types"]["extends"], 1)
+
+
+class TestFirestoreGraphFunctions(unittest.TestCase):
+    """Test suite for Firestore graph helper functions (Story 11.2)."""
+
+    @patch("mcp_server.firestore_client.get_firestore_client")
+    def test_find_sources_by_author(self, mock_get_db):
+        """Test finding sources by author name."""
+        from mcp_server import firestore_client
+
+        mock_doc = MagicMock()
+        mock_doc.id = "src_123"
+        mock_doc.to_dict.return_value = {
+            "title": "The Culture Map",
+            "author": "Erin Meyer",
+            "type": "book",
+        }
+
+        mock_query = MagicMock()
+        mock_query.stream.return_value = [mock_doc]
+        mock_query.limit.return_value = mock_query
+
+        mock_db = MagicMock()
+        mock_db.collection.return_value = mock_query
+        mock_get_db.return_value = mock_db
+
+        result = firestore_client.find_sources_by_author("Erin Meyer")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["source_id"], "src_123")
+        self.assertEqual(result[0]["author"], "Erin Meyer")
+
+    def test_find_sources_by_author_short_name(self):
+        """Short author name should return empty list."""
+        from mcp_server import firestore_client
+
+        result = firestore_client.find_sources_by_author("A")
+        self.assertEqual(result, [])
+
+    @patch("mcp_server.firestore_client.get_problem")
+    def test_get_problem_evidence_sources(self, mock_get_problem):
+        """Test getting evidence sources from problem."""
+        from mcp_server import firestore_client
+
+        mock_get_problem.return_value = {
+            "problem_id": "prob_123",
+            "problem": "Test problem",
+            "evidence": [
+                {"source_id": "src_1", "source_title": "Book 1", "chunk_id": "chunk_1"},
+                {"source_id": "src_2", "source_title": "Book 2", "chunk_id": "chunk_2"},
+                {"source_id": "src_1", "source_title": "Book 1", "chunk_id": "chunk_3"},  # Duplicate
+            ],
+        }
+
+        result = firestore_client.get_problem_evidence_sources("prob_123")
+
+        # Should return unique sources
+        self.assertEqual(len(result), 2)
+        source_ids = [s["source_id"] for s in result]
+        self.assertIn("src_1", source_ids)
+        self.assertIn("src_2", source_ids)
+
+
+# ============================================================================
+# Story 11.3: Updated MCP Tool Interface Tests
+# ============================================================================
+
+
+class TestRecommendationsToolInterface(unittest.TestCase):
+    """Test suite for updated recommendations() tool (Story 11.3)."""
+
+    @patch("mcp_server.tools.firestore_client.get_recommendations_defaults")
+    @patch("mcp_server.tools.firestore_client.create_async_job")
+    @patch("mcp_server.tools._enqueue_cloud_task")
+    def test_recommendations_with_mode(
+        self, mock_enqueue, mock_create_job, mock_defaults
+    ):
+        """Test recommendations() with mode parameter."""
+        from mcp_server import tools
+
+        mock_defaults.return_value = {
+            "hot_sites": "tech",
+            "limit": 10,
+            "tavily_days": 30,
+        }
+        mock_create_job.return_value = {
+            "job_id": "rec-test-123",
+            "created_at": "2025-01-15T10:00:00Z",
+        }
+
+        result = tools.recommendations(mode="deepen")
+
+        self.assertEqual(result["job_id"], "rec-test-123")
+        self.assertEqual(result["config_used"]["mode"], "deepen")
+        # Verify params passed to job
+        call_args = mock_create_job.call_args
+        self.assertEqual(call_args.kwargs["params"]["mode"], "deepen")
+
+    @patch("mcp_server.tools.firestore_client.get_recommendations_defaults")
+    @patch("mcp_server.tools.firestore_client.create_async_job")
+    @patch("mcp_server.tools._enqueue_cloud_task")
+    def test_recommendations_with_problems(
+        self, mock_enqueue, mock_create_job, mock_defaults
+    ):
+        """Test recommendations() with problems parameter."""
+        from mcp_server import tools
+
+        mock_defaults.return_value = {
+            "hot_sites": "tech",
+            "limit": 10,
+            "tavily_days": 30,
+        }
+        mock_create_job.return_value = {
+            "job_id": "rec-test-456",
+            "created_at": "2025-01-15T10:00:00Z",
+        }
+
+        result = tools.recommendations(
+            problems=["prob_123", "prob_456"],
+            mode="explore",
+        )
+
+        self.assertEqual(result["config_used"]["problems"], ["prob_123", "prob_456"])
+        self.assertEqual(result["config_used"]["mode"], "explore")
+        # Verify params passed to job
+        call_args = mock_create_job.call_args
+        self.assertEqual(call_args.kwargs["params"]["problems"], ["prob_123", "prob_456"])
+
+    def test_recommendations_invalid_mode(self):
+        """Test recommendations() with invalid mode returns error."""
+        from mcp_server import tools
+
+        result = tools.recommendations(mode="invalid_mode")
+
+        self.assertIn("error", result)
+        self.assertIn("Invalid mode", result["error"])
+
+    @patch("mcp_server.tools.firestore_client.get_recommendations_defaults")
+    @patch("mcp_server.tools.firestore_client.create_async_job")
+    @patch("mcp_server.tools._enqueue_cloud_task")
+    def test_recommendations_default_mode(
+        self, mock_enqueue, mock_create_job, mock_defaults
+    ):
+        """Test recommendations() uses balanced mode by default."""
+        from mcp_server import tools
+
+        mock_defaults.return_value = {
+            "hot_sites": "tech",
+            "limit": 10,
+            "tavily_days": 30,
+        }
+        mock_create_job.return_value = {
+            "job_id": "rec-test-789",
+            "created_at": "2025-01-15T10:00:00Z",
+        }
+
+        result = tools.recommendations()
+
+        self.assertEqual(result["config_used"]["mode"], "balanced")
+
+
+class TestModeValidation(unittest.TestCase):
+    """Test suite for mode validation (Story 11.3)."""
+
+    def test_valid_epic11_modes(self):
+        """Test that Epic 11 modes are recognized."""
+        epic11_modes = ["deepen", "explore", "balanced"]
+
+        for mode in epic11_modes:
+            # Should be valid Epic 11 modes
+            self.assertIn(mode, epic11_modes)
+
+    def test_legacy_mode_compatibility(self):
+        """Test that legacy modes are recognized for mapping."""
+        legacy_modes = ["fresh", "deep", "surprise_me"]
+        epic11_modes = ["deepen", "explore", "balanced"]
+
+        # All legacy modes should be mapped to balanced internally
+        for mode in legacy_modes:
+            self.assertIn(mode, legacy_modes)
+            # In actual code, these are mapped to "balanced"
+
+    def test_invalid_mode_rejected(self):
+        """Test that invalid modes are rejected."""
+        from mcp_server import tools
+
+        result = tools.recommendations(mode="invalid_mode")
+        self.assertIn("error", result)
+        self.assertIn("Invalid mode", result["error"])
+
+
+# ============================================================================
+# Story 11.4: Evidence Deduplication Tests
+# ============================================================================
+
+
+class TestUrlNormalization(unittest.TestCase):
+    """Test suite for URL normalization (Story 11.4)."""
+
+    def test_normalize_removes_protocol(self):
+        """URL normalization removes protocol."""
+        from mcp_server.firestore_client import _normalize_url_for_dedup
+
+        url1 = _normalize_url_for_dedup("https://example.com/article")
+        url2 = _normalize_url_for_dedup("http://example.com/article")
+
+        self.assertEqual(url1, url2)
+
+    def test_normalize_removes_www(self):
+        """URL normalization removes www prefix."""
+        from mcp_server.firestore_client import _normalize_url_for_dedup
+
+        url1 = _normalize_url_for_dedup("https://www.example.com/article")
+        url2 = _normalize_url_for_dedup("https://example.com/article")
+
+        self.assertEqual(url1, url2)
+
+    def test_normalize_removes_trailing_slash(self):
+        """URL normalization removes trailing slash."""
+        from mcp_server.firestore_client import _normalize_url_for_dedup
+
+        url1 = _normalize_url_for_dedup("https://example.com/article/")
+        url2 = _normalize_url_for_dedup("https://example.com/article")
+
+        self.assertEqual(url1, url2)
+
+    def test_normalize_removes_query_params(self):
+        """URL normalization removes query parameters."""
+        from mcp_server.firestore_client import _normalize_url_for_dedup
+
+        url1 = _normalize_url_for_dedup("https://example.com/article?ref=twitter")
+        url2 = _normalize_url_for_dedup("https://example.com/article")
+
+        self.assertEqual(url1, url2)
+
+    def test_normalize_case_insensitive(self):
+        """URL normalization is case insensitive."""
+        from mcp_server.firestore_client import _normalize_url_for_dedup
+
+        url1 = _normalize_url_for_dedup("https://Example.COM/Article")
+        url2 = _normalize_url_for_dedup("https://example.com/article")
+
+        self.assertEqual(url1, url2)
+
+
+class TestFilterEvidenceDuplicates(unittest.TestCase):
+    """Test suite for evidence duplicate filtering (Story 11.4)."""
+
+    def test_filters_matching_urls(self):
+        """Recommendations matching evidence URLs should be filtered."""
+        from mcp_server.recommendation_filter import filter_evidence_duplicates
+
+        recommendations = [
+            {"url": "https://example.com/article1", "title": "Article 1"},
+            {"url": "https://example.com/article2", "title": "Article 2"},
+            {"url": "https://example.com/article3", "title": "Article 3"},
+        ]
+
+        evidence_urls = {"example.com/article1", "example.com/article3"}
+        url_to_problem = {
+            "example.com/article1": "prob_123",
+            "example.com/article3": "prob_456",
+        }
+
+        result = filter_evidence_duplicates(
+            recommendations=recommendations,
+            evidence_urls=evidence_urls,
+            url_to_problem=url_to_problem,
+        )
+
+        # Only article2 should remain
+        self.assertEqual(len(result["recommendations"]), 1)
+        self.assertEqual(result["recommendations"][0]["title"], "Article 2")
+        self.assertEqual(result["filtered_out"]["already_evidence"], 2)
+
+    def test_no_filtering_when_no_evidence(self):
+        """No filtering when evidence_urls is empty."""
+        from mcp_server.recommendation_filter import filter_evidence_duplicates
+
+        recommendations = [
+            {"url": "https://example.com/article1", "title": "Article 1"},
+            {"url": "https://example.com/article2", "title": "Article 2"},
+        ]
+
+        result = filter_evidence_duplicates(
+            recommendations=recommendations,
+            evidence_urls=set(),
+            url_to_problem={},
+        )
+
+        self.assertEqual(len(result["recommendations"]), 2)
+        self.assertEqual(result["filtered_out"]["already_evidence"], 0)
+
+    def test_keeps_recommendations_without_url(self):
+        """Recommendations without URL should be kept."""
+        from mcp_server.recommendation_filter import filter_evidence_duplicates
+
+        recommendations = [
+            {"title": "No URL Article"},
+            {"url": "https://example.com/article1", "title": "With URL"},
+        ]
+
+        evidence_urls = {"example.com/article1"}
+        url_to_problem = {"example.com/article1": "prob_123"}
+
+        result = filter_evidence_duplicates(
+            recommendations=recommendations,
+            evidence_urls=evidence_urls,
+            url_to_problem=url_to_problem,
+        )
+
+        # The one without URL should remain
+        self.assertEqual(len(result["recommendations"]), 1)
+        self.assertEqual(result["recommendations"][0]["title"], "No URL Article")
+
+
+class TestGetEvidenceUrls(unittest.TestCase):
+    """Test suite for getting evidence URLs from problems (Story 11.4)."""
+
+    @patch("mcp_server.firestore_client.get_problem")
+    @patch("mcp_server.firestore_client.get_chunk_by_id")
+    def test_collects_urls_from_evidence(self, mock_get_chunk, mock_get_problem):
+        """Evidence URLs should be collected from problem chunks."""
+        from mcp_server import firestore_client
+
+        mock_get_problem.return_value = {
+            "problem_id": "prob_123",
+            "evidence": [
+                {"chunk_id": "chunk_1"},
+                {"chunk_id": "chunk_2"},
+            ],
+        }
+
+        mock_get_chunk.side_effect = [
+            {"source_url": "https://example.com/article1"},
+            {"source_url": "https://www.example.com/article2"},
+        ]
+
+        result = firestore_client.get_evidence_urls_for_problems(["prob_123"])
+
+        self.assertEqual(len(result["urls"]), 2)
+        self.assertEqual(result["chunks_checked"], 2)
+        # URLs should be normalized
+        self.assertIn("example.com/article1", result["urls"])
+        self.assertIn("example.com/article2", result["urls"])
+
+    @patch("mcp_server.firestore_client.get_problem")
+    def test_handles_missing_problem(self, mock_get_problem):
+        """Missing problems should be handled gracefully."""
+        from mcp_server import firestore_client
+
+        mock_get_problem.return_value = None
+
+        result = firestore_client.get_evidence_urls_for_problems(["nonexistent"])
+
+        self.assertEqual(len(result["urls"]), 0)
+        self.assertEqual(result["chunks_checked"], 0)
+
+    @patch("mcp_server.firestore_client.get_problem")
+    @patch("mcp_server.firestore_client.get_chunk_by_id")
+    def test_handles_chunks_without_url(self, mock_get_chunk, mock_get_problem):
+        """Chunks without source_url should be skipped."""
+        from mcp_server import firestore_client
+
+        mock_get_problem.return_value = {
+            "problem_id": "prob_123",
+            "evidence": [
+                {"chunk_id": "chunk_1"},
+                {"chunk_id": "chunk_2"},
+            ],
+        }
+
+        mock_get_chunk.side_effect = [
+            {"title": "No URL Chunk"},  # No source_url
+            {"source_url": "https://example.com/article"},
+        ]
+
+        result = firestore_client.get_evidence_urls_for_problems(["prob_123"])
+
+        # Only one URL should be collected
+        self.assertEqual(len(result["urls"]), 1)
+        self.assertEqual(result["chunks_checked"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
