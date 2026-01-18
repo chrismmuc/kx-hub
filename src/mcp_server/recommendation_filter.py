@@ -17,7 +17,7 @@ Provides:
 import logging
 import math
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import embeddings
@@ -196,7 +196,10 @@ def calculate_recency_score(
         logger.debug("No published_date provided, excluding article (score 0.0)")
         return 0.0
 
-    now = datetime.utcnow()
+    if published_date.tzinfo is None:
+        published_date = published_date.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
     age_days = (now - published_date).days
 
     # Filter out articles older than max_age
@@ -370,7 +373,10 @@ def parse_published_date(date_str: Optional[str]) -> Optional[datetime]:
     for fmt in formats:
         try:
             # Truncate to format length for timezone-aware formats
-            return datetime.strptime(date_str[: len(date_str)], fmt)
+            parsed = datetime.strptime(date_str[: len(date_str)], fmt)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
         except (ValueError, TypeError):
             continue
 
@@ -893,10 +899,10 @@ def filter_recommendations(
             if url:
                 url_to_context[url] = ctx
 
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         # Calculate cutoff date for recency filter
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff_date = now - timedelta(days=max_age_days) if max_age_days > 0 else None
 
         for rec in recommendations:
@@ -921,6 +927,9 @@ def filter_recommendations(
                             break
                         except ValueError:
                             continue
+
+                    if article_date and article_date.tzinfo is None:
+                        article_date = article_date.replace(tzinfo=timezone.utc)
 
                     if article_date and cutoff_date and article_date < cutoff_date:
                         filtered_out["too_old_count"] += 1
@@ -1179,8 +1188,12 @@ def get_graph_context(
         }
 
         # Extract evidence source IDs for relationship lookup
-        evidence_source_ids = {ev.get("source_id") for ev in problem_evidence if ev.get("source_id")}
-        evidence_source_titles = {ev.get("source_title", "").lower(): ev for ev in problem_evidence}
+        evidence_source_ids = {
+            ev.get("source_id") for ev in problem_evidence if ev.get("source_id")
+        }
+        evidence_source_titles = {
+            ev.get("source_title", "").lower(): ev for ev in problem_evidence
+        }
 
         # 1. Check if author exists in KB
         if author and len(author) > 2:
@@ -1200,7 +1213,9 @@ def get_graph_context(
                         break
 
                     # Check relationships from this source to evidence
-                    relationships = firestore_client.get_relationships_for_source(kb_source_id)
+                    relationships = firestore_client.get_relationships_for_source(
+                        kb_source_id
+                    )
                     for rel in relationships:
                         if rel.get("target_source_id") in evidence_source_ids:
                             result["relation"] = rel.get("type")
@@ -1218,7 +1233,9 @@ def get_graph_context(
         # 2. Check if domain/source exists in KB
         if domain and len(domain) > 3 and not result["source_in_kb"]:
             domain_clean = domain.replace("www.", "").lower()
-            kb_domain_sources = firestore_client.find_sources_by_domain(domain_clean, limit=3)
+            kb_domain_sources = firestore_client.find_sources_by_domain(
+                domain_clean, limit=3
+            )
             if kb_domain_sources:
                 result["source_in_kb"] = True
                 if result["graph_bonus"] < 0.1:
@@ -1349,7 +1366,9 @@ def filter_recommendations_with_graph(
         - graph_stats: Statistics about graph connections found
     """
     try:
-        logger.info(f"Filtering {len(recommendations)} recommendations with graph context")
+        logger.info(
+            f"Filtering {len(recommendations)} recommendations with graph context"
+        )
 
         # First, apply standard filtering
         base_result = filter_recommendations(
@@ -1423,7 +1442,9 @@ def filter_recommendations_with_graph(
             graph_bonus = graph_context.get("graph_bonus", 0.0)
             if graph_bonus > 0:
                 # Update combined score with graph bonus
-                current_score = rec.get("combined_score", rec.get("relevance_score", 0.5))
+                current_score = rec.get(
+                    "combined_score", rec.get("relevance_score", 0.5)
+                )
                 rec["combined_score"] = min(1.0, current_score + graph_bonus)
                 rec["graph_bonus"] = graph_bonus
 
@@ -1523,7 +1544,10 @@ def filter_evidence_duplicates(
         - filtered_out: Count and details of filtered items
     """
     if not evidence_urls:
-        return {"recommendations": recommendations, "filtered_out": {"already_evidence": 0}}
+        return {
+            "recommendations": recommendations,
+            "filtered_out": {"already_evidence": 0},
+        }
 
     filtered_recs = []
     filtered_count = 0
@@ -1541,16 +1565,22 @@ def filter_evidence_duplicates(
         if normalized in evidence_urls:
             filtered_count += 1
             problem_id = url_to_problem.get(normalized, "unknown")
-            filtered_details.append({
-                "url": rec_url,
-                "title": rec.get("title", "Unknown"),
-                "problem_id": problem_id,
-            })
-            logger.debug(f"Filtered evidence duplicate: {rec.get('title')} (problem: {problem_id})")
+            filtered_details.append(
+                {
+                    "url": rec_url,
+                    "title": rec.get("title", "Unknown"),
+                    "problem_id": problem_id,
+                }
+            )
+            logger.debug(
+                f"Filtered evidence duplicate: {rec.get('title')} (problem: {problem_id})"
+            )
         else:
             filtered_recs.append(rec)
 
-    logger.info(f"Filtered {filtered_count} evidence duplicates from {len(recommendations)} recommendations")
+    logger.info(
+        f"Filtered {filtered_count} evidence duplicates from {len(recommendations)} recommendations"
+    )
 
     return {
         "recommendations": filtered_recs,
@@ -1606,7 +1636,9 @@ def filter_recommendations_with_evidence_dedup(
         - graph_stats: Statistics about graph connections found
     """
     try:
-        logger.info(f"Filtering {len(recommendations)} recommendations with evidence dedup")
+        logger.info(
+            f"Filtering {len(recommendations)} recommendations with evidence dedup"
+        )
 
         # Initialize filtered_out
         all_filtered_out = {}
