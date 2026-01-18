@@ -1442,6 +1442,8 @@ def _get_reading_recommendations(
         import recommendation_problems
         import recommendation_queries
         import tavily_client
+        import date_extractor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         # Story 3.9: Get mode configuration
         mode_config = recommendation_filter.get_mode_config(mode)
@@ -1588,69 +1590,104 @@ def _get_reading_recommendations(
         query_strings = [q.get("query", str(q)) for q in queries]
         logger.info(f"Generated {len(queries)} search queries")
 
-        # Step 4: Search Tavily
+        # Step 4: Search Tavily (parallel)
         all_results = []
         all_contexts = []
         query_source = filters_applied.get("query_source", "legacy")
 
-        for query_dict in queries:
-            # Story 11.3: Use appropriate formatter based on query source
+        # Prepare query strings
+        def format_query(query_dict):
             if query_source == "problems":
-                query_str = recommendation_problems.format_query_for_tavily(query_dict)
+                return recommendation_problems.format_query_for_tavily(query_dict)
             else:
-                query_str = recommendation_queries.format_query_for_tavily(query_dict)
+                return recommendation_queries.format_query_for_tavily(query_dict)
 
+        # Execute Tavily searches in parallel
+        def search_tavily(query_dict):
+            query_str = format_query(query_dict)
+            include_domains = hot_sites_domains if hot_sites_domains else None
             try:
-                # Story 3.9: Determine include_domains for Tavily
-                include_domains = None
-                if hot_sites_domains:
-                    include_domains = hot_sites_domains
-
                 search_result = tavily_client.search(
                     query=query_str,
                     exclude_domains=excluded_domains if excluded_domains else None,
-                    include_domains=include_domains,  # Story 3.9: hot sites filtering
+                    include_domains=include_domains,
                     days=tavily_days,
                     max_results=5,
                     search_depth="advanced",
                 )
-
-                for result in search_result.get("results", []):
-                    # Skip previously shown URLs (unless include_seen)
-                    if not include_seen and result.get("url") in shown_urls:
-                        logger.debug(f"Skipping previously shown: {result.get('url')}")
-                        continue
-
-                    # Calculate recency score
-                    pub_date = recommendation_filter.parse_published_date(
-                        result.get("published_date")
-                    )
-                    recency_score = recommendation_filter.calculate_recency_score(
-                        pub_date, half_life_days, max_age_days
-                    )
-
-                    # Skip articles that are too old (recency_score = 0)
-                    if recency_score == 0:
-                        logger.debug(f"Skipping old article: {result.get('title')}")
-                        continue
-
-                    result["recency_score"] = recency_score
-                    result["relevance_score"] = result.get("score", 0.5)
-
-                    # Add query context for slot assignment
-                    result["related_to"] = query_dict.get("context", {})
-
-                    all_results.append(result)
-                    all_contexts.append(query_dict)
-
+                return query_dict, search_result, None
             except Exception as e:
-                logger.warning(
-                    f"Tavily search failed for query '{query_str[:50]}...': {e}"
-                )
+                return query_dict, None, e
+
+        logger.info(f"Executing {len(queries)} Tavily searches in parallel")
+        tavily_start = time.time()
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            search_futures = [executor.submit(search_tavily, q) for q in queries]
+            search_results = [f.result() for f in search_futures]
+
+        logger.info(f"Tavily parallel search completed in {time.time() - tavily_start:.1f}s")
+
+        # Collect raw results (before date filtering)
+        raw_results = []
+        for query_dict, search_result, error in search_results:
+            if error:
+                query_str = format_query(query_dict)
+                logger.warning(f"Tavily search failed for '{query_str[:50]}...': {error}")
                 continue
 
+            for result in search_result.get("results", []):
+                # Skip previously shown URLs (unless include_seen)
+                if not include_seen and result.get("url") in shown_urls:
+                    logger.debug(f"Skipping previously shown: {result.get('url')}")
+                    continue
+
+                result["_query_context"] = query_dict
+                raw_results.append(result)
+
+        # Step 4b: Extract dates for results without published_date
+        urls_without_date = [
+            r.get("url") for r in raw_results
+            if r.get("url") and not r.get("published_date")
+        ]
+
+        if urls_without_date:
+            logger.info(f"Extracting dates for {len(urls_without_date)} URLs without published_date")
+            extracted_dates = date_extractor.extract_dates_batch(urls_without_date)
+
+            # Merge extracted dates back into results
+            for result in raw_results:
+                url = result.get("url")
+                if url and not result.get("published_date") and url in extracted_dates:
+                    result["published_date"] = extracted_dates[url]
+                    result["date_source"] = "extracted"
+
+        # Step 4c: Calculate recency scores and filter
+        for result in raw_results:
+            pub_date = recommendation_filter.parse_published_date(
+                result.get("published_date")
+            )
+            recency_score = recommendation_filter.calculate_recency_score(
+                pub_date, half_life_days, max_age_days
+            )
+
+            # Skip articles that are too old (recency_score = 0)
+            if recency_score == 0:
+                logger.debug(f"Skipping old article: {result.get('title')}")
+                continue
+
+            result["recency_score"] = recency_score
+            result["relevance_score"] = result.get("score", 0.5)
+
+            # Add query context for slot assignment
+            query_dict = result.pop("_query_context", {})
+            result["related_to"] = query_dict.get("context", {})
+
+            all_results.append(result)
+            all_contexts.append(query_dict)
+
         logger.info(
-            f"Tavily returned {len(all_results)} total results (after shown/age filtering)"
+            f"Tavily returned {len(all_results)} total results (after shown/age/date filtering)"
         )
 
         if not all_results:

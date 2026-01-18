@@ -191,9 +191,10 @@ def calculate_recency_score(
         0.0
     """
     # Handle missing publication date gracefully
+    # Use lower score (0.3) to deprioritize articles without verifiable dates
     if published_date is None:
-        logger.debug("No published_date provided, using neutral score 0.5")
-        return 0.5
+        logger.debug("No published_date provided, using penalty score 0.3")
+        return 0.3
 
     now = datetime.utcnow()
     age_days = (now - published_date).days
