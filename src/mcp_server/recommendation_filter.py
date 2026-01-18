@@ -190,11 +190,11 @@ def calculate_recency_score(
         >>> calculate_recency_score(datetime.now() - timedelta(days=400))  # >365 days
         0.0
     """
-    # Handle missing publication date gracefully
-    # Use lower score (0.3) to deprioritize articles without verifiable dates
+    # Handle missing publication date - exclude articles without verifiable dates
+    # After text parsing and LLM extraction, if still no date, article is filtered out
     if published_date is None:
-        logger.debug("No published_date provided, using penalty score 0.3")
-        return 0.3
+        logger.debug("No published_date provided, excluding article (score 0.0)")
+        return 0.0
 
     now = datetime.utcnow()
     age_days = (now - published_date).days

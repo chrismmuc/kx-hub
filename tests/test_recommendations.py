@@ -904,11 +904,11 @@ class TestRecencyScoring(unittest.TestCase):
         self.assertEqual(score, 0.0)
 
     def test_recency_score_none_date(self):
-        """Missing date should return penalty score 0.3 to deprioritize unverified articles."""
+        """Missing date should return 0.0 to exclude unverified articles."""
         from mcp_server.recommendation_filter import calculate_recency_score
 
         score = calculate_recency_score(None)
-        self.assertEqual(score, 0.3)
+        self.assertEqual(score, 0.0)
 
 
 class TestCombinedScoring(unittest.TestCase):
