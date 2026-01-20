@@ -464,6 +464,44 @@ async def health_check():
     }
 
 
+# ==================== Recommendations API ====================
+
+
+@app.post("/recommendations")
+async def post_recommendations(request: Request):
+    """
+    Get or poll recommendations via HTTP.
+
+    Story 12: Batch recommendations consumer endpoint.
+    Wrapper for tools.recommendations() to provide HTTP access.
+
+    Request body:
+        {
+            "job_id": "rec-abc123",  # Optional: poll existing job
+            "mode": "balanced",      # Optional: discovery mode
+            "problems": [...],       # Optional: specific problem IDs
+            "topic": "..."           # Optional: topic override (deprecated)
+        }
+
+    Returns:
+        Job metadata with status and result (if completed)
+    """
+    try:
+        body = await request.json()
+
+        result = tools.recommendations(
+            job_id=body.get("job_id"),
+            mode=body.get("mode", "balanced"),
+            problems=body.get("problems"),
+            topic=body.get("topic")
+        )
+
+        return result
+    except Exception as e:
+        logger.error(f"Recommendations request failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== OAuth 2.1 Endpoints ====================
 
 

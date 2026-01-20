@@ -14,7 +14,7 @@ resource "google_project_service" "cloudtasks_api" {
 # Cloud Tasks queue for async jobs
 # Note: Cloud Tasks not available in europe-west4, using europe-west1
 resource "google_cloud_tasks_queue" "async_jobs" {
-  name     = "async-jobs"
+  name     = "async-jobs-v2"
   location = "europe-west1"
 
   rate_limits {

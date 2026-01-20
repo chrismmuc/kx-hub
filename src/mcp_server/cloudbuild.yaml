@@ -30,7 +30,7 @@ steps:
       - "managed"
       - "--allow-unauthenticated"
       - "--set-env-vars"
-      - "GCP_PROJECT=$PROJECT_ID,GCP_REGION=europe-west1,FIRESTORE_DATABASE=(default),OAUTH_ISSUER=${_OAUTH_ISSUER},OAUTH_USER_EMAIL=${_OAUTH_USER_EMAIL},CLOUD_TASKS_QUEUE=async-jobs,CLOUD_TASKS_SA_EMAIL=cloud-tasks-invoker@$PROJECT_ID.iam.gserviceaccount.com,MCP_SERVER_URL=${_OAUTH_ISSUER}"
+      - "GCP_PROJECT=$PROJECT_ID,GCP_REGION=europe-west1,FIRESTORE_DATABASE=(default),OAUTH_ISSUER=${_OAUTH_ISSUER},OAUTH_USER_EMAIL=${_OAUTH_USER_EMAIL},CLOUD_TASKS_QUEUE=async-jobs-v2,CLOUD_TASKS_SA_EMAIL=cloud-tasks-invoker@$PROJECT_ID.iam.gserviceaccount.com,MCP_SERVER_URL=${_OAUTH_ISSUER}"
       - "--set-secrets"
       - "TAVILY_API_KEY=TAVILY_API_KEY:latest,OAUTH_USER_PASSWORD_HASH=OAUTH_USER_PASSWORD_HASH:latest"
       - "--memory"
@@ -43,6 +43,8 @@ steps:
       - "10"
       - "--timeout"
       - "300"
+      - "--concurrency"
+      - "4"
 
 substitutions:
   _REGION: europe-west1

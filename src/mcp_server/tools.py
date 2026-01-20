@@ -1546,13 +1546,17 @@ def _get_reading_recommendations(
             logger.info(f"Using {len(problem_queries)} problem-based queries")
             queries = problem_queries
             filters_applied["query_source"] = "problems"
-            filters_applied["problems_used"] = list(set(q.get("problem_id") for q in problem_queries))
+            filters_applied["problems_used"] = list(
+                set(q.get("problem_id") for q in problem_queries)
+            )
 
             # Collect evidence for graph filtering
             for pid in filters_applied["problems_used"]:
                 evidence = firestore_client.get_problem_evidence_sources(pid)
                 problem_evidence.extend(evidence)
-            logger.info(f"Collected {len(problem_evidence)} evidence sources for graph filtering")
+            logger.info(
+                f"Collected {len(problem_evidence)} evidence sources for graph filtering"
+            )
 
         elif topic:
             # Topic override: generate simple topic-based queries (deprecated)
@@ -1622,18 +1626,22 @@ def _get_reading_recommendations(
         logger.info(f"Executing {len(queries)} Tavily searches in parallel")
         tavily_start = time.time()
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             search_futures = [executor.submit(search_tavily, q) for q in queries]
             search_results = [f.result() for f in search_futures]
 
-        logger.info(f"Tavily parallel search completed in {time.time() - tavily_start:.1f}s")
+        logger.info(
+            f"Tavily parallel search completed in {time.time() - tavily_start:.1f}s"
+        )
 
         # Collect raw results (before date filtering)
         raw_results = []
         for query_dict, search_result, error in search_results:
             if error:
                 query_str = format_query(query_dict)
-                logger.warning(f"Tavily search failed for '{query_str[:50]}...': {error}")
+                logger.warning(
+                    f"Tavily search failed for '{query_str[:50]}...': {error}"
+                )
                 continue
 
             for result in search_result.get("results", []):
@@ -1647,12 +1655,15 @@ def _get_reading_recommendations(
 
         # Step 4b: Extract dates for results without published_date
         urls_without_date = [
-            r.get("url") for r in raw_results
+            r.get("url")
+            for r in raw_results
             if r.get("url") and not r.get("published_date")
         ]
 
         if urls_without_date:
-            logger.info(f"Extracting dates for {len(urls_without_date)} URLs without published_date")
+            logger.info(
+                f"Extracting dates for {len(urls_without_date)} URLs without published_date"
+            )
             extracted_dates = date_extractor.extract_dates_batch(urls_without_date)
 
             # Merge extracted dates back into results
@@ -1712,24 +1723,28 @@ def _get_reading_recommendations(
                 f"Using evidence dedup + graph filtering with "
                 f"{len(problem_evidence)} evidence sources, {len(problems_used)} problems"
             )
-            filter_result = recommendation_filter.filter_recommendations_with_evidence_dedup(
-                recommendations=all_results,
-                query_contexts=all_contexts,
-                problem_ids=problems_used,
-                problem_evidence=problem_evidence,
-                mode=mode,
-                min_depth_score=min_depth_score,
-                max_per_domain=diversity_settings.get("max_per_domain", 2),
-                check_duplicates=True,
-                known_authors=known_authors,
-                known_sources=known_domains,
-                trusted_sources=quality_domains,
+            filter_result = (
+                recommendation_filter.filter_recommendations_with_evidence_dedup(
+                    recommendations=all_results,
+                    query_contexts=all_contexts,
+                    problem_ids=problems_used,
+                    problem_evidence=problem_evidence,
+                    mode=mode,
+                    min_depth_score=min_depth_score,
+                    max_per_domain=diversity_settings.get("max_per_domain", 2),
+                    check_duplicates=True,
+                    known_authors=known_authors,
+                    known_sources=known_domains,
+                    trusted_sources=quality_domains,
+                )
             )
             graph_stats = filter_result.get("graph_stats", {})
             filters_applied["graph_stats"] = graph_stats
 
             # Story 11.4: Track evidence duplicates in stats
-            already_evidence = filter_result.get("filtered_out", {}).get("already_evidence", 0)
+            already_evidence = filter_result.get("filtered_out", {}).get(
+                "already_evidence", 0
+            )
             if already_evidence > 0:
                 filters_applied["evidence_duplicates_filtered"] = already_evidence
         else:
@@ -2486,7 +2501,7 @@ def _enqueue_cloud_task(job_id: str, job_type: str, params: Dict[str, Any]) -> N
     # Get configuration from environment
     project_id = os.environ.get("GCP_PROJECT", "kx-hub")
     location = os.environ.get("GCP_REGION", "europe-west1")
-    queue_name = os.environ.get("CLOUD_TASKS_QUEUE", "async-jobs")
+    queue_name = os.environ.get("CLOUD_TASKS_QUEUE", "async-jobs-v2")
     service_url = os.environ.get("MCP_SERVER_URL", "")
     cloud_tasks_sa = os.environ.get(
         "CLOUD_TASKS_SA_EMAIL",
@@ -2769,7 +2784,9 @@ def problems(
         elif action == "archive":
             return _problems_archive(problem_id)
         else:
-            return {"error": f"Unknown action: {action}. Use: add, list, analyze, archive"}
+            return {
+                "error": f"Unknown action: {action}. Use: add, list, analyze, archive"
+            }
 
     except Exception as e:
         logger.error(f"problems failed: {e}")
@@ -2890,11 +2907,13 @@ def _analyze_single_problem(problem_id: str) -> Dict[str, Any]:
 
             if key not in seen_connections:
                 seen_connections.add(key)
-                connections.append({
-                    "from": source,
-                    "to": target,
-                    "type": rel_type,
-                })
+                connections.append(
+                    {
+                        "from": source,
+                        "to": target,
+                        "type": rel_type,
+                    }
+                )
 
     # Get unique sources
     unique_sources = list(set(ev.get("source_title", "Unknown") for ev in evidence))
@@ -2927,11 +2946,13 @@ def _analyze_all_problems() -> Dict[str, Any]:
     for problem in active_problems:
         analysis = _analyze_single_problem(problem["problem_id"])
         if "error" not in analysis:
-            results.append({
-                "problem_id": analysis["problem_id"],
-                "problem": analysis["problem"],
-                "summary": analysis["summary"],
-            })
+            results.append(
+                {
+                    "problem_id": analysis["problem_id"],
+                    "problem": analysis["problem"],
+                    "summary": analysis["summary"],
+                }
+            )
 
     return {
         "problems": results,
