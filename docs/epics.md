@@ -180,6 +180,25 @@ See [epics/epic11.md](epics/epic11.md) for full details.
 
 ---
 
+## Epic 12: Auto-Snippets from Reader 🚧
+
+**Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto-ingest` via LLM, store as searchable kb_items.
+
+**Status:** Planned
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 12.1 | **Reader API Client** - Fetch docs tagged `kx-auto-ingest` with full text from Reader API v3 | Planned |
+| 12.2 | **LLM Snippet Extraction** - Gemini Flash extracts 3-7 key passages per article | Planned |
+| 12.3 | **Pipeline Integration** - Snippets → normalize → embed → Firestore as `kb_items` | Planned |
+| 12.4 | **Nightly Trigger & Tag Management** - Cloud Scheduler, remove tag after processing | Planned |
+
+**Key Design:** No new MCP tools or collections. Snippets are regular `kb_items` with `source_type: "auto-snippet"`, searchable via existing `search_kb`.
+
+See [epics/epic12.md](epics/epic12.md) for full details.
+
+---
+
 ## Backlog
 
 See [backlog.md](backlog.md) for future ideas:
