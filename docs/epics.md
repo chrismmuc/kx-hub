@@ -249,7 +249,7 @@ See [epics/epic12.md](epics/epic12.md) for full implementation details.
 |-------|-------------|--------|
 | 13.1 | **Reader API Client** - Fetch docs tagged `kx-auto-ingest` with full text from Reader API v3 | ✅ Done |
 | 13.2 | **KB-Aware Two-Stage Snippet Extraction** - LLM extracts candidates, KB enrichment for novelty + problem relevance, LLM judge selects best | ✅ Done |
-| 13.3 | **Pipeline Integration** - Snippets → normalize → embed → Firestore as `kb_items` | Planned |
+| 13.3 | **Write Back to Readwise & Pipeline Integration** - Readwise v2 highlight writer, direct snippet embedding to Firestore kb_items, full orchestration (extract → Readwise → embed → problem match) | ✅ Done |
 | 13.4 | **Nightly Trigger & Tag Management** - Cloud Scheduler, remove tag after processing | Planned |
 
 **Key Design:** No new MCP tools or collections. Snippets are regular `kb_items` with `source_type: "auto-snippet"`, searchable via existing `search_kb`.
