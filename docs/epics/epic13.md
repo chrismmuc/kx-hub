@@ -61,7 +61,8 @@ Current pipeline only ingests **user-made highlights** from Readwise Export API.
 ├─────────────────────────────────────────────────────────┤
 │ Gemini Flash reads full text                            │
 │                                                         │
-│ Prompt: "Extract 3-7 key passages from this article.    │
+│ Prompt: "Extract {N} key passages from this article.    │
+│   (N calculated dynamically: max(2, min(15, words/800)))│
 │   Each passage should be:                               │
 │   - A direct quote or close paraphrase (2-4 sentences)  │
 │   - Self-contained (understandable without context)     │
@@ -93,14 +94,26 @@ Current pipeline only ingests **user-made highlights** from Readwise Export API.
 └─────────────────────────────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────┐
-│ 4. POST-PROCESSING                                       │
+│ 4. WRITE BACK TO READWISE (v2 API)                      │
+├─────────────────────────────────────────────────────────┤
+│ POST /api/v2/highlights/                                │
+│   For each snippet:                                     │
+│     - text: the key passage                             │
+│     - note: LLM-generated context (why it matters)      │
+│     - title, author, source_url from Reader metadata    │
+│     - highlighted_at: current timestamp                 │
+│                                                         │
+│ → Snippets appear as highlights in Reader (auto-sync)   │
+│ → Remove kx-auto-ingest tag from Reader document        │
+│ → Add kx-processed tag (audit trail)                    │
+└─────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│ 5. POST-PROCESSING (EXISTING PIPELINE)                  │
 ├─────────────────────────────────────────────────────────┤
 │ → Knowledge Card generation (existing pipeline)         │
 │ → Relationship extraction (existing pipeline)           │
 │ → Problem matching (existing pipeline)                  │
-│                                                         │
-│ → Remove kx-auto-ingest tag from Reader document        │
-│ → Add kx-processed tag (audit trail)                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -134,137 +147,218 @@ Auto-snippets are stored as regular `kb_items` with additional metadata:
 
 | Operation | Cost per Article | Notes |
 |-----------|-----------------|-------|
-| Reader API | $0 | Included in Readwise subscription |
-| Gemini Flash (extract snippets) | ~$0.003 | ~2K input tokens + 500 output |
-| Embeddings (5 snippets) | ~$0.0005 | Vertex AI embedding |
-| Knowledge Cards (5 snippets) | ~$0.02 | Gemini Flash per snippet |
+| Reader API (fetch) | $0 | Included in Readwise subscription |
+| Stage 1: Extract candidates (Gemini Flash) | ~$0.01 | ~2K input + 1K output (N×2 snippets) |
+| Stage 1.5: KB semantic search (12 queries) | ~$0 | Firestore vector search (negligible) |
+| Stage 2: Judge selection (Gemini Flash) | ~$0.01 | ~1K input + 500 output |
+| Readwise v2 API (write highlights) | $0 | Included in Readwise subscription |
+| Embeddings (6 snippets) | ~$0.0006 | Vertex AI embedding |
+| Knowledge Cards (6 snippets) | ~$0.024 | Gemini Flash per snippet |
 | Firestore writes | ~$0.00001 | Negligible |
-| **Total per article** | **~$0.025** | |
+| **Total per article** | **~$0.045** | |
 
-At 10 articles/week: **~$1/month**
+At 10 articles/week: **~$1.80/month**
 
 ---
 
 ## Stories
 
-### Story 12.1: Reader API Client
+### Story 13.1: Reader API Client
 
 **Goal:** Fetch documents tagged `kx-auto-ingest` with full text content.
 
 **New file:** `src/ingest/reader_client.py`
 
 **Tasks:**
-1. [ ] Reader API client with auth (reuse existing Readwise API key)
+1. [ ] **Reader API v3 client** with auth (reuse existing Readwise API key)
 2. [ ] `fetch_tagged_documents(tag="kx-auto-ingest")` — list documents with tag
-3. [ ] `fetch_document_content(doc_id)` — get full HTML/text content
-4. [ ] HTML → clean text conversion (strip nav, ads, boilerplate)
-5. [ ] Store raw response in GCS (same pattern as Readwise ingest)
-6. [ ] Rate limiting and retry logic (same pattern as existing ingest)
-7. [ ] Unit tests with mocked API responses
+3. [ ] Extract full text from Reader API response (`html_content` field)
+4. [ ] HTML → clean text conversion (strip nav, ads, boilerplate) using BeautifulSoup
+5. [ ] Extract metadata: title, author, source_url, word_count, reading_time
+6. [ ] Store raw response in GCS (same pattern as Readwise ingest)
+7. [ ] Rate limiting and retry logic (20 req/min base, 50 req/min for list)
+8. [ ] Unit tests with mocked API responses
 
-**Reader API Endpoints:**
-- `GET /api/v3/list/?tag=kx-auto-ingest` — list tagged documents
-- Document content available via `html_content` field or separate endpoint
+**Reader API v3 Endpoints:**
+- `GET /api/v3/list/?tag=kx-auto-ingest&category=article` — list tagged documents
+- Response includes `html_content` field with full article HTML
 
 **Acceptance Criteria:**
 - Fetches all documents with `kx-auto-ingest` tag
 - Extracts clean text from HTML content
+- Extracts word_count (calculate if not provided by API)
 - Raw JSON stored in GCS for audit trail
 - Handles pagination, rate limiting, empty results
 - Tests pass with mocked API
 
 ---
 
-### Story 12.2: LLM Snippet Extraction
+### Story 13.2: LLM Snippet Extraction (KB-Aware Two-Stage)
 
-**Goal:** Use Gemini Flash to extract 3-7 key passages from article full text.
+**Goal:** Extract key passages using KB-aware two-stage approach: generate candidates, enrich with KB context, judge selects best.
 
 **New file:** `src/knowledge_cards/snippet_extractor.py`
 
 **Tasks:**
-1. [ ] Snippet extraction prompt (extract key passages as JSON)
-2. [ ] `extract_snippets(full_text, title, author)` → list of snippets
-3. [ ] JSON schema validation for LLM output
-4. [ ] Configurable snippet count (default: 3-7, based on article length)
-5. [ ] Handle edge cases: short articles (<500 words), very long articles (>10K words)
-6. [ ] Reuse existing `src/llm/` abstraction for Gemini Flash calls
-7. [ ] Unit tests with sample articles
+
+**Stage 1: Candidate Generation**
+1. [ ] Calculate dynamic snippet count: `N = max(2, min(15, word_count // 800))`
+2. [ ] Extract `N × 2` candidate snippets (e.g., 12 candidates for 6 final snippets)
+3. [ ] Candidate extraction prompt: "Extract {N×2} key passages (direct quotes, 2-4 sentences each)"
+4. [ ] `extract_candidate_snippets(full_text, title, author, count)` → list of candidates
+5. [ ] JSON schema validation for candidate output
+
+**Stage 1.5: KB Context Enrichment**
+6. [ ] For each candidate: semantic search in `kb_items` (reuse existing `search_kb`)
+7. [ ] Calculate novelty score: `1.0 - similarity_score` (higher = more novel)
+8. [ ] Classify: Novel (<0.75 similarity), Related (0.75-0.90), Duplicate (>0.90)
+9. [ ] Check problem relevance: match against active Feynman problems
+10. [ ] `enrich_with_kb_context(candidates)` → candidates with metadata:
+    ```python
+    {
+      "text": "...",
+      "context": "...",
+      "position": "middle",
+      "kb_novelty": 0.85,          # 1.0 - similarity_score
+      "is_novel": True,             # novelty > 0.25
+      "similar_to": "title",        # Most similar kb_item (if any)
+      "problem_relevance": 0.92,    # Max score across active problems
+      "problem_id": "prob_123"      # Best matching problem
+    }
+    ```
+
+**Stage 2: KB-Aware Judge**
+11. [ ] Judge prompt: Select best N snippets based on:
+    - Quality: insight value, actionability (0-10)
+    - Diversity: coverage across article sections (0-10)
+    - Novelty: prefer novel over duplicate insights (0-10)
+    - Problem relevance: match to active problems (0-10)
+12. [ ] `judge_snippets(candidates, target_count=N)` → final N snippets
+13. [ ] Judge receives full KB context for each candidate
+14. [ ] Handle edge case: all candidates are duplicates (lower novelty threshold to 0.50)
+15. [ ] Reuse existing `src/llm/` abstraction for Gemini Flash calls
+16. [ ] Unit tests with sample articles + mocked KB search results
 
 **Snippet Schema:**
 ```python
 @dataclass
 class ExtractedSnippet:
-    text: str           # The key passage (2-4 sentences)
+    text: str           # The key passage (2-4 sentences, must be direct quote)
     context: str        # Why this passage matters (1 sentence)
     position: str       # "intro" | "middle" | "conclusion"
 ```
 
 **Prompt Strategy:**
 - Instruct LLM to find the most insightful/actionable passages
+- **Important**: Passages must be direct quotes from the article (for Readwise highlight accuracy)
 - Require diversity (don't cluster snippets from one section)
 - Self-contained: each snippet understandable without the full article
-- Short articles (< 1000 words): 3 snippets
-- Medium articles (1000-5000 words): 5 snippets
-- Long articles (> 5000 words): 7 snippets
+- **Dynamic snippet count** based on article length:
+  - Formula: `snippets = max(2, min(15, word_count // 800))`
+  - ~1,000 words (5 min read): 2 snippets
+  - ~2,000 words (10 min read): 3 snippets
+  - ~5,000 words (20 min read): 6 snippets
+  - ~8,000 words (30 min read): 10 snippets
+  - ~15,000+ words (1 hour read): 15 snippets (capped)
+
+**KB-Aware Two-Stage Extraction**:
+- **Stage 1**: Extract `N × 2` candidate snippets (e.g., 12 candidates for 6 final)
+- **Stage 1.5**: Enrich candidates with KB context (semantic search, novelty, problem relevance)
+- **Stage 2**: "Judge" model selects best N using quality + KB intelligence
+- Inspired by Snipd + kx-hub's problem-driven philosophy
+
+**Judge Selection Criteria**:
+```
+Score = (0.3 × quality) + (0.3 × novelty) + (0.3 × problem_relevance) + (0.1 × diversity)
+
+Where:
+- quality: LLM-assessed insight value (0-10)
+- novelty: 1.0 - kb_similarity (prefer novel insights)
+- problem_relevance: max match score to active Feynman problems
+- diversity: coverage across article sections
+```
 
 **Acceptance Criteria:**
 - Extracts meaningful snippets from various article types
+- Snippets are direct quotes (verifiable against source text)
+- Prioritizes novel insights over KB duplicates
+- Aligns with active Feynman problems when available
 - Output validates against schema
 - Handles short and long articles gracefully
-- Cost per article < $0.01 (Gemini Flash)
+- Handles edge case: all duplicates (fallback to quality-only)
+- Cost per article < $0.02 (Stage 1: $0.01, Stage 1.5: ~$0, Stage 2: $0.01)
 
 ---
 
-### Story 12.3: Pipeline Integration
+### Story 13.3: Write Back to Readwise & Pipeline Integration
 
-**Goal:** Feed extracted snippets through existing normalize → embed → Firestore pipeline.
+**Goal:** Write extracted snippets as Readwise highlights (appear in Reader), then flow through existing pipeline.
 
+**New file:** `src/ingest/readwise_writer.py`
 **Changes to:** `src/ingest/main.py`, `src/normalize/transformer.py`
 
 **Tasks:**
-1. [ ] Transform snippets into same markdown format as highlights
-2. [ ] Add `source_type: auto-snippet` to frontmatter
-3. [ ] Create/update source document in `sources` collection
-4. [ ] Embed snippets via existing embedding function
-5. [ ] Store in `kb_items` with snippet-specific metadata
-6. [ ] Trigger existing post-processing (knowledge cards, relationships, problem matching)
-7. [ ] Integration tests with Firestore emulator
+1. [ ] **Readwise v2 API client** for creating highlights
+2. [ ] `create_highlights(snippets, document_metadata)` → writes to Readwise v2 API
+3. [ ] Map snippet fields to Readwise highlight format:
+   - `text`: snippet.text (the key passage)
+   - `note`: snippet.context (why it matters)
+   - `title`, `author`, `source_url`: from Reader metadata
+   - `highlighted_at`: current timestamp
+4. [ ] Batch highlight creation (max 100 per request per API docs)
+5. [ ] Rate limiting: 240 req/min for v2 API (much higher than Reader v3)
+6. [ ] Error handling: retry logic, partial success tracking
+7. [ ] After successful write: snippets auto-sync to Reader (no additional API call needed)
+8. [ ] Transform snippets into same markdown format as highlights for internal storage
+9. [ ] Add `source_type: auto-snippet` to frontmatter
+10. [ ] Embed snippets via existing embedding function
+11. [ ] Store in `kb_items` with snippet-specific metadata
+12. [ ] Trigger existing post-processing (knowledge cards, relationships, problem matching)
+13. [ ] Integration tests with mocked Readwise v2 API
 
-**Key Decision:** Snippets become regular `kb_items`. No new collection, no new MCP tools. They're searchable via `search_kb` immediately.
+**Key Design:**
+- Snippets written to **Readwise v2 API** as highlights with notes
+- Auto-sync to Reader (user sees them as inline highlights)
+- Also stored in kx-hub `kb_items` for search/KB features
+- No new MCP tools needed - searchable via `search_kb`
 
 **Acceptance Criteria:**
+- Snippets appear as highlights in Reader app (with notes in margin)
 - Auto-snippets appear in `search_kb` results
 - Source created with `source_type: "auto-snippet"`
 - Knowledge cards generated for snippets
 - Problem matching works for new snippets
 - Existing pipeline not affected
+- User can edit/delete highlights in Reader UI
 
 ---
 
-### Story 12.4: Nightly Trigger & Tag Management
+### Story 13.4: Nightly Trigger & Tag Management
 
 **Goal:** Automated nightly execution with Reader tag lifecycle.
 
-**Changes to:** `terraform/`, `src/ingest/main.py`
+**Changes to:** `terraform/auto_snippets.tf`, `src/ingest/auto_snippets_main.py`
 
 **Tasks:**
 1. [ ] Cloud Scheduler job (nightly, e.g., 2:00 AM UTC)
 2. [ ] Cloud Function entry point for auto-snippet pipeline
-3. [ ] After successful processing: remove `kx-auto-ingest` tag via Reader API
-4. [ ] After successful processing: add `kx-processed` tag via Reader API
-5. [ ] Idempotency: skip documents already processed (by `reader_doc_id`)
-6. [ ] Error handling: don't remove tag if processing fails
+3. [ ] After successful Readwise write: remove `kx-auto-ingest` tag via Reader v3 API
+4. [ ] After successful Readwise write: add `kx-processed` tag via Reader v3 API
+5. [ ] Idempotency: skip documents already processed (check `kb_items` by `reader_doc_id`)
+6. [ ] Error handling: don't remove tag if snippet extraction or Readwise write fails
 7. [ ] Terraform config for scheduler + function
-8. [ ] Monitoring: log processed count, errors, costs
+8. [ ] Monitoring: log processed count, snippet count, errors, costs per article
 
-**Reader API Tag Management:**
-- `PATCH /api/v3/update/{doc_id}` — update tags
+**API Usage:**
+- **Reader v3**: `PATCH /api/v3/update/{doc_id}` for tag management (rate: 50 req/min)
+- **Readwise v2**: Highlights already created in Story 13.3
 
 **Acceptance Criteria:**
 - Runs nightly without manual intervention
 - Processed documents get `kx-processed` tag, lose `kx-auto-ingest` tag
-- Failed documents retain `kx-auto-ingest` tag for retry
-- Duplicate processing prevented
+- Failed documents retain `kx-auto-ingest` tag for retry next night
+- Duplicate processing prevented (idempotent)
+- User sees highlights in Reader app immediately after processing
 - Terraform manages all infrastructure
 
 ---
@@ -285,7 +379,7 @@ class ExtractedSnippet:
 | Metric | Target |
 |--------|--------|
 | Articles processed per night | 0-20 (depends on tagging) |
-| Snippets per article | 3-7 |
+| Snippets per article | 2-15 (dynamic, based on length) |
 | Snippet quality (manual review) | >80% useful |
 | Pipeline reliability | >99% success rate |
 | Cost per article | < $0.03 |
@@ -306,7 +400,7 @@ class ExtractedSnippet:
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 12.1 | Reader API Client | Planned |
-| 12.2 | LLM Snippet Extraction | Planned |
-| 12.3 | Pipeline Integration | Planned |
-| 12.4 | Nightly Trigger & Tag Management | Planned |
+| 13.1 | Reader API Client (v3 - fetch documents) | Planned |
+| 13.2 | LLM Snippet Extraction (dynamic count, Snipd-inspired) | Planned |
+| 13.3 | Write Back to Readwise (v2 API - create highlights) + Pipeline Integration | Planned |
+| 13.4 | Nightly Trigger & Tag Management | Planned |
