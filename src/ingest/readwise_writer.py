@@ -26,7 +26,10 @@ import requests
 try:
     from src.knowledge_cards.snippet_extractor import ExtractedSnippet, extract_snippets
 except ImportError:
-    from knowledge_cards.snippet_extractor import ExtractedSnippet, extract_snippets
+    try:
+        from knowledge_cards.snippet_extractor import ExtractedSnippet, extract_snippets
+    except ImportError:
+        from snippet_extractor import ExtractedSnippet, extract_snippets
 
 try:
     from src.embed.main import (
@@ -36,12 +39,20 @@ try:
         _ensure_source_exists,
     )
 except ImportError:
-    from embed.main import (
-        generate_embedding,
-        write_to_firestore,
-        _generate_source_id,
-        _ensure_source_exists,
-    )
+    try:
+        from embed.main import (
+            generate_embedding,
+            write_to_firestore,
+            _generate_source_id,
+            _ensure_source_exists,
+        )
+    except ImportError:
+        from embed_main import (
+            generate_embedding,
+            write_to_firestore,
+            _generate_source_id,
+            _ensure_source_exists,
+        )
 
 try:
     from src.embed.problem_matcher import match_chunks_to_problems

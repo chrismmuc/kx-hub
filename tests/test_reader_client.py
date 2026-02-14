@@ -341,3 +341,57 @@ class TestReadwiseReaderClient:
                 store_raw=True,
                 raw_bucket=None,
             )
+
+    @patch.object(ReadwiseReaderClient, "_make_request")
+    def test_update_document_tags_add_and_remove(self, mock_request, client):
+        """Test tag update with both add and remove operations."""
+        mock_request.return_value = {"id": "doc_123"}
+
+        client.update_document_tags(
+            document_id="doc_123",
+            current_tags=["kx-auto-ingest", "tech", "ai"],
+            remove_tags=["kx-auto-ingest"],
+            add_tags=["kx-processed"],
+        )
+
+        mock_request.assert_called_once_with(
+            "PATCH",
+            "/update/doc_123/",
+            endpoint_type="general",
+            json={"tags": ["ai", "kx-processed", "tech"]},
+        )
+
+    @patch.object(ReadwiseReaderClient, "_make_request")
+    def test_update_document_tags_add_only(self, mock_request, client):
+        """Test tag update with only add — existing tags preserved."""
+        mock_request.return_value = {"id": "doc_456"}
+
+        client.update_document_tags(
+            document_id="doc_456",
+            current_tags=["existing-tag"],
+            add_tags=["new-tag"],
+        )
+
+        mock_request.assert_called_once_with(
+            "PATCH",
+            "/update/doc_456/",
+            endpoint_type="general",
+            json={"tags": ["existing-tag", "new-tag"]},
+        )
+
+    @patch.object(ReadwiseReaderClient, "_make_request")
+    def test_update_document_tags_empty_operations(self, mock_request, client):
+        """Test tag update with no add/remove produces same tag set."""
+        mock_request.return_value = {"id": "doc_789"}
+
+        client.update_document_tags(
+            document_id="doc_789",
+            current_tags=["tag-a", "tag-b"],
+        )
+
+        mock_request.assert_called_once_with(
+            "PATCH",
+            "/update/doc_789/",
+            endpoint_type="general",
+            json={"tags": ["tag-a", "tag-b"]},
+        )

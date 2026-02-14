@@ -51,7 +51,7 @@ class ReaderDocument:
         self.category = raw_data.get("category")  # article, book, pdf, etc.
         self.created_at = raw_data.get("created_at")
         self.updated_at = raw_data.get("updated_at")
-        self.html_content = raw_data.get("html", "") or raw_data.get("content", "")
+        self.html_content = raw_data.get("html_content", "") or raw_data.get("html", "") or raw_data.get("content", "")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage/processing."""
@@ -203,6 +203,41 @@ class ReadwiseReaderClient:
 
         raise Exception("Max retries exceeded")
 
+    def update_document_tags(
+        self,
+        document_id: str,
+        current_tags: List[str],
+        remove_tags: Optional[List[str]] = None,
+        add_tags: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Update tags on a Reader document.
+
+        Endpoint: PATCH /api/v3/update/{document_id}/
+        Reader API uses full tag replacement, so we compute the new set.
+
+        Args:
+            document_id: Reader document ID
+            current_tags: Current tag list from ReaderDocument.tags
+            remove_tags: Tags to remove
+            add_tags: Tags to add
+
+        Returns:
+            Parsed JSON response from Reader API
+        """
+        new_tags = set(current_tags)
+        for tag in (remove_tags or []):
+            new_tags.discard(tag)
+        for tag in (add_tags or []):
+            new_tags.add(tag)
+
+        return self._make_request(
+            "PATCH",
+            f"/update/{document_id}/",
+            endpoint_type="general",
+            json={"tags": sorted(new_tags)},
+        )
+
     def fetch_tagged_documents(
         self,
         tag: str = "kx-auto-ingest",
@@ -232,7 +267,7 @@ class ReadwiseReaderClient:
         page_cursor = None
 
         while True:
-            params = {"limit": limit}
+            params = {"limit": limit, "withHtmlContent": True}
             if tag:
                 params["tag"] = tag
             if category:
@@ -321,7 +356,7 @@ class ReadwiseReaderClient:
             ReaderDocument with extracted content and metadata
         """
         # Get HTML content (field name may vary)
-        html = raw_doc.get("html", "") or raw_doc.get("content", "")
+        html = raw_doc.get("html_content", "") or raw_doc.get("html", "") or raw_doc.get("content", "")
 
         # Convert to clean text
         clean_text = self.html_to_clean_text(html)
