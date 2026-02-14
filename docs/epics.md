@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-01-19
+**Last Updated:** 2026-02-14
 
 ---
 
@@ -180,40 +180,21 @@ See [epics/epic11.md](epics/epic11.md) for full details.
 
 ---
 
-## Epic 12: Auto-Snippets from Reader 🚧
-
-**Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto-ingest` via LLM, store as searchable kb_items.
-
-**Status:** Planned
-
-| Story | Description | Status |
-|-------|-------------|--------|
-| 12.1 | **Reader API Client** - Fetch docs tagged `kx-auto-ingest` with full text from Reader API v3 | Planned |
-| 12.2 | **LLM Snippet Extraction** - Gemini Flash extracts 3-7 key passages per article | Planned |
-| 12.3 | **Pipeline Integration** - Snippets → normalize → embed → Firestore as `kb_items` | Planned |
-| 12.4 | **Nightly Trigger & Tag Management** - Cloud Scheduler, remove tag after processing | Planned |
-
-**Key Design:** No new MCP tools or collections. Snippets are regular `kb_items` with `source_type: "auto-snippet"`, searchable via existing `search_kb`.
-
-See [epics/epic12.md](epics/epic12.md) for full details.
-
----
-
-## Epic 13: Automated Weekly Recommendations to Readwise 🚀
+## Epic 12: Automated Weekly Recommendations to Readwise ✅
 
 **Goal:** Batch weekly recommendations execution (Thursday night → Friday) with automatic Readwise Reader inbox integration, strict result filtering, and AI-source tagging.
 
-**Status:** In Progress
+**Status:** Complete
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 13.1 | **Cloud Scheduler Setup** - Schedule weekly batch job at Friday 04:00 UTC (customizable via config) | In Progress |
-| 13.2 | **Batch Recommendations Function** - Cloud Function executes `recommendations()` with balanced mode, max 3 results, high recency filter | In Progress |
-| 13.3 | **Readwise Reader Integration** - Implement `POST /api/v3/save/` to add recommendations to Reader inbox (advance Story 3.7) | In Progress |
-| 13.4 | **Auto-Tagging** - Automatically tag saved articles with `ai-recommended` + source name + topic tags | In Progress |
-| 13.5 | **Deduplication Check** - Skip articles already in Reader library (query `/api/v3/list/` before saving) | In Progress |
-| 13.6 | **Batch Job Tracking** - Store batch execution metadata (timestamp, result count, success/failure) in Firestore `batch_jobs` collection | In Progress |
-| 13.7 | **Error Handling & Alerts** - Retry logic, Slack notifications on failure, detailed logging | In Progress |
+| 12.1 | **Cloud Scheduler Setup** - Schedule weekly batch job at Friday 04:00 UTC (customizable via config) | ✅ Done |
+| 12.2 | **Batch Recommendations Function** - Cloud Function executes `recommendations()` with balanced mode, max 3 results, high recency filter | ✅ Done |
+| 12.3 | **Readwise Reader Integration** - Implement `POST /api/v3/save/` to add recommendations to Reader inbox (advance Story 3.7) | ✅ Done |
+| 12.4 | **Auto-Tagging** - Automatically tag saved articles with `ai-recommended` + source name + topic tags | ✅ Done |
+| 12.5 | **Deduplication Check** - Skip articles already in Reader library (query `/api/v3/list/` before saving) | ✅ Done |
+| 12.6 | **Batch Job Tracking** - Store batch execution metadata (timestamp, result count, success/failure) in Firestore `batch_jobs` collection | ✅ Done |
+| 12.7 | **Error Handling & Alerts** - Retry logic, Slack notifications on failure, detailed logging | ✅ Done |
 
 **Key Features:**
 - Strict filtering: Max 3 results per batch
@@ -254,7 +235,26 @@ See [epics/epic12.md](epics/epic12.md) for full details.
 - <5 minute execution time per batch
 - 100% automatic tagging rate
 
-See [epics/epic13.md](epics/epic13.md) for full implementation details.
+See [epics/epic12.md](epics/epic12.md) for full implementation details.
+
+---
+
+## Epic 13: Auto-Snippets from Reader 🚧
+
+**Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto-ingest` via LLM, store as searchable kb_items.
+
+**Status:** Planned
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 13.1 | **Reader API Client** - Fetch docs tagged `kx-auto-ingest` with full text from Reader API v3 | Planned |
+| 13.2 | **LLM Snippet Extraction** - Gemini Flash extracts 3-7 key passages per article | Planned |
+| 13.3 | **Pipeline Integration** - Snippets → normalize → embed → Firestore as `kb_items` | Planned |
+| 13.4 | **Nightly Trigger & Tag Management** - Cloud Scheduler, remove tag after processing | Planned |
+
+**Key Design:** No new MCP tools or collections. Snippets are regular `kb_items` with `source_type: "auto-snippet"`, searchable via existing `search_kb`.
+
+See [epics/epic13.md](epics/epic13.md) for full details.
 
 ---
 
