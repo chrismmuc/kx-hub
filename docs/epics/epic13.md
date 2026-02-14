@@ -400,7 +400,7 @@ Where:
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 13.1 | Reader API Client (v3 - fetch documents) | Planned |
+| 13.1 | Reader API Client (v3 - fetch documents) | ✅ Done |
 | 13.2 | LLM Snippet Extraction (dynamic count, Snipd-inspired) | Planned |
 | 13.3 | Write Back to Readwise (v2 API - create highlights) + Pipeline Integration | Planned |
 | 13.4 | Nightly Trigger & Tag Management | Planned |
