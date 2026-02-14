@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-01-19
 
 ---
 
@@ -196,6 +196,65 @@ See [epics/epic11.md](epics/epic11.md) for full details.
 **Key Design:** No new MCP tools or collections. Snippets are regular `kb_items` with `source_type: "auto-snippet"`, searchable via existing `search_kb`.
 
 See [epics/epic12.md](epics/epic12.md) for full details.
+
+---
+
+## Epic 13: Automated Weekly Recommendations to Readwise 🚀
+
+**Goal:** Batch weekly recommendations execution (Thursday night → Friday) with automatic Readwise Reader inbox integration, strict result filtering, and AI-source tagging.
+
+**Status:** In Progress
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 13.1 | **Cloud Scheduler Setup** - Schedule weekly batch job at Friday 04:00 UTC (customizable via config) | In Progress |
+| 13.2 | **Batch Recommendations Function** - Cloud Function executes `recommendations()` with balanced mode, max 3 results, high recency filter | In Progress |
+| 13.3 | **Readwise Reader Integration** - Implement `POST /api/v3/save/` to add recommendations to Reader inbox (advance Story 3.7) | In Progress |
+| 13.4 | **Auto-Tagging** - Automatically tag saved articles with `ai-recommended` + source name + topic tags | In Progress |
+| 13.5 | **Deduplication Check** - Skip articles already in Reader library (query `/api/v3/list/` before saving) | In Progress |
+| 13.6 | **Batch Job Tracking** - Store batch execution metadata (timestamp, result count, success/failure) in Firestore `batch_jobs` collection | In Progress |
+| 13.7 | **Error Handling & Alerts** - Retry logic, Slack notifications on failure, detailed logging | In Progress |
+
+**Key Features:**
+- Strict filtering: Max 3 results per batch
+- Balanced search mode with emphasis on recency (< 7 days)
+- Automatic inbox organization via "ai-recommended" tag
+- Zero-duplicate guarantee (check Reader library first)
+- Weekly digest: Saves execution report to Firestore
+
+**Integration Points:**
+- Extends Epic 11 (Problem-Driven Recommendations)
+- Completes Story 3.7 (Save to Reader)
+- Uses Cloud Scheduler + Cloud Functions
+- Firestore for job tracking
+- Readwise Reader API (new)
+
+**Config Storage** (Firestore `config/batch_recommendations`):
+```json
+{
+  "enabled": true,
+  "schedule": "0 22 * * 4",  # Thursday 22:00 UTC
+  "mode": "balanced",
+  "max_results": 3,
+  "recency_days": 7,
+  "auto_tags": ["ai-recommended"],
+  "readwise_api_enabled": true,
+  "notification_slack": "#ai-recs"
+}
+```
+
+**Cost Impact:**
+- Cloud Scheduler: ~$0 (included in free tier)
+- Cloud Function (weekly): ~$0.50/month
+- Readwise API calls: Included in paid plan
+
+**Success Metrics:**
+- 100% scheduled execution (no missed runs)
+- 0% duplicate articles in Reader inbox
+- <5 minute execution time per batch
+- 100% automatic tagging rate
+
+See [epics/epic13.md](epics/epic13.md) for full implementation details.
 
 ---
 

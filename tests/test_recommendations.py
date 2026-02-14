@@ -167,13 +167,16 @@ class TestRecommendationFilter(unittest.TestCase):
 
     @patch("mcp_server.recommendation_filter.get_llm_client")
     def test_score_content_depth(self, mock_get_client):
-        """Test LLM content depth scoring."""
+        """Test LLM content depth scoring (via score_content_quality)."""
         from mcp_server import recommendation_filter
 
         mock_client = MagicMock()
+        # New format: score_content_quality returns depth + authority
         mock_client.generate_json.return_value = {
-            "score": 4,
-            "reasoning": "In-depth technical analysis",
+            "depth": 4,
+            "authority": 4,
+            "depth_reasoning": "In-depth technical analysis",
+            "authority_reasoning": "Reputable source",
         }
         mock_get_client.return_value = mock_client
 
@@ -187,20 +190,47 @@ class TestRecommendationFilter(unittest.TestCase):
         self.assertIn("reasoning", result)
 
     @patch("mcp_server.recommendation_filter.get_llm_client")
-    def test_score_content_depth_error_handling(self, mock_get_client):
-        """Test error handling in depth scoring."""
+    def test_score_content_quality(self, mock_get_client):
+        """Test LLM content quality scoring (depth + authority)."""
+        from mcp_server import recommendation_filter
+
+        mock_client = MagicMock()
+        mock_client.generate_json.return_value = {
+            "depth": 4,
+            "authority": 5,
+            "depth_reasoning": "In-depth technical analysis",
+            "authority_reasoning": "Top-tier publication",
+        }
+        mock_get_client.return_value = mock_client
+
+        result = recommendation_filter.score_content_quality(
+            title="Platform Engineering Guide",
+            content="Comprehensive guide to building...",
+            url="https://example.com/guide",
+            domain="hbr.org",
+        )
+
+        self.assertEqual(result["depth_score"], 4)
+        self.assertEqual(result["authority_score"], 5)
+        self.assertIn("depth_reasoning", result)
+        self.assertIn("authority_reasoning", result)
+
+    @patch("mcp_server.recommendation_filter.get_llm_client")
+    def test_score_content_quality_error_handling(self, mock_get_client):
+        """Test error handling in quality scoring."""
         from mcp_server import recommendation_filter
 
         mock_client = MagicMock()
         mock_client.generate_json.side_effect = Exception("API error")
         mock_get_client.return_value = mock_client
 
-        result = recommendation_filter.score_content_depth(
+        result = recommendation_filter.score_content_quality(
             title="Test", content="Test content", url="https://example.com"
         )
 
-        # Should return default score on error
+        # Should return default scores on error
         self.assertEqual(result["depth_score"], 3)
+        self.assertEqual(result["authority_score"], 3)
         self.assertIn("error", result)
 
     def test_generate_why_recommended_source(self):
@@ -252,13 +282,18 @@ class TestRecommendationFilter(unittest.TestCase):
         # Title similarity check may flag this
         self.assertIn("similarity_score", result)
 
-    @patch("mcp_server.recommendation_filter.score_content_depth")
-    def test_trusted_source_boosts_credibility(self, mock_depth):
+    @patch("mcp_server.recommendation_filter.score_content_quality")
+    def test_trusted_source_boosts_credibility(self, mock_quality):
         """Trusted sources should boost credibility even if not in KB."""
         from mcp_server import recommendation_filter
 
-        # Mock depth scoring to return passing score
-        mock_depth.return_value = {"depth_score": 4, "reasoning": "Good content"}
+        # Mock quality scoring to return passing score
+        mock_quality.return_value = {
+            "depth_score": 4,
+            "authority_score": 3,
+            "depth_reasoning": "Good content",
+            "authority_reasoning": "Known source",
+        }
 
         recommendations = [
             {
@@ -587,14 +622,16 @@ class TestFindBySourceURL(unittest.TestCase):
 class TestGetReadingRecommendations(unittest.TestCase):
     """Test suite for the internal _get_reading_recommendations() function."""
 
+    @patch("recommendation_problems.generate_problem_queries")
     @patch("recommendation_queries.generate_search_queries")
     @patch("firestore_client.get_recommendation_config")
-    def test_no_queries_generated(self, mock_config, mock_queries):
+    def test_no_queries_generated(self, mock_config, mock_queries, mock_problem_queries):
         """Test handling when no queries are generated."""
         from mcp_server import tools
 
         mock_config.return_value = {"quality_domains": [], "excluded_domains": []}
         mock_queries.return_value = []
+        mock_problem_queries.return_value = []  # No problem-based queries either
 
         result = tools._get_reading_recommendations()
 

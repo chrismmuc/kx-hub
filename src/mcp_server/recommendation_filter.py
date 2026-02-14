@@ -571,54 +571,87 @@ def get_llm_client() -> BaseLLMClient:
     return _llm_client
 
 
-def score_content_depth(title: str, content: str, url: str) -> Dict[str, Any]:
+def score_content_quality(title: str, content: str, url: str, domain: str = "") -> Dict[str, Any]:
     """
-    Score article depth using configured LLM.
+    Score article quality on two dimensions: depth and authority.
 
     Args:
         title: Article title
         content: Article snippet/content
         url: Article URL
+        domain: Article domain (e.g., "hbr.org")
 
     Returns:
         Dictionary with:
-        - depth_score: 1-5 scale (5=most in-depth)
-        - reasoning: Brief explanation of score
+        - depth_score: 1-5 scale (content depth/detail)
+        - authority_score: 1-5 scale (source/author credibility)
+        - depth_reasoning: Brief explanation
+        - authority_reasoning: Brief explanation
     """
     try:
         client = get_llm_client()
 
-        prompt = f"""Rate the depth and quality of this article on a scale of 1-5:
+        prompt = f"""Rate this article on TWO dimensions (1-5 scale each):
 
 Title: {title}
 URL: {url}
+Domain: {domain}
 Content preview: {content[:500]}
 
-Scoring criteria:
-1 = Surface-level, listicle, clickbait
-2 = Brief overview, lacks detail
-3 = Solid coverage, some insights
-4 = In-depth analysis, expert perspective
-5 = Comprehensive, authoritative, original research
+**DEPTH** (how detailed/comprehensive is the content?):
+1 = ALWAYS use for: landing pages, podcast/show main pages (not specific episodes),
+    category/index pages, product pages, app store listings, video channel pages,
+    or any page that aggregates content rather than presenting a specific piece.
+    Also: surface-level listicles, clickbait, thin content.
+2 = Brief overview, lacks detail or substance
+3 = Solid coverage, some useful insights
+4 = In-depth analysis, expert perspective, actionable
+5 = Comprehensive, original research, definitive resource
+
+**AUTHORITY** (how credible is the source/author?):
+1 = Unknown source, no author, low-quality site
+2 = Personal blog, author without visible credentials
+3 = Known publication OR author with some domain expertise
+4 = Respected source (major publication, established platform) OR recognized expert
+5 = Top-tier source (NYT, HBR, Nature, IEEE...) AND/OR leading field expert
 
 Respond with ONLY a JSON object:
-{{"score": <1-5>, "reasoning": "<brief 1-sentence explanation>"}}"""
+{{"depth": <1-5>, "authority": <1-5>, "depth_reasoning": "<1 sentence>", "authority_reasoning": "<1 sentence>"}}"""
 
         result = client.generate_json(prompt)
 
-        score = int(result.get("score", 3))
-        score = max(1, min(5, score))  # Clamp to 1-5
+        depth = int(result.get("depth", 3))
+        authority = int(result.get("authority", 3))
+        depth = max(1, min(5, depth))
+        authority = max(1, min(5, authority))
 
-        return {"depth_score": score, "reasoning": result.get("reasoning", "")}
+        return {
+            "depth_score": depth,
+            "authority_score": authority,
+            "depth_reasoning": result.get("depth_reasoning", ""),
+            "authority_reasoning": result.get("authority_reasoning", ""),
+        }
 
     except Exception as e:
-        logger.warning(f"Failed to score content depth: {e}")
-        # Default to middle score on error
+        logger.warning(f"Failed to score content quality: {e}")
         return {
             "depth_score": 3,
-            "reasoning": "Unable to assess depth",
+            "authority_score": 3,
+            "depth_reasoning": "Unable to assess",
+            "authority_reasoning": "Unable to assess",
             "error": str(e),
         }
+
+
+def score_content_depth(title: str, content: str, url: str) -> Dict[str, Any]:
+    """
+    Legacy wrapper - calls score_content_quality for backwards compatibility.
+    """
+    result = score_content_quality(title, content, url)
+    return {
+        "depth_score": result.get("depth_score", 3),
+        "reasoning": result.get("depth_reasoning", ""),
+    }
 
 
 def generate_why_recommended(
@@ -880,6 +913,9 @@ def filter_recommendations(
         - filtered_out: Counts of filtered items by reason
     """
     try:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from datetime import datetime, timedelta, timezone
+
         logger.info(f"Filtering {len(recommendations)} recommendations")
 
         filtered_out = {
@@ -899,11 +935,14 @@ def filter_recommendations(
             if url:
                 url_to_context[url] = ctx
 
-        from datetime import datetime, timedelta, timezone
-
         # Calculate cutoff date for recency filter
         now = datetime.now(timezone.utc)
         cutoff_date = now - timedelta(days=max_age_days) if max_age_days > 0 else None
+
+        # ============================================================
+        # PASS 1: Fast filters (recency, diversity, duplicates)
+        # ============================================================
+        candidates = []  # Candidates that pass fast filters
 
         for rec in recommendations:
             url = rec.get("url", "")
@@ -953,7 +992,7 @@ def filter_recommendations(
                 logger.debug(f"Filtered (diversity): {title[:50]}...")
                 continue
 
-            # 2. Check for KB duplicates (Story 3.10: enhanced with URL + title + author)
+            # 3. Check for KB duplicates (Story 3.10: enhanced with URL + title + author)
             if check_duplicates:
                 dup_check = check_kb_duplicate(title, content, url=url)
                 if dup_check.get("is_duplicate"):
@@ -965,56 +1004,109 @@ def filter_recommendations(
                     )
                     continue
 
-            # 3. Score content depth
-            depth_result = score_content_depth(title, content, url)
-            depth_score = depth_result.get("depth_score", 3)
+            # Passed fast filters - add to candidates for LLM scoring
+            candidates.append({
+                "rec": rec,
+                "url": url,
+                "domain": domain,
+                "domain_clean": domain_clean,
+                "title": title,
+                "content": content,
+                "recency_score": recency_score,
+            })
+            domain_counts[domain] += 1
+
+        logger.info(f"Pass 1 complete: {len(candidates)} candidates for LLM scoring")
+
+        # ============================================================
+        # PASS 2: Parallel LLM scoring (depth + authority)
+        # ============================================================
+        def score_candidate(candidate):
+            """Score a single candidate with LLM."""
+            return {
+                "candidate": candidate,
+                "quality": score_content_quality(
+                    candidate["title"],
+                    candidate["content"],
+                    candidate["url"],
+                    candidate["domain_clean"],
+                ),
+            }
+
+        scored_candidates = []
+        if candidates:
+            logger.info(f"Scoring {len(candidates)} candidates in parallel")
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(score_candidate, c) for c in candidates]
+                for future in as_completed(futures):
+                    try:
+                        scored_candidates.append(future.result())
+                    except Exception as e:
+                        logger.warning(f"LLM scoring failed: {e}")
+
+        logger.info(f"Pass 2 complete: {len(scored_candidates)} scored")
+
+        # ============================================================
+        # PASS 3: Filter by depth score and build final results
+        # ============================================================
+        for scored in scored_candidates:
+            candidate = scored["candidate"]
+            quality_result = scored["quality"]
+
+            depth_score = quality_result.get("depth_score", 3)
+            authority_score = quality_result.get("authority_score", 3)
 
             if depth_score < min_depth_score:
                 filtered_out["low_quality_count"] += 1
-                logger.debug(f"Filtered (low quality {depth_score}): {title[:50]}...")
+                logger.debug(f"Filtered (low depth {depth_score}): {candidate['title'][:50]}...")
                 continue
 
-            # 4. Calculate KB credibility score
-            credibility_score = 0.0
-            credibility_reasons = []
+            # Calculate combined credibility score
+            # Start with LLM authority score (normalized to 0-1)
+            credibility_score = authority_score / 5.0
+            credibility_reasons = [quality_result.get("authority_reasoning", "")]
 
-            # Check if author matches known authors (case-insensitive partial match)
+            domain_clean = candidate["domain_clean"]
+            title = candidate["title"]
+            content = candidate["content"]
+
+            # Bonus for known authors from KB
             if known_authors:
                 title_lower = title.lower()
                 content_lower = content.lower()
                 for author in known_authors:
                     author_lower = author.lower()
                     if author_lower in title_lower or author_lower in content_lower:
-                        credibility_score += 0.5
-                        credibility_reasons.append(f"Author: {author}")
+                        credibility_score = min(1.0, credibility_score + 0.1)
+                        credibility_reasons.append(f"Known author: {author}")
                         break
 
-            # Check if domain matches known source domains from KB
+            # Bonus for known sources from KB
             if known_sources:
                 for known_domain in known_sources:
                     known_clean = known_domain.replace("www.", "").lower()
-                    # Match exact domain or subdomain (e.g., s.hbr.org matches hbr.org)
                     if domain_clean == known_clean or domain_clean.endswith(
                         "." + known_clean
                     ):
-                        credibility_score += 0.3
-                        credibility_reasons.append(f"Source: {known_domain}")
+                        credibility_score = min(1.0, credibility_score + 0.1)
+                        credibility_reasons.append(f"Known source: {known_domain}")
                         break
 
-            # Boost if domain is in trusted public sources (whitelist), even if not in KB yet
+            # Bonus for trusted public sources
             if trusted_sources:
                 for trusted_domain in trusted_sources:
                     trusted_clean = trusted_domain.replace("www.", "").lower()
                     if domain_clean == trusted_clean or domain_clean.endswith(
                         "." + trusted_clean
                     ):
-                        credibility_score += 0.5
+                        credibility_score = min(1.0, credibility_score + 0.1)
                         credibility_reasons.append(f"Trusted: {trusted_domain}")
                         break
 
-            # 5. Generate "why recommended"
+            # Generate "why recommended"
+            url = candidate["url"]
             query_context = url_to_context.get(url, {"source": "search", "context": {}})
-            why_recommended = generate_why_recommended(rec, query_context)
+            why_recommended = generate_why_recommended(candidate["rec"], query_context)
 
             # Add credibility info to why_recommended if present
             if credibility_reasons:
@@ -1024,20 +1116,21 @@ def filter_recommendations(
             filtered_rec = {
                 "title": title,
                 "url": url,
-                "domain": domain,
+                "domain": candidate["domain"],
                 "snippet": content,
-                "published_date": rec.get("published_date"),
-                "relevance_score": rec.get("score", 0.0),
+                "published_date": candidate["rec"].get("published_date"),
+                "relevance_score": candidate["rec"].get("score", 0.0),
                 "depth_score": depth_score,
-                "depth_reasoning": depth_result.get("reasoning", ""),
+                "depth_reasoning": quality_result.get("depth_reasoning", ""),
+                "authority_score": authority_score,
+                "authority_reasoning": quality_result.get("authority_reasoning", ""),
                 "credibility_score": credibility_score,
-                "recency_score": round(recency_score, 2),
+                "recency_score": round(candidate["recency_score"], 2),
                 "why_recommended": why_recommended,
                 "related_to": query_context.get("context", {}),
             }
 
             filtered_recommendations.append(filtered_rec)
-            domain_counts[domain] += 1
 
         logger.info(
             f"Filtering complete: {len(filtered_recommendations)} passed, "

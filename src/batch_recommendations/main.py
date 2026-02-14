@@ -94,7 +94,7 @@ def start_recommendations_job(config: Dict[str, Any]) -> Dict[str, Any]:
     response = requests.post(
         f"{mcp_url}/recommendations",
         json=payload,
-        timeout=60,  # Allow time for cold start
+        timeout=120,  # Allow time for cold start
     )
     response.raise_for_status()
 
@@ -132,7 +132,7 @@ def poll_job_until_complete(
         response = requests.post(
             f"{mcp_url}/recommendations",
             json={"job_id": job_id},
-            timeout=60,  # Allow time for cold start
+            timeout=120,  # Allow time for cold start
         )
         response.raise_for_status()
 
@@ -164,11 +164,21 @@ def filter_by_recency_and_count(
     Args:
         recommendations: Full list from MCP Server
         max_results: Max items to return
-        recency_days: Only include items published within last N days
+        recency_days: Only include items published within last N days (0 = no filter)
 
     Returns:
         Filtered and limited recommendations
     """
+    # If recency_days is 0 or negative, skip recency filtering
+    if recency_days <= 0:
+        logger.info(f"Recency filter disabled (recency_days={recency_days})")
+        sorted_recs = sorted(
+            recommendations, key=lambda x: x.get("final_score", 0), reverse=True
+        )
+        filtered = sorted_recs[:max_results]
+        logger.info(f"Filtered {len(recommendations)} → {len(filtered)} final (no recency filter)")
+        return filtered
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=recency_days)
 
     # Filter by recency

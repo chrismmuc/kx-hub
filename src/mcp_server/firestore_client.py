@@ -1341,7 +1341,7 @@ def get_ranking_config() -> Dict[str, Any]:
 
 # Default recommendations settings
 DEFAULT_RECOMMENDATIONS_CONFIG = {
-    "hot_sites": "tech",
+    "hot_sites": None,  # No domain restriction - use LLM authority scoring instead
     "tavily_days": 30,
     "limit": 10,
     "topics": ["AI agents", "platform engineering", "developer productivity"],

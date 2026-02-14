@@ -1736,6 +1736,7 @@ def _get_reading_recommendations(
                     known_authors=known_authors,
                     known_sources=known_domains,
                     trusted_sources=quality_domains,
+                    max_age_days=max_age_days,
                 )
             )
             graph_stats = filter_result.get("graph_stats", {})
@@ -1757,6 +1758,7 @@ def _get_reading_recommendations(
                 known_authors=known_authors,
                 known_sources=known_domains,
                 trusted_sources=quality_domains,
+                max_age_days=max_age_days,
             )
 
         filtered_recs = filter_result.get("recommendations", [])
