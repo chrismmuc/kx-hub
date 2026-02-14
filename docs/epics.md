@@ -243,12 +243,12 @@ See [epics/epic12.md](epics/epic12.md) for full implementation details.
 
 **Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto-ingest` via LLM, store as searchable kb_items.
 
-**Status:** Planned
+**Status:** In Progress
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 13.1 | **Reader API Client** - Fetch docs tagged `kx-auto-ingest` with full text from Reader API v3 | Planned |
-| 13.2 | **LLM Snippet Extraction** - Gemini Flash extracts 3-7 key passages per article | Planned |
+| 13.1 | **Reader API Client** - Fetch docs tagged `kx-auto-ingest` with full text from Reader API v3 | ✅ Done |
+| 13.2 | **KB-Aware Two-Stage Snippet Extraction** - LLM extracts candidates, KB enrichment for novelty + problem relevance, LLM judge selects best | ✅ Done |
 | 13.3 | **Pipeline Integration** - Snippets → normalize → embed → Firestore as `kb_items` | Planned |
 | 13.4 | **Nightly Trigger & Tag Management** - Cloud Scheduler, remove tag after processing | Planned |
 
