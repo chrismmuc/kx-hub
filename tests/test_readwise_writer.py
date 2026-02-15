@@ -55,7 +55,7 @@ def _make_reader_doc(
         "title": title,
         "author": author,
         "source_url": source_url,
-        "tags": tags or ["kx-auto-ingest"],
+        "tags": tags or ["kx-auto"],
         "category": "article",
     }
     return ReaderDocument(raw_data, clean_text, word_count)
@@ -334,11 +334,11 @@ class TestEmbedSnippets:
             author="Author",
             source_url="https://example.com",
             reader_doc_id="doc_123",
-            tags=["kx-auto-ingest", "tech"],
+            tags=["kx-auto", "tech"],
         )
 
         metadata = mock_write.call_args[1]["metadata"]
-        assert "kx-auto-ingest" in metadata["tags"]
+        assert "kx-auto" in metadata["tags"]
         assert "tech" in metadata["tags"]
         assert "auto-snippet" in metadata["tags"]
 

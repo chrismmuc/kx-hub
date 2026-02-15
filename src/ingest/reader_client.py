@@ -2,7 +2,7 @@
 Readwise Reader API client for fetching tagged documents with full content.
 
 Story 13.1: Reader API Client
-- Fetch documents tagged 'kx-auto-ingest'
+- Fetch documents tagged 'kx-auto'
 - Extract full HTML content and convert to clean text
 - Extract metadata (title, author, source_url, word_count, reading_time)
 - Store raw responses in GCS for audit trail
@@ -240,7 +240,7 @@ class ReadwiseReaderClient:
 
     def fetch_tagged_documents(
         self,
-        tag: str = "kx-auto-ingest",
+        tag: str = "kx-auto",
         category: str = "article",
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
@@ -250,7 +250,7 @@ class ReadwiseReaderClient:
         Endpoint: GET /list/?tag={tag}&category={category}
 
         Args:
-            tag: Tag to filter by (default: "kx-auto-ingest")
+            tag: Tag to filter by (default: "kx-auto")
             category: Document category (default: "article")
             limit: Items per page (max 100)
 
@@ -402,7 +402,7 @@ class ReadwiseReaderClient:
 
     def fetch_and_process_documents(
         self,
-        tag: str = "kx-auto-ingest",
+        tag: str = "kx-auto",
         category: str = "article",
         store_raw: bool = True,
         raw_bucket: Optional[str] = None,

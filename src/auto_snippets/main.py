@@ -1,7 +1,7 @@
 """
 Nightly Auto-Snippets Cloud Function (Epic 13, Story 13.4).
 
-Processes Reader articles tagged 'kx-auto-ingest':
+Processes Reader articles tagged 'kx-auto':
 1. Fetches tagged documents from Readwise Reader API
 2. Checks idempotency (skip already-processed documents)
 3. Runs snippet extraction + embedding pipeline (Story 13.2/13.3)
@@ -71,7 +71,7 @@ def load_config(db: firestore.Client) -> Dict[str, Any]:
     """
     defaults = {
         "enabled": True,
-        "tag": "kx-auto-ingest",
+        "tag": "kx-auto",
         "processed_tag": "kx-processed",
         "write_to_readwise": True,
         "max_documents_per_run": 20,
@@ -116,7 +116,7 @@ def update_tags(
         reader: Reader API client
         document_id: Reader document ID
         current_tags: Current tag list
-        remove_tag: Tag to remove (e.g., 'kx-auto-ingest')
+        remove_tag: Tag to remove (e.g., 'kx-auto')
         add_tag: Tag to add (e.g., 'kx-processed')
 
     Returns:
