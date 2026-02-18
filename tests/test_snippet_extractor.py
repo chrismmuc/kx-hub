@@ -32,6 +32,7 @@ from knowledge_cards.snippet_extractor import (
     _build_candidate_summary,
     _has_kb_services,
     extract_snippets,
+    OVERFLOW_THRESHOLD,
 )
 import knowledge_cards.snippet_extractor as snippet_module
 
@@ -775,6 +776,125 @@ class TestEdgeCases(unittest.TestCase):
         )
 
         self.assertEqual(result, [])
+
+
+# ============================================================================
+# Tests: Overflow Threshold
+# ============================================================================
+
+
+class TestOverflowThreshold(unittest.TestCase):
+    """Tests for OVERFLOW_THRESHOLD and context-window truncation."""
+
+    def test_overflow_threshold_computed_from_model(self):
+        """OVERFLOW_THRESHOLD is derived from the default model's context window."""
+        self.assertIsInstance(OVERFLOW_THRESHOLD, int)
+        # Must be larger than old 12 KB limit and reasonably sized
+        self.assertGreater(OVERFLOW_THRESHOLD, 100_000)
+
+    @patch("knowledge_cards.snippet_extractor._get_llm_client")
+    def test_no_truncation_short_text(self, mock_get_client):
+        """Short text is passed verbatim to the LLM prompt."""
+        mock_client = MagicMock()
+        mock_client.generate_json.return_value = {
+            "snippets": [{"text": "A quote", "context": "ctx", "position": "intro"}]
+        }
+        mock_get_client.return_value = mock_client
+
+        short_text = "x" * 100
+        _extract_candidates(short_text, "T", "A", 2)
+
+        prompt_used = mock_client.generate_json.call_args[0][0]
+        self.assertIn(short_text, prompt_used)
+
+    @patch("knowledge_cards.snippet_extractor._get_llm_client")
+    def test_no_truncation_long_text(self, mock_get_client):
+        """Text longer than old 12K limit is NOT truncated."""
+        mock_client = MagicMock()
+        mock_client.generate_json.return_value = {
+            "snippets": [{"text": "A quote", "context": "ctx", "position": "middle"}]
+        }
+        mock_get_client.return_value = mock_client
+
+        long_text = "word " * 5000  # ~25 KB — well below model context limit
+        _extract_candidates(long_text, "T", "A", 4)
+
+        prompt_used = mock_client.generate_json.call_args[0][0]
+        self.assertIn(long_text, prompt_used)
+
+    @patch("knowledge_cards.snippet_extractor.OVERFLOW_THRESHOLD", 500)
+    @patch("knowledge_cards.snippet_extractor._get_llm_client")
+    def test_truncation_above_threshold(self, mock_get_client):
+        """Text exceeding OVERFLOW_THRESHOLD is truncated before sending to LLM."""
+        mock_client = MagicMock()
+        mock_client.generate_json.return_value = {
+            "snippets": [{"text": "A quote", "context": "ctx", "position": "middle"}]
+        }
+        mock_get_client.return_value = mock_client
+
+        oversized_text = "x" * 800
+        _extract_candidates(oversized_text, "Big Article", "A", 4)
+
+        prompt_used = mock_client.generate_json.call_args[0][0]
+        # Prompt must NOT contain the full 800-char text
+        self.assertNotIn(oversized_text, prompt_used)
+        # But must contain a truncated portion
+        self.assertIn("x" * 400, prompt_used)
+
+    @patch("knowledge_cards.snippet_extractor.OVERFLOW_THRESHOLD", 500)
+    @patch("knowledge_cards.snippet_extractor._get_llm_client")
+    def test_truncation_warning_logged(self, mock_get_client):
+        """Warning is logged when text is truncated."""
+        mock_client = MagicMock()
+        mock_client.generate_json.return_value = {
+            "snippets": [{"text": "A quote", "context": "ctx", "position": "middle"}]
+        }
+        mock_get_client.return_value = mock_client
+
+        oversized_text = "x" * 800
+
+        with self.assertLogs("knowledge_cards.snippet_extractor", level="WARNING") as cm:
+            _extract_candidates(oversized_text, "Big Article", "A", 4)
+
+        self.assertTrue(any("TRUNCATED" in line for line in cm.output))
+
+    @patch("knowledge_cards.snippet_extractor.OVERFLOW_THRESHOLD", 500)
+    @patch("knowledge_cards.snippet_extractor._get_llm_client")
+    def test_truncation_prefers_sentence_boundary(self, mock_get_client):
+        """Truncation breaks at a sentence boundary when possible."""
+        mock_client = MagicMock()
+        mock_client.generate_json.return_value = {
+            "snippets": [{"text": "A quote", "context": "ctx", "position": "middle"}]
+        }
+        mock_get_client.return_value = mock_client
+
+        # Build text with a sentence ending near the threshold
+        text = "x" * 460 + ". " + "y" * 200
+        _extract_candidates(text, "T", "A", 4)
+
+        prompt_used = mock_client.generate_json.call_args[0][0]
+        # Should have truncated at ". " (char 461), not at the raw 500 limit
+        self.assertIn("x" * 460 + ".", prompt_used)
+        self.assertNotIn("yyy", prompt_used)
+
+    @patch("knowledge_cards.snippet_extractor._get_llm_client")
+    def test_no_truncation_below_threshold(self, mock_get_client):
+        """No truncation for texts within threshold."""
+        mock_client = MagicMock()
+        mock_client.generate_json.return_value = {
+            "snippets": [{"text": "A quote", "context": "ctx", "position": "intro"}]
+        }
+        mock_get_client.return_value = mock_client
+
+        normal_text = "x" * 1000  # Well below real threshold
+
+        import logging
+        with self.assertLogs("knowledge_cards.snippet_extractor", level="INFO") as cm:
+            logging.getLogger("knowledge_cards.snippet_extractor").info("probe")
+            _extract_candidates(normal_text, "T", "A", 4)
+
+        truncation_lines = [l for l in cm.output if "TRUNCATED" in l]
+        self.assertEqual(truncation_lines, [])
 
 
 if __name__ == "__main__":

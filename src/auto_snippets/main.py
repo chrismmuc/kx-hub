@@ -26,6 +26,14 @@ except ImportError:
         from reader_client import ReadwiseReaderClient
 
 try:
+    from src.knowledge_cards.snippet_extractor import OVERFLOW_THRESHOLD
+except ImportError:
+    try:
+        from knowledge_cards.snippet_extractor import OVERFLOW_THRESHOLD
+    except ImportError:
+        from snippet_extractor import OVERFLOW_THRESHOLD
+
+try:
     from src.ingest.readwise_writer import process_document
 except ImportError:
     try:
@@ -108,6 +116,7 @@ def update_tags(
     current_tags: List[str],
     remove_tag: str,
     add_tag: str,
+    extra_tags: Optional[List[str]] = None,
 ) -> bool:
     """
     Update Reader document tags after successful processing.
@@ -118,16 +127,18 @@ def update_tags(
         current_tags: Current tag list
         remove_tag: Tag to remove (e.g., 'kx-auto')
         add_tag: Tag to add (e.g., 'kx-processed')
+        extra_tags: Additional tags to add (e.g., ['kx-overflow'])
 
     Returns:
         True if successful
     """
     try:
+        add_tags = [add_tag] + (extra_tags or [])
         reader.update_document_tags(
             document_id=document_id,
             current_tags=current_tags,
             remove_tags=[remove_tag],
-            add_tags=[add_tag],
+            add_tags=add_tags,
         )
         return True
     except Exception as e:
@@ -236,6 +247,14 @@ def auto_snippets(event, context):
             # 3b. Extract content and run pipeline
             try:
                 reader_doc = reader.extract_document_content(raw_doc)
+
+                is_overflow = len(reader_doc.clean_text) > OVERFLOW_THRESHOLD
+                if is_overflow:
+                    logger.warning(
+                        f"Overflow: '{doc_title}' is {len(reader_doc.clean_text):,} chars "
+                        f"(>{OVERFLOW_THRESHOLD:,}) — will tag 'kx-overflow'"
+                    )
+
                 result = process_document(
                     reader_doc,
                     api_key=api_key,
@@ -250,7 +269,8 @@ def auto_snippets(event, context):
                 # 3c. Update tags on success with snippets
                 if snippets_count > 0:
                     current_tags = raw_doc.get("tags", [])
-                    update_tags(reader, doc_id, current_tags, tag, processed_tag)
+                    extra_tags = ["kx-overflow"] if is_overflow else None
+                    update_tags(reader, doc_id, current_tags, tag, processed_tag, extra_tags=extra_tags)
                     processed_list.append(doc_id)
                     logger.info(
                         f"Processed '{doc_title}': "

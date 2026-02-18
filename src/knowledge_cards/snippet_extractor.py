@@ -45,9 +45,41 @@ except ImportError:
 
 # LLM imports
 try:
-    from src.llm import BaseLLMClient, GenerationConfig, get_client
+    from src.llm import BaseLLMClient, GenerationConfig, get_client, get_model_info, get_default_model
 except ImportError:
-    from llm import BaseLLMClient, GenerationConfig, get_client
+    from llm import BaseLLMClient, GenerationConfig, get_client, get_model_info, get_default_model
+
+
+# ============================================================================
+# Context Window Overflow Threshold
+# ============================================================================
+# Computed from the default model's max_context. Text exceeding this is
+# truncated before being sent to the LLM, and the article is tagged kx-overflow.
+#
+# Formula: (max_context − overhead) × chars_per_token × safety_margin
+#   - overhead:      6 000 tokens (prompt template + max_output_tokens)
+#   - chars_per_token: 3.5 (conservative for mixed-language content)
+#   - safety_margin:   0.75 (leave room for tokenizer variance)
+
+_PROMPT_OVERHEAD_TOKENS = 6_000
+_CHARS_PER_TOKEN = 3.5
+_SAFETY_MARGIN = 0.75
+
+
+def _compute_overflow_threshold() -> int:
+    """Compute max input text chars from the default model's context window."""
+    try:
+        model_name = get_default_model()
+        model_info = get_model_info(model_name)
+        if model_info:
+            available = model_info.max_context - _PROMPT_OVERHEAD_TOKENS
+            return int(available * _CHARS_PER_TOKEN * _SAFETY_MARGIN)
+    except Exception:
+        pass
+    return 600_000  # safe fallback (~200K token model)
+
+
+OVERFLOW_THRESHOLD = _compute_overflow_threshold()
 
 
 # ============================================================================
@@ -171,12 +203,24 @@ def _extract_candidates(
     client = _get_llm_client()
     config = GenerationConfig(temperature=0.3, max_output_tokens=4096)
 
+    if len(text) > OVERFLOW_THRESHOLD:
+        original_len = len(text)
+        # Truncate, preferring a sentence boundary in the last 1 KB
+        text = text[:OVERFLOW_THRESHOLD]
+        boundary = text.rfind(". ", max(0, OVERFLOW_THRESHOLD - 1000))
+        if boundary > OVERFLOW_THRESHOLD * 0.9:
+            text = text[: boundary + 1]
+        logger.warning(
+            f"Stage 1: text TRUNCATED from {original_len:,} to {len(text):,} chars "
+            f"(model limit ≈{OVERFLOW_THRESHOLD:,}) for '{title}'"
+        )
+
     prompt = f"""Extract exactly {candidate_count} key passages from this article as DIRECT QUOTES.
 
 Article: "{title}" by {author}
 
 <article>
-{text[:12000]}
+{text}
 </article>
 
 RULES:

@@ -49,7 +49,7 @@ def _make_raw_doc(
         "title": title,
         "author": "Jane Developer",
         "source_url": f"https://example.com/{doc_id}",
-        "tags": tags or ["kx-auto-ingest"],
+        "tags": tags or ["kx-auto"],
         "category": "article",
         "html": f"<p>Content of {title}</p>",
         "word_count": 3000,
@@ -61,6 +61,13 @@ def _mock_firestore_doc(exists=True, data=None):
     mock_doc = MagicMock()
     mock_doc.exists = exists
     mock_doc.to_dict.return_value = data or {}
+    return mock_doc
+
+
+def _mock_reader_doc(clean_text="short article text"):
+    """Create a mock ReaderDocument with a real clean_text attribute."""
+    mock_doc = MagicMock(spec=ReaderDocument)
+    mock_doc.clean_text = clean_text
     return mock_doc
 
 
@@ -82,7 +89,7 @@ class TestConfig:
         config = load_config(mock_db)
 
         assert config["enabled"] is True
-        assert config["tag"] == "kx-auto-ingest"
+        assert config["tag"] == "kx-auto"
         assert config["processed_tag"] == "kx-processed"
         assert config["write_to_readwise"] is True
         assert config["max_documents_per_run"] == 20
@@ -180,16 +187,16 @@ class TestTagUpdate:
         result = update_tags(
             reader=mock_reader,
             document_id="doc_123",
-            current_tags=["kx-auto-ingest", "tech"],
-            remove_tag="kx-auto-ingest",
+            current_tags=["kx-auto", "tech"],
+            remove_tag="kx-auto",
             add_tag="kx-processed",
         )
 
         assert result is True
         mock_reader.update_document_tags.assert_called_once_with(
             document_id="doc_123",
-            current_tags=["kx-auto-ingest", "tech"],
-            remove_tags=["kx-auto-ingest"],
+            current_tags=["kx-auto", "tech"],
+            remove_tags=["kx-auto"],
             add_tags=["kx-processed"],
         )
 
@@ -201,8 +208,8 @@ class TestTagUpdate:
         result = update_tags(
             reader=mock_reader,
             document_id="doc_123",
-            current_tags=["kx-auto-ingest"],
-            remove_tag="kx-auto-ingest",
+            current_tags=["kx-auto"],
+            remove_tag="kx-auto",
             add_tag="kx-processed",
         )
 
@@ -216,15 +223,15 @@ class TestTagUpdate:
         update_tags(
             reader=mock_reader,
             document_id="doc_456",
-            current_tags=["alpha", "beta", "kx-auto-ingest"],
-            remove_tag="kx-auto-ingest",
+            current_tags=["alpha", "beta", "kx-auto"],
+            remove_tag="kx-auto",
             add_tag="kx-processed",
         )
 
         call_kwargs = mock_reader.update_document_tags.call_args[1]
-        assert call_kwargs["remove_tags"] == ["kx-auto-ingest"]
+        assert call_kwargs["remove_tags"] == ["kx-auto"]
         assert call_kwargs["add_tags"] == ["kx-processed"]
-        assert call_kwargs["current_tags"] == ["alpha", "beta", "kx-auto-ingest"]
+        assert call_kwargs["current_tags"] == ["alpha", "beta", "kx-auto"]
 
 
 # ============================================================================
@@ -259,7 +266,7 @@ class TestFullPipeline:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -272,7 +279,7 @@ class TestFullPipeline:
             _make_raw_doc("doc_1", "Article 1"),
             _make_raw_doc("doc_2", "Article 2"),
         ]
-        mock_reader.extract_document_content.return_value = MagicMock(spec=ReaderDocument)
+        mock_reader.extract_document_content.return_value = _mock_reader_doc()
 
         mock_idempotent.return_value = False
         mock_process.return_value = {
@@ -318,7 +325,7 @@ class TestFullPipeline:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -333,9 +340,9 @@ class TestFullPipeline:
             _make_raw_doc("doc_3"),
         ]
         mock_reader.extract_document_content.side_effect = [
-            MagicMock(spec=ReaderDocument),
+            _mock_reader_doc(),
             Exception("Parse error"),
-            MagicMock(spec=ReaderDocument),
+            _mock_reader_doc(),
         ]
 
         mock_idempotent.return_value = False
@@ -375,7 +382,7 @@ class TestFullPipeline:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -423,7 +430,7 @@ class TestFullPipeline:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -433,7 +440,7 @@ class TestFullPipeline:
         mock_reader = MagicMock()
         mock_reader_cls.return_value = mock_reader
         mock_reader.fetch_tagged_documents.return_value = [_make_raw_doc("doc_1")]
-        mock_reader.extract_document_content.return_value = MagicMock(spec=ReaderDocument)
+        mock_reader.extract_document_content.return_value = _mock_reader_doc()
 
         mock_idempotent.return_value = False
         mock_process.side_effect = Exception("Pipeline error")
@@ -470,7 +477,7 @@ class TestFullPipeline:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 2,
@@ -483,7 +490,7 @@ class TestFullPipeline:
         mock_reader.fetch_tagged_documents.return_value = [
             _make_raw_doc(f"doc_{i}") for i in range(5)
         ]
-        mock_reader.extract_document_content.return_value = MagicMock(spec=ReaderDocument)
+        mock_reader.extract_document_content.return_value = _mock_reader_doc()
 
         mock_idempotent.return_value = False
         mock_process.return_value = {
@@ -527,7 +534,7 @@ class TestGracefulDegradation:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -571,7 +578,7 @@ class TestGracefulDegradation:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -585,7 +592,7 @@ class TestGracefulDegradation:
             _make_raw_doc("doc_2"),
             _make_raw_doc("doc_3"),
         ]
-        mock_reader.extract_document_content.return_value = MagicMock(spec=ReaderDocument)
+        mock_reader.extract_document_content.return_value = _mock_reader_doc()
 
         mock_idempotent.return_value = False
         mock_process.side_effect = [
@@ -627,7 +634,7 @@ class TestGracefulDegradation:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -637,7 +644,7 @@ class TestGracefulDegradation:
         mock_reader = MagicMock()
         mock_reader_cls.return_value = mock_reader
         mock_reader.fetch_tagged_documents.return_value = [_make_raw_doc("doc_1")]
-        mock_reader.extract_document_content.return_value = MagicMock(spec=ReaderDocument)
+        mock_reader.extract_document_content.return_value = _mock_reader_doc()
 
         mock_idempotent.return_value = False
         mock_process.return_value = {
@@ -675,7 +682,7 @@ class TestJobReporting:
 
         job_id = store_job_report(
             db=mock_db,
-            config={"tag": "kx-auto-ingest"},
+            config={"tag": "kx-auto"},
             status="success",
             metrics={"documents_processed": 3},
             processed=["doc_1", "doc_2", "doc_3"],
@@ -691,7 +698,7 @@ class TestJobReporting:
         report = mock_db.collection.return_value.add.call_args[0][0]
         assert report["job_type"] == "auto_snippets"
         assert report["status"] == "success"
-        assert report["config"] == {"tag": "kx-auto-ingest"}
+        assert report["config"] == {"tag": "kx-auto"}
         assert report["metrics"] == {"documents_processed": 3}
         assert report["processed"] == ["doc_1", "doc_2", "doc_3"]
         assert report["skipped"] == []
@@ -784,7 +791,7 @@ class TestEdgeCases:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -826,7 +833,7 @@ class TestEdgeCases:
         mock_get_db.return_value = mock_db
         mock_load_config.return_value = {
             "enabled": True,
-            "tag": "kx-auto-ingest",
+            "tag": "kx-auto",
             "processed_tag": "kx-processed",
             "write_to_readwise": True,
             "max_documents_per_run": 20,
@@ -836,7 +843,7 @@ class TestEdgeCases:
         mock_reader = MagicMock()
         mock_reader_cls.return_value = mock_reader
         mock_reader.fetch_tagged_documents.return_value = [_make_raw_doc("doc_1")]
-        mock_reader.extract_document_content.return_value = MagicMock(spec=ReaderDocument)
+        mock_reader.extract_document_content.return_value = _mock_reader_doc()
 
         mock_idempotent.return_value = False
         mock_process.return_value = {
@@ -891,7 +898,7 @@ class TestEdgeCases:
         mock_reader.fetch_tagged_documents.return_value = [
             _make_raw_doc("doc_1", tags=["custom-ingest"])
         ]
-        mock_reader.extract_document_content.return_value = MagicMock(spec=ReaderDocument)
+        mock_reader.extract_document_content.return_value = _mock_reader_doc()
 
         mock_idempotent.return_value = False
         mock_process.return_value = {
@@ -912,3 +919,161 @@ class TestEdgeCases:
         update_call = mock_update_tags.call_args[0]
         assert update_call[3] == "custom-ingest"  # remove_tag
         assert update_call[4] == "custom-done"  # add_tag
+
+
+# ============================================================================
+# Tests: Overflow Tag Handling
+# ============================================================================
+
+
+class TestOverflowTag:
+    """Tests for kx-overflow tag behavior."""
+
+    def test_update_tags_with_extra_tags(self):
+        """extra_tags are included in the add_tags call."""
+        mock_reader = MagicMock(spec=ReadwiseReaderClient)
+        mock_reader.update_document_tags.return_value = {}
+
+        result = update_tags(
+            reader=mock_reader,
+            document_id="doc_big",
+            current_tags=["kx-auto"],
+            remove_tag="kx-auto",
+            add_tag="kx-processed",
+            extra_tags=["kx-overflow"],
+        )
+
+        assert result is True
+        call_kwargs = mock_reader.update_document_tags.call_args[1]
+        assert "kx-processed" in call_kwargs["add_tags"]
+        assert "kx-overflow" in call_kwargs["add_tags"]
+
+    def test_update_tags_no_extra_tags_unchanged(self):
+        """Without extra_tags, only the regular add_tag is added."""
+        mock_reader = MagicMock(spec=ReadwiseReaderClient)
+        mock_reader.update_document_tags.return_value = {}
+
+        update_tags(
+            reader=mock_reader,
+            document_id="doc_normal",
+            current_tags=["kx-auto"],
+            remove_tag="kx-auto",
+            add_tag="kx-processed",
+        )
+
+        call_kwargs = mock_reader.update_document_tags.call_args[1]
+        assert call_kwargs["add_tags"] == ["kx-processed"]
+
+    @patch("auto_snippets.main.store_job_report")
+    @patch("auto_snippets.main.update_tags")
+    @patch("auto_snippets.main.process_document")
+    @patch("auto_snippets.main.is_already_processed")
+    @patch("auto_snippets.main.ReadwiseReaderClient")
+    @patch("auto_snippets.main.get_secret")
+    @patch("auto_snippets.main.load_config")
+    @patch("auto_snippets.main.get_firestore_client")
+    @patch("auto_snippets.main.OVERFLOW_THRESHOLD", 100)  # Low threshold for test
+    def test_overflow_document_gets_kx_overflow_tag(
+        self,
+        mock_get_db,
+        mock_load_config,
+        mock_get_secret,
+        mock_reader_cls,
+        mock_idempotent,
+        mock_process,
+        mock_update_tags,
+        mock_report,
+    ):
+        """Document exceeding OVERFLOW_THRESHOLD gets kx-overflow tag."""
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+        mock_load_config.return_value = {
+            "enabled": True,
+            "tag": "kx-auto",
+            "processed_tag": "kx-processed",
+            "write_to_readwise": True,
+            "max_documents_per_run": 20,
+        }
+        mock_get_secret.return_value = "key"
+
+        mock_reader = MagicMock()
+        mock_reader_cls.return_value = mock_reader
+        mock_reader.fetch_tagged_documents.return_value = [_make_raw_doc("doc_big")]
+
+        # ReaderDocument with text exceeding threshold (>100 chars)
+        mock_doc = MagicMock(spec=ReaderDocument)
+        mock_doc.clean_text = "x" * 200
+        mock_doc.title = "Big Article"
+        mock_reader.extract_document_content.return_value = mock_doc
+
+        mock_idempotent.return_value = False
+        mock_process.return_value = {
+            "snippets_extracted": 3,
+            "chunks_embedded": 3,
+            "highlights_created": 0,
+            "problem_matches": 0,
+        }
+        mock_update_tags.return_value = True
+        mock_report.return_value = "report_overflow"
+
+        auto_snippets(event={}, context=None)
+
+        mock_update_tags.assert_called_once()
+        call_kwargs = mock_update_tags.call_args[1]
+        assert call_kwargs.get("extra_tags") == ["kx-overflow"]
+
+    @patch("auto_snippets.main.store_job_report")
+    @patch("auto_snippets.main.update_tags")
+    @patch("auto_snippets.main.process_document")
+    @patch("auto_snippets.main.is_already_processed")
+    @patch("auto_snippets.main.ReadwiseReaderClient")
+    @patch("auto_snippets.main.get_secret")
+    @patch("auto_snippets.main.load_config")
+    @patch("auto_snippets.main.get_firestore_client")
+    @patch("auto_snippets.main.OVERFLOW_THRESHOLD", 100)
+    def test_normal_document_no_overflow_tag(
+        self,
+        mock_get_db,
+        mock_load_config,
+        mock_get_secret,
+        mock_reader_cls,
+        mock_idempotent,
+        mock_process,
+        mock_update_tags,
+        mock_report,
+    ):
+        """Normal-sized document does NOT get kx-overflow tag."""
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+        mock_load_config.return_value = {
+            "enabled": True,
+            "tag": "kx-auto",
+            "processed_tag": "kx-processed",
+            "write_to_readwise": True,
+            "max_documents_per_run": 20,
+        }
+        mock_get_secret.return_value = "key"
+
+        mock_reader = MagicMock()
+        mock_reader_cls.return_value = mock_reader
+        mock_reader.fetch_tagged_documents.return_value = [_make_raw_doc("doc_small")]
+
+        mock_doc = MagicMock(spec=ReaderDocument)
+        mock_doc.clean_text = "x" * 50  # below threshold
+        mock_reader.extract_document_content.return_value = mock_doc
+
+        mock_idempotent.return_value = False
+        mock_process.return_value = {
+            "snippets_extracted": 2,
+            "chunks_embedded": 2,
+            "highlights_created": 0,
+            "problem_matches": 0,
+        }
+        mock_update_tags.return_value = True
+        mock_report.return_value = "report_normal"
+
+        auto_snippets(event={}, context=None)
+
+        mock_update_tags.assert_called_once()
+        call_kwargs = mock_update_tags.call_args[1]
+        assert call_kwargs.get("extra_tags") is None
