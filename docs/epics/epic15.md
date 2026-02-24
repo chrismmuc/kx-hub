@@ -1,8 +1,8 @@
 # Epic 15: Google Search for Recommendations
 
-**Goal:** Replace Tavily with Google-based web search for recommendation queries to dramatically improve result quality (higher-authority sources, better query understanding).
+**Goal:** Replace Tavily with Google Custom Search for recommendation queries to dramatically improve result quality (higher-authority sources, better query understanding).
 
-**Value:** Research comparing the same 6 queries on Tavily vs Google showed Google returns tier-1 sources (McKinsey, Gottman Institute, PubMed, Harvard Business School) while Tavily returns tier-3 blogs and podcast transcripts. The quality gap is not marginal — it's dramatic across all queries tested.
+**Value:** Research comparing the same 6 queries on Tavily vs Google showed Google returns tier-1 sources (McKinsey, Gottman Institute, PubMed, Harvard Business School) while Tavily returns tier-3 blogs and podcast transcripts. The quality gap is dramatic across all queries tested.
 
 **Dependencies:** Epic 14 (Evidence-Aware Query Generation)
 
@@ -34,44 +34,43 @@ Results from the 2026-02-24 recommendation run (Epic 14 LLM-generated queries):
 
 ---
 
-## API Options & Cost Analysis
+## API Options Evaluated
 
-### Option A: Google Custom Search JSON API
+### Vertex AI Search (Discovery Engine) — NOT suitable
 
-- **100 free queries/day** (3,000/month)
+Vertex AI Search is a **site-restricted** search product. You must pre-define domains to index. It does NOT support open web search. Not usable for our recommendation discovery use case.
+
+### Grounding with Google Search (via Gemini) — Poor fit
+
+Requires an LLM call for every search ($35/1K queries). No domain or date filtering. Returns LLM-synthesized answers, not raw search results. Would require restructuring the entire pipeline.
+
+### Google Custom Search JSON API — Recommended
+
+- **Open web search** with Google quality
+- **100 free queries/day** (~3,000/month) — our usage: ~8/week
 - $5/1,000 queries after free tier
-- Our usage: ~8 queries/week = **$0/month** (well within free tier)
-- **Deprecated:** Closed to new customers. Existing customers must migrate by Jan 2027.
-- Simple REST API, API key auth
+- **Domain filtering** via `siteSearch` / `siteSearchFilter` params
+- **Date filtering** via `dateRestrict` param (e.g., `d30` for last 30 days)
+- Raw results: title, link, snippet, page metadata
+- Simple REST API with API key auth
+- Requires a Programmable Search Engine (CSE) configured for "Search the entire web"
 
-### Option B: Vertex AI Search (Recommended)
+**Note:** The *Site Restricted* variant of this API was deprecated (Jan 2025). The standard Custom Search JSON API remains available. Monitor for future deprecation.
 
-- **10,000 free queries/month**
-- $1.50/1,000 queries after free tier
-- Our usage: ~32 queries/month = **$0/month** (well within free tier)
-- Already in GCP ecosystem (same project, same auth)
-- Google's official replacement for Custom Search API
-- OAuth 2.0 auth (or API key via `searchLite`)
-- Supports open web search + site-restricted search
+### Keep Tavily — Fallback
 
-### Option C: Keep Tavily (Current)
+Same interface, lower quality. Keep as fallback for when Google search fails.
 
-- 1,000 free credits/month (basic search = 1 credit)
-- $0.008/credit after free tier
-- Our usage: ~32 credits/month = **$0/month** (within free tier)
-- Lower result quality (proven by research)
+### Cost Comparison
 
-### Cost Summary
+| Option | Open Web? | Domain Filter? | Date Filter? | Cost/1K | Our Cost |
+|--------|-----------|----------------|--------------|---------|----------|
+| Custom Search API | Yes | Yes | Yes (`dateRestrict`) | $5 | **$0** (free tier) |
+| Tavily (current) | Yes | Yes | Yes (`days`) | $5-8 | $0 (free tier) |
+| Vertex AI Search | No | At index time | No | Enterprise | N/A |
+| Grounding + Gemini | Yes | No | No | $35 | Overkill |
 
-| Option | Monthly Cost | Annual Cost | Quality |
-|--------|-------------|-------------|---------|
-| Vertex AI Search | $0 (free tier) | $0 | High |
-| Custom Search API | $0 (free tier) | $0 | High (deprecated) |
-| Tavily (current) | $0 (free tier) | $0 | Low |
-
-**All options are free at our scale (~32 queries/month).** The decision is purely about quality and longevity.
-
-**Recommendation:** Vertex AI Search — best quality, native GCP integration, long-term supported.
+**All options are free at our scale (~32 queries/month).**
 
 ---
 
@@ -87,7 +86,16 @@ recommendations() → generate_problem_queries() → search queries
                                             tavily_client.search()         [EXISTING]
 ```
 
-### Task 1: Create `google_search_client.py`
+### Task 1: Create Programmable Search Engine
+
+Manual setup in [Google Programmable Search Engine Console](https://programmablesearchengine.google.com/):
+1. Create a new search engine
+2. Set to "Search the entire web"
+3. Note the Search Engine ID (cx)
+4. Create API key in Google Cloud Console (or reuse existing)
+5. Store both in Secret Manager: `google-cse-api-key`, `google-cse-cx`
+
+### Task 2: Create `google_search_client.py`
 
 New file `src/mcp_server/google_search_client.py` with the same interface as `tavily_client.py`:
 
@@ -100,7 +108,7 @@ def search(
     max_results: int = 10,
 ) -> Dict[str, Any]:
     """
-    Search the web using Vertex AI Search.
+    Search the web using Google Custom Search JSON API.
 
     Returns same structure as tavily_client.search():
     {
@@ -113,14 +121,16 @@ def search(
 ```
 
 Key implementation details:
-- Use Vertex AI Search API (`discoveryengine` client library)
-- Create a search app/data store in Terraform for web search
-- Map Vertex AI response format to existing result structure
-- Retry logic similar to `tavily_client.py`
+- REST API: `GET https://www.googleapis.com/customsearch/v1?key={key}&cx={cx}&q={query}`
+- `dateRestrict=d{days}` for recency filtering
+- `siteSearch={domain}&siteSearchFilter=i` for domain inclusion (one domain per request, or use `site:` in query)
+- Map response items to existing result structure
+- `num` param for max results (max 10 per request, pagination via `start`)
+- Retry logic matching `tavily_client.py`
 
-### Task 2: Integrate into Recommendation Pipeline
+### Task 3: Integrate into Recommendation Pipeline
 
-Modify `tools.py` recommendation search loop (~line 1619) to use Google search:
+Modify `tools.py` recommendation search loop (~line 1619):
 
 ```python
 # Try Google search first, fall back to Tavily
@@ -132,40 +142,31 @@ try:
         days=tavily_days,
         max_results=5,
     )
+    search_result["search_provider"] = "google"
 except Exception as e:
     logger.warning(f"Google search failed, falling back to Tavily: {e}")
     search_result = tavily_client.search(...)
-```
-
-Add `search_provider: "google" | "tavily"` to result metadata for observability.
-
-### Task 3: Terraform — Vertex AI Search App
-
-```hcl
-resource "google_discovery_engine_search_engine" "recommendations" {
-  location     = "global"
-  engine_id    = "kx-recommendations"
-  display_name = "KX Recommendations Web Search"
-  data_store_ids = [google_discovery_engine_data_store.web.data_store_id]
-  search_engine_config {
-    search_tier = "SEARCH_TIER_STANDARD"
-  }
-}
-
-resource "google_discovery_engine_data_store" "web" {
-  location      = "global"
-  data_store_id = "kx-web-search"
-  display_name  = "Web Search"
-  content_config = "PUBLIC_WEBSITE"
-  industry_vertical = "GENERIC"
-}
+    search_result["search_provider"] = "tavily"
 ```
 
 ### Task 4: Tests
 
-- Unit tests for `google_search_client.py` (mock Vertex AI responses)
+- Unit tests for `google_search_client.py` (mock HTTP responses)
 - Integration: verify fallback to Tavily on Google error
 - Verify result format matches existing pipeline expectations
+- Verify `search_provider` field in recommendation output
+
+---
+
+## Domain Filtering Approach
+
+Google CSE's `siteSearch` param only accepts one domain. For multi-domain filtering, options:
+
+1. **Use `site:` operator in query**: `"change management" site:mckinsey.com OR site:hbr.org` — limited to ~32 `site:` operators
+2. **Configure CSE to search entire web** and rely on Google's natural ranking (recommended for our case — we want diverse discovery)
+3. **Use `exclude_domains` via `-site:` in query** to filter out known low-quality domains
+
+**Recommendation:** Don't restrict domains for Google search. Google's ranking already surfaces authoritative sources. Only use `exclude_domains` for known-bad domains (e.g., medium.com).
 
 ---
 
@@ -174,6 +175,7 @@ resource "google_discovery_engine_data_store" "web" {
 - No removal of Tavily (kept as fallback)
 - No changes to ranking/scoring logic (same pipeline, better input)
 - No changes to query generation (Epic 14 handles that)
+- No Terraform changes (CSE is configured in Google Console, not GCP)
 
 ## Success Criteria
 
@@ -186,7 +188,8 @@ resource "google_discovery_engine_data_store" "web" {
 
 ## Sources
 
-- [Google Custom Search API Pricing](https://developers.google.com/custom-search/v1/overview)
-- [Vertex AI Search Pricing](https://cloud.google.com/generative-ai-app-builder/pricing)
+- [Custom Search JSON API Overview](https://developers.google.com/custom-search/v1/overview)
+- [Custom Search JSON API Reference](https://developers.google.com/custom-search/v1)
+- [Vertex AI Search — NOT suitable for open web](https://docs.cloud.google.com/generative-ai-app-builder/docs/create-data-store-es)
+- [Grounding with Google Search](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/grounding/grounding-with-google-search)
 - [Tavily API Credits & Pricing](https://docs.tavily.com/documentation/api-credits)
-- [Custom Search API Deprecation / Vertex AI Migration](https://support.google.com/programmable-search/thread/307464533)
