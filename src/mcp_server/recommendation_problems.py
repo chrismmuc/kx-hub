@@ -14,9 +14,16 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import firestore_client
-from src.llm import get_client
+from src.llm import get_client, GenerationConfig
 
 logger = logging.getLogger(__name__)
+
+# Mode instructions for LLM query generation
+_MODE_INSTRUCTIONS = {
+    "deepen": "Target advanced/niche aspects not covered by existing evidence. Assume the user knows the basics.",
+    "explore": "Target adjacent fields and contrarian perspectives the user hasn't encountered.",
+    "balanced": "Generate one gap-filling query and one perspective-expanding query.",
+}
 
 # Cache for problem translations (problems don't change often)
 _translation_cache: Dict[str, str] = {}
@@ -87,6 +94,88 @@ English:"""
     except Exception as e:
         logger.warning(f"Translation failed, using original: {e}")
         return text
+
+
+def _build_evidence_summary(evidence: List[Dict[str, Any]], max_items: int = 5) -> str:
+    """
+    Build compact evidence summary for LLM prompt.
+
+    Extracts source_title, author, and first takeaway from each evidence item.
+    Returns a bullet list string, capped at max_items.
+    """
+    lines = []
+    for ev in evidence[:max_items]:
+        title = ev.get("source_title", "Unknown")
+        author = ev.get("author", "")
+        takeaways = ev.get("takeaways", [])
+        first_takeaway = takeaways[0] if takeaways else ""
+
+        if author and first_takeaway:
+            lines.append(f"- {title} ({author}) — {first_takeaway}")
+        elif author:
+            lines.append(f"- {title} ({author})")
+        elif first_takeaway:
+            lines.append(f"- {title} — {first_takeaway}")
+        else:
+            lines.append(f"- {title}")
+
+    return "\n".join(lines)
+
+
+def generate_evidence_queries(
+    problem_en: str,
+    evidence: List[Dict[str, Any]],
+    mode: str,
+    n_queries: int = 2,
+) -> List[str]:
+    """
+    Use LLM to generate evidence-aware search queries.
+
+    Returns list of query strings, or empty list on failure (triggers template fallback).
+    """
+    try:
+        summary = _build_evidence_summary(evidence)
+        mode_instruction = _MODE_INSTRUCTIONS.get(mode, _MODE_INSTRUCTIONS["balanced"])
+
+        prompt = f"""You are generating web search queries for a research tool (Tavily).
+
+RESEARCH PROBLEM: "{problem_en}"
+
+WHAT THE USER ALREADY KNOWS (do not search for these topics again):
+{summary}
+
+Generate exactly {n_queries} search queries that:
+1. Target GAPS not covered by existing evidence
+2. Explore specific sub-topics, niche angles, or adjacent fields
+3. Are optimized for web search (keywords, not questions — max 8 words each)
+4. Will find substantial articles, NOT top-10 listicles or beginner guides
+
+Mode: {mode_instruction}
+
+Return one query per line. No explanations, no numbering."""
+
+        client = get_client(model="gemini-flash")
+        config = GenerationConfig(temperature=0.3, max_output_tokens=200)
+        response = client.generate(prompt, config=config)
+
+        # Parse: split by newline, strip, filter empty
+        queries = [
+            line.strip().lstrip("0123456789.-) ")
+            for line in response.text.strip().split("\n")
+            if line.strip()
+        ]
+        queries = [q for q in queries if q][:n_queries]
+
+        if queries:
+            logger.info(f"LLM generated {len(queries)} queries for: {problem_en[:40]}...")
+            return queries
+
+        logger.warning("LLM returned no parseable queries, falling back to templates")
+        return []
+
+    except Exception as e:
+        logger.warning(f"LLM query generation failed, falling back to templates: {e}")
+        return []
 
 
 def get_active_problems(problem_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -272,6 +361,7 @@ def generate_problem_queries(
         - problem_text: Original problem text (German)
         - mode: Query mode (deepen/explore)
         - evidence_count: Problem's current evidence count
+        - query_method: "llm" or "template"
     """
     try:
         logger.info(f"Generating queries: mode={mode}, max={max_queries}, topic_filter={topic_filter}")
@@ -324,7 +414,32 @@ def generate_problem_queries(
                 effective_mode = mode
                 effective_templates = templates
 
-            # Generate queries for this problem
+            # Try LLM-generated queries first when evidence exists
+            if evidence_count > 0:
+                remaining = max_queries - len(queries)
+                n = min(queries_per_problem, remaining)
+                llm_queries = generate_evidence_queries(
+                    problem_en=problem_en,
+                    evidence=problem.get("evidence", []),
+                    mode=effective_mode,
+                    n_queries=n,
+                )
+                if llm_queries:
+                    for q in llm_queries:
+                        if len(queries) >= max_queries:
+                            break
+                        queries.append({
+                            "query": q,
+                            "problem_id": problem_id,
+                            "problem_text": problem_text,
+                            "problem_en": problem_en,
+                            "mode": effective_mode,
+                            "evidence_count": evidence_count,
+                            "query_method": "llm",
+                        })
+                    continue  # skip template generation for this problem
+
+            # Template fallback (no evidence, or LLM failed)
             for _ in range(queries_per_problem):
                 if len(queries) >= max_queries:
                     break
@@ -348,6 +463,7 @@ def generate_problem_queries(
                     "problem_en": problem_en,
                     "mode": effective_mode,
                     "evidence_count": evidence_count,
+                    "query_method": "template",
                 })
 
         logger.info(f"Generated {len(queries)} queries from {len(sorted_problems)} problems")

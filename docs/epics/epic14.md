@@ -6,7 +6,7 @@
 
 **Dependencies:** Epic 11 (Problem-Driven Recommendations)
 
-**Status:** Planned
+**Status:** Done
 
 ---
 
@@ -122,10 +122,10 @@ if evidence_count > 0:
 
 ## Tasks
 
-1. [ ] Implement `_build_evidence_summary(evidence, max_items=5) -> str`
-2. [ ] Implement `generate_evidence_queries()` with Gemini Flash + fallback to `[]`
-3. [ ] Modify `generate_problem_queries()` to try LLM first, add `query_method` field
-4. [ ] Tests: mock LLM responses, verify fallback on error, verify `query_method` field, verify evidence summary formatting
+1. [x] Implement `_build_evidence_summary(evidence, max_items=5) -> str`
+2. [x] Implement `generate_evidence_queries()` with Gemini Flash + fallback to `[]`
+3. [x] Modify `generate_problem_queries()` to try LLM first, add `query_method` field
+4. [x] Tests: mock LLM responses, verify fallback on error, verify `query_method` field, verify evidence summary formatting
 
 ---
 

@@ -17,8 +17,10 @@ from recommendation_problems import (
     sort_problems_by_mode,
     get_evidence_keywords,
     generate_problem_queries,
+    generate_evidence_queries,
     format_query_for_tavily,
     filter_problems_by_topic,
+    _build_evidence_summary,
     DEEPEN_TEMPLATES,
     EXPLORE_TEMPLATES,
     BALANCED_TEMPLATES,
@@ -197,10 +199,11 @@ class TestGenerateProblemQueries:
                 assert len(queries) == 3
 
     def test_deepen_mode_uses_deepen_templates(self, mock_problems):
-        """Test that deepen mode uses appropriate templates."""
+        """Test that deepen mode uses appropriate templates (template fallback)."""
         with patch("recommendation_problems.get_active_problems") as mock_get:
             mock_get.return_value = mock_problems
-            with patch("recommendation_problems.translate_to_english") as mock_trans:
+            with patch("recommendation_problems.translate_to_english") as mock_trans, \
+                 patch("recommendation_problems.generate_evidence_queries", return_value=[]):
                 mock_trans.side_effect = lambda x, **kw: "translated problem"
 
                 queries = generate_problem_queries(mode="deepen", max_queries=2)
@@ -358,3 +361,264 @@ class TestFilterProblemsByTopic:
         assert "p1" in ids
         assert "p4" in ids
         assert "p3" not in ids
+
+
+class TestBuildEvidenceSummary:
+    """Tests for _build_evidence_summary (Epic 14)."""
+
+    def test_full_evidence_item(self):
+        """Test formatting with title, author, and takeaway."""
+        evidence = [
+            {"source_title": "The Culture Map", "author": "Erin Meyer", "takeaways": ["cultural dimensions"]}
+        ]
+        result = _build_evidence_summary(evidence)
+        assert result == "- The Culture Map (Erin Meyer) — cultural dimensions"
+
+    def test_title_and_author_only(self):
+        """Test formatting without takeaways."""
+        evidence = [{"source_title": "Deep Work", "author": "Cal Newport", "takeaways": []}]
+        result = _build_evidence_summary(evidence)
+        assert result == "- Deep Work (Cal Newport)"
+
+    def test_title_and_takeaway_only(self):
+        """Test formatting without author."""
+        evidence = [{"source_title": "Some Article", "takeaways": ["key insight"]}]
+        result = _build_evidence_summary(evidence)
+        assert result == "- Some Article — key insight"
+
+    def test_title_only(self):
+        """Test formatting with only title."""
+        evidence = [{"source_title": "Minimal Source"}]
+        result = _build_evidence_summary(evidence)
+        assert result == "- Minimal Source"
+
+    def test_missing_title_uses_unknown(self):
+        """Test fallback when title is missing."""
+        evidence = [{"author": "Someone"}]
+        result = _build_evidence_summary(evidence)
+        assert result == "- Unknown (Someone)"
+
+    def test_caps_at_max_items(self):
+        """Test that max_items is respected."""
+        evidence = [{"source_title": f"Book {i}"} for i in range(10)]
+        result = _build_evidence_summary(evidence, max_items=3)
+        assert result.count("\n") == 2  # 3 lines = 2 newlines
+
+    def test_empty_evidence(self):
+        """Test with empty evidence list."""
+        assert _build_evidence_summary([]) == ""
+
+    def test_multiple_items(self):
+        """Test formatting of multiple evidence items."""
+        evidence = [
+            {"source_title": "Book A", "author": "Author A", "takeaways": ["insight A"]},
+            {"source_title": "Book B", "author": "Author B", "takeaways": ["insight B"]},
+        ]
+        result = _build_evidence_summary(evidence)
+        lines = result.split("\n")
+        assert len(lines) == 2
+        assert "Book A" in lines[0]
+        assert "Book B" in lines[1]
+
+
+class TestGenerateEvidenceQueries:
+    """Tests for generate_evidence_queries (Epic 14)."""
+
+    def test_returns_parsed_queries(self):
+        """Test successful LLM query generation."""
+        evidence = [{"source_title": "Test Book", "author": "Author", "takeaways": ["insight"]}]
+
+        with patch("recommendation_problems.get_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.text = "couples therapy repair rituals research\nparenting division labor satisfaction study"
+            mock_client.return_value.generate.return_value = mock_response
+
+            result = generate_evidence_queries("test problem", evidence, "deepen", n_queries=2)
+
+            assert len(result) == 2
+            assert "couples therapy" in result[0]
+            assert "parenting division" in result[1]
+
+    def test_caps_at_n_queries(self):
+        """Test that output is capped at n_queries even if LLM returns more."""
+        evidence = [{"source_title": "Book"}]
+
+        with patch("recommendation_problems.get_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.text = "query one\nquery two\nquery three\nquery four"
+            mock_client.return_value.generate.return_value = mock_response
+
+            result = generate_evidence_queries("problem", evidence, "deepen", n_queries=2)
+
+            assert len(result) == 2
+
+    def test_strips_numbering_from_output(self):
+        """Test that LLM numbering prefixes are stripped."""
+        evidence = [{"source_title": "Book"}]
+
+        with patch("recommendation_problems.get_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.text = "1. first query here\n2) second query here"
+            mock_client.return_value.generate.return_value = mock_response
+
+            result = generate_evidence_queries("problem", evidence, "deepen", n_queries=2)
+
+            assert result[0] == "first query here"
+            assert result[1] == "second query here"
+
+    def test_returns_empty_on_llm_error(self):
+        """Test graceful fallback on LLM error."""
+        evidence = [{"source_title": "Book"}]
+
+        with patch("recommendation_problems.get_client") as mock_client:
+            mock_client.return_value.generate.side_effect = Exception("API down")
+
+            result = generate_evidence_queries("problem", evidence, "deepen")
+
+            assert result == []
+
+    def test_returns_empty_on_empty_response(self):
+        """Test fallback when LLM returns empty/whitespace."""
+        evidence = [{"source_title": "Book"}]
+
+        with patch("recommendation_problems.get_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.text = "   \n  \n  "
+            mock_client.return_value.generate.return_value = mock_response
+
+            result = generate_evidence_queries("problem", evidence, "deepen")
+
+            assert result == []
+
+    def test_uses_correct_generation_config(self):
+        """Test that temperature and max_tokens are set correctly."""
+        evidence = [{"source_title": "Book"}]
+
+        with patch("recommendation_problems.get_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.text = "some query"
+            mock_client.return_value.generate.return_value = mock_response
+
+            generate_evidence_queries("problem", evidence, "deepen")
+
+            call_args = mock_client.return_value.generate.call_args
+            config = call_args.kwargs.get("config") or call_args[1].get("config")
+            assert config.temperature == 0.3
+            assert config.max_output_tokens == 200
+
+
+class TestGenerateProblemQueriesWithLLM:
+    """Tests for LLM integration in generate_problem_queries (Epic 14)."""
+
+    @pytest.fixture
+    def problems_with_evidence(self):
+        return [
+            {
+                "problem_id": "prob_1",
+                "problem": "Problem mit Evidence",
+                "status": "active",
+                "evidence_count": 10,
+                "evidence": [
+                    {"source_title": "Book A", "author": "Author A", "takeaways": ["insight"]},
+                ],
+            },
+        ]
+
+    @pytest.fixture
+    def problems_without_evidence(self):
+        return [
+            {
+                "problem_id": "prob_2",
+                "problem": "Problem ohne Evidence",
+                "status": "active",
+                "evidence_count": 0,
+                "evidence": [],
+            },
+        ]
+
+    def test_uses_llm_for_problems_with_evidence(self, problems_with_evidence):
+        """Test that LLM path is used when evidence exists."""
+        with patch("recommendation_problems.get_active_problems") as mock_get, \
+             patch("recommendation_problems.translate_to_english") as mock_trans, \
+             patch("recommendation_problems.generate_evidence_queries") as mock_llm:
+            mock_get.return_value = problems_with_evidence
+            mock_trans.side_effect = lambda x, **kw: f"EN: {x}"
+            mock_llm.return_value = ["llm query one", "llm query two"]
+
+            queries = generate_problem_queries(mode="deepen", max_queries=4)
+
+            assert len(queries) == 2
+            assert all(q["query_method"] == "llm" for q in queries)
+            assert queries[0]["query"] == "llm query one"
+
+    def test_uses_templates_for_problems_without_evidence(self, problems_without_evidence):
+        """Test that template path is used when no evidence exists."""
+        with patch("recommendation_problems.get_active_problems") as mock_get, \
+             patch("recommendation_problems.translate_to_english") as mock_trans:
+            mock_get.return_value = problems_without_evidence
+            mock_trans.side_effect = lambda x, **kw: f"EN: {x}"
+
+            queries = generate_problem_queries(mode="explore", max_queries=2)
+
+            assert len(queries) == 2
+            assert all(q["query_method"] == "template" for q in queries)
+
+    def test_falls_back_to_templates_on_llm_failure(self, problems_with_evidence):
+        """Test template fallback when LLM returns empty."""
+        with patch("recommendation_problems.get_active_problems") as mock_get, \
+             patch("recommendation_problems.translate_to_english") as mock_trans, \
+             patch("recommendation_problems.generate_evidence_queries") as mock_llm:
+            mock_get.return_value = problems_with_evidence
+            mock_trans.side_effect = lambda x, **kw: f"EN: {x}"
+            mock_llm.return_value = []  # LLM failed
+
+            queries = generate_problem_queries(mode="deepen", max_queries=2)
+
+            assert len(queries) == 2
+            assert all(q["query_method"] == "template" for q in queries)
+
+    def test_mixed_problems_use_both_methods(self):
+        """Test that problems with evidence use LLM, without use templates."""
+        mixed = [
+            {
+                "problem_id": "p1", "problem": "With evidence",
+                "status": "active", "evidence_count": 5,
+                "evidence": [{"source_title": "Book"}],
+            },
+            {
+                "problem_id": "p2", "problem": "No evidence",
+                "status": "active", "evidence_count": 0,
+                "evidence": [],
+            },
+        ]
+        with patch("recommendation_problems.get_active_problems") as mock_get, \
+             patch("recommendation_problems.translate_to_english") as mock_trans, \
+             patch("recommendation_problems.generate_evidence_queries") as mock_llm:
+            mock_get.return_value = mixed
+            mock_trans.side_effect = lambda x, **kw: f"EN: {x}"
+            mock_llm.return_value = ["llm query"]
+
+            queries = generate_problem_queries(mode="balanced", max_queries=4)
+
+            methods = {q["problem_id"]: q["query_method"] for q in queries}
+            assert methods.get("p1") == "llm"
+            assert methods.get("p2") == "template"
+
+    def test_query_method_field_always_present(self):
+        """Test that query_method field exists in all queries."""
+        problems = [
+            {
+                "problem_id": "p1", "problem": "Test",
+                "status": "active", "evidence_count": 0, "evidence": [],
+            },
+        ]
+        with patch("recommendation_problems.get_active_problems") as mock_get, \
+             patch("recommendation_problems.translate_to_english") as mock_trans:
+            mock_get.return_value = problems
+            mock_trans.side_effect = lambda x, **kw: x
+
+            queries = generate_problem_queries(max_queries=2)
+
+            for q in queries:
+                assert "query_method" in q
+                assert q["query_method"] in ("llm", "template")

@@ -262,14 +262,14 @@ See [epics/epic13.md](epics/epic13.md) for full details.
 
 **Goal:** Replace static template queries with LLM-generated, evidence-aware Tavily search queries that target knowledge gaps instead of re-discovering what the user already knows.
 
-**Status:** Planned
+**Status:** Done
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 1 | `_build_evidence_summary()` — compact evidence context for LLM prompt | ⬚ |
-| 2 | `generate_evidence_queries()` — Gemini Flash query generation with fallback | ⬚ |
-| 3 | Integrate into `generate_problem_queries()`, add `query_method` field | ⬚ |
-| 4 | Tests: mock LLM, fallback, query_method, evidence summary | ⬚ |
+| 1 | `_build_evidence_summary()` — compact evidence context for LLM prompt | ✅ |
+| 2 | `generate_evidence_queries()` — Gemini Flash query generation with fallback | ✅ |
+| 3 | Integrate into `generate_problem_queries()`, add `query_method` field | ✅ |
+| 4 | Tests: mock LLM, fallback, query_method, evidence summary | ✅ |
 
 **Key Design:** No new infra or MCP tools. Modifies `generate_problem_queries()` in `recommendation_problems.py` — LLM path when evidence exists, template fallback on error. ~$0.03/year cost.
 
