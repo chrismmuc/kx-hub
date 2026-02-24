@@ -2161,7 +2161,8 @@ def configure_kb(
 
     Args:
         action: Action to perform (show_all, show_ranking, show_domains,
-                show_hot_sites, update_ranking, update_domains, update_hot_sites)
+                show_hot_sites, show_recommendations, update_ranking,
+                update_domains, update_hot_sites, update_recommendations)
         params: Action-specific parameters (optional)
 
     Returns:
@@ -2172,9 +2173,11 @@ def configure_kb(
         - show_ranking: Show ranking weights and settings (no params)
         - show_domains: Show domain whitelist (no params)
         - show_hot_sites: Show hot sites categories (no params)
+        - show_recommendations: Show recommendations defaults (no params)
         - update_ranking: Update ranking weights/settings (params: {weights, settings})
         - update_domains: Modify domain whitelist (params: {add, remove})
         - update_hot_sites: Modify hot sites (params: {category, add, remove, description})
+        - update_recommendations: Update recommendations defaults (params: {topic_filter, hot_sites, tavily_days, limit, topics})
 
     Examples:
         >>> configure_kb(action="show_all")
@@ -2202,9 +2205,11 @@ def configure_kb(
             "show_ranking",
             "show_domains",
             "show_hot_sites",
+            "show_recommendations",
             "update_ranking",
             "update_domains",
             "update_hot_sites",
+            "update_recommendations",
         ]
 
         if action not in valid_actions:
@@ -2219,12 +2224,14 @@ def configure_kb(
             ranking = get_ranking_config()
             domains = get_recommendation_config()
             hot_sites = get_hot_sites_config()
+            recommendations = firestore_client.get_recommendations_defaults()
 
             return {
                 "action": "show_all",
                 "ranking": ranking,
                 "domains": domains,
                 "hot_sites": hot_sites,
+                "recommendations": recommendations,
             }
 
         elif action == "show_ranking":
@@ -2305,6 +2312,43 @@ def configure_kb(
                 description=description,
             )
             return {"action": "update_hot_sites", **result}
+
+        elif action == "show_recommendations":
+            # Return recommendations defaults
+            defaults = firestore_client.get_recommendations_defaults()
+            return {"action": "show_recommendations", **defaults}
+
+        elif action == "update_recommendations":
+            # Update recommendations defaults
+            topic_filter = params.get("topic_filter")
+            hot_sites = params.get("hot_sites")
+            tavily_days = params.get("tavily_days")
+            limit = params.get("limit")
+            topics = params.get("topics")
+
+            if not any(
+                v is not None
+                for v in [topic_filter, hot_sites, tavily_days, limit, topics]
+            ):
+                return {
+                    "error": "update_recommendations requires at least one field in params",
+                    "example": {
+                        "action": "update_recommendations",
+                        "params": {
+                            "topic_filter": ["AI", "software"],
+                            "tavily_days": 90,
+                        },
+                    },
+                }
+
+            result = firestore_client.update_recommendations_defaults(
+                topic_filter=topic_filter,
+                hot_sites=hot_sites,
+                tavily_days=tavily_days,
+                limit=limit,
+                topics=topics,
+            )
+            return {"action": "update_recommendations", **result}
 
     except Exception as e:
         logger.error(f"configure_kb failed: {e}")

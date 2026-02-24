@@ -1395,6 +1395,90 @@ def get_recommendations_defaults() -> Dict[str, Any]:
         return {**DEFAULT_RECOMMENDATIONS_CONFIG, "error": str(e)}
 
 
+def update_recommendations_defaults(
+    topic_filter: Optional[List[str]] = None,
+    hot_sites: Optional[str] = None,
+    tavily_days: Optional[int] = None,
+    limit: Optional[int] = None,
+    topics: Optional[List[str]] = None,
+    updated_by: str = "mcp_tool",
+) -> Dict[str, Any]:
+    """
+    Update recommendations defaults in Firestore.
+
+    Updates the config/recommendations document with provided fields.
+    Only fields that are explicitly passed will be updated.
+
+    Args:
+        topic_filter: List of topic strings to filter recommendations
+        hot_sites: Hot sites category (e.g., "tech")
+        tavily_days: Days to search back
+        limit: Max recommendations per run
+        topics: List of focus topics for LLM query generation
+        updated_by: Identifier for who made the update
+
+    Returns:
+        Dictionary with:
+        - success: Boolean
+        - config: Updated configuration
+        - changes: Summary of what changed
+    """
+    try:
+        db = get_firestore_client()
+
+        logger.info("Updating recommendations defaults in config/recommendations")
+
+        updates = {}
+        changes = []
+
+        if topic_filter is not None:
+            updates["topic_filter"] = topic_filter
+            changes.append(f"topic_filter={topic_filter}")
+
+        if hot_sites is not None:
+            updates["hot_sites"] = hot_sites
+            changes.append(f"hot_sites={hot_sites}")
+
+        if tavily_days is not None:
+            updates["tavily_days"] = tavily_days
+            changes.append(f"tavily_days={tavily_days}")
+
+        if limit is not None:
+            updates["limit"] = limit
+            changes.append(f"limit={limit}")
+
+        if topics is not None:
+            updates["topics"] = topics
+            changes.append(f"topics={topics}")
+
+        if not updates:
+            return {
+                "success": False,
+                "error": "No fields to update. Provide at least one of: topic_filter, hot_sites, tavily_days, limit, topics",
+            }
+
+        updates["last_updated"] = datetime.utcnow()
+        updates["updated_by"] = updated_by
+
+        doc_ref = db.collection("config").document("recommendations")
+        doc_ref.set(updates, merge=True)
+
+        logger.info(f"Updated recommendations defaults: {', '.join(changes)}")
+
+        # Fetch updated config
+        updated_config = get_recommendations_defaults()
+
+        return {
+            "success": True,
+            "config": updated_config,
+            "changes": changes,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to update recommendations defaults: {e}")
+        return {"success": False, "error": str(e)}
+
+
 def update_ranking_config(
     weights: Optional[Dict[str, float]] = None,
     settings: Optional[Dict[str, Any]] = None,

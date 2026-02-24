@@ -1126,10 +1126,13 @@ class TestGetRecent(unittest.TestCase):
 class TestConfigureKB(unittest.TestCase):
     """Test suite for configure_kb unified configuration tool (Story 4.5)."""
 
+    @patch("mcp_server.tools.firestore_client.get_recommendations_defaults")
     @patch("mcp_server.tools.get_hot_sites_config")
     @patch("mcp_server.tools.get_recommendation_config")
     @patch("mcp_server.tools.get_ranking_config")
-    def test_show_all_action(self, mock_ranking, mock_domains, mock_hot_sites):
+    def test_show_all_action(
+        self, mock_ranking, mock_domains, mock_hot_sites, mock_rec_defaults
+    ):
         """Test show_all action returns all configuration (AC 1, 2)."""
         # Mock configuration data
         mock_ranking.return_value = {
@@ -1148,14 +1151,20 @@ class TestConfigureKB(unittest.TestCase):
             "categories": {"tech": ["hckrnews.com"], "ai": ["anthropic.com"]},
             "total_domains": 2,
         }
+        mock_rec_defaults.return_value = {
+            "topic_filter": ["AI"],
+            "tavily_days": 30,
+            "limit": 10,
+        }
 
         result = tools.configure_kb(action="show_all")
 
-        # Verify all three configs returned
+        # Verify all configs returned
         self.assertEqual(result["action"], "show_all")
         self.assertIn("ranking", result)
         self.assertIn("domains", result)
         self.assertIn("hot_sites", result)
+        self.assertIn("recommendations", result)
         self.assertEqual(result["ranking"]["weights"]["relevance"], 0.5)
         self.assertEqual(result["domains"]["domain_count"], 2)
         self.assertEqual(result["hot_sites"]["total_domains"], 2)
@@ -1323,6 +1332,60 @@ class TestConfigureKB(unittest.TestCase):
 
         self.assertIn("error", result)
         self.assertIn("requires category", result["error"])
+        self.assertIn("example", result)
+
+    @patch("mcp_server.tools.firestore_client.get_recommendations_defaults")
+    def test_show_recommendations_action(self, mock_defaults):
+        """Test show_recommendations returns current defaults."""
+        mock_defaults.return_value = {
+            "topic_filter": ["AI", "software"],
+            "hot_sites": "tech",
+            "tavily_days": 30,
+            "limit": 10,
+            "topics": ["AI agents"],
+        }
+
+        result = tools.configure_kb(action="show_recommendations")
+
+        self.assertEqual(result["action"], "show_recommendations")
+        self.assertEqual(result["topic_filter"], ["AI", "software"])
+        self.assertEqual(result["tavily_days"], 30)
+        mock_defaults.assert_called_once()
+
+    @patch("mcp_server.tools.firestore_client.update_recommendations_defaults")
+    def test_update_recommendations_action(self, mock_update):
+        """Test update_recommendations updates defaults."""
+        mock_update.return_value = {
+            "success": True,
+            "config": {
+                "topic_filter": ["AI", "software"],
+                "tavily_days": 90,
+                "limit": 10,
+            },
+            "changes": ["topic_filter=['AI', 'software']", "tavily_days=90"],
+        }
+
+        result = tools.configure_kb(
+            action="update_recommendations",
+            params={"topic_filter": ["AI", "software"], "tavily_days": 90},
+        )
+
+        self.assertEqual(result["action"], "update_recommendations")
+        self.assertTrue(result["success"])
+        mock_update.assert_called_once_with(
+            topic_filter=["AI", "software"],
+            hot_sites=None,
+            tavily_days=90,
+            limit=None,
+            topics=None,
+        )
+
+    def test_update_recommendations_missing_params(self):
+        """Test error handling when update_recommendations has no fields."""
+        result = tools.configure_kb(action="update_recommendations", params={})
+
+        self.assertIn("error", result)
+        self.assertIn("requires at least one field", result["error"])
         self.assertIn("example", result)
 
 
