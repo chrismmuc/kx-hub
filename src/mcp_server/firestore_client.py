@@ -1345,7 +1345,7 @@ DEFAULT_RECOMMENDATIONS_CONFIG = {
     "tavily_days": 30,
     "limit": 10,
     "topics": ["AI agents", "platform engineering", "developer productivity"],
-    "topic_filter": ["AI", "software", "development", "programming", "code", "LLM", "agent"],
+    "topic_filter": [],  # Empty = no filtering; set explicitly via recommendations(topic_filter=[...])
 }
 
 

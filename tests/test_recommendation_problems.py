@@ -18,6 +18,7 @@ from recommendation_problems import (
     get_evidence_keywords,
     generate_problem_queries,
     format_query_for_tavily,
+    filter_problems_by_topic,
     DEEPEN_TEMPLATES,
     EXPLORE_TEMPLATES,
     BALANCED_TEMPLATES,
@@ -304,3 +305,56 @@ class TestQueryTemplates:
         """Test that template sets are distinct."""
         assert set(DEEPEN_TEMPLATES) != set(EXPLORE_TEMPLATES)
         assert set(DEEPEN_TEMPLATES) != set(BALANCED_TEMPLATES)
+
+
+class TestFilterProblemsByTopic:
+    """Tests for filter_problems_by_topic (PR: improve-recommendation-filters)."""
+
+    PROBLEMS = [
+        {"problem_id": "p1", "problem": "How do LLM agents handle tool calling?", "tags": [], "category": ""},
+        {"problem_id": "p2", "problem": "Wie baue ich starke Entwickler-Teams?", "tags": ["engineering"], "category": ""},
+        {"problem_id": "p3", "problem": "Wie esse ich gesünder?", "tags": ["health"], "category": "lifestyle"},
+        {"problem_id": "p4", "problem": "What makes platform engineering scale?", "tags": ["software"], "category": ""},
+    ]
+
+    def test_empty_filter_returns_all(self):
+        """Empty topic_filter must return all problems unchanged (opt-in, not opt-out)."""
+        result = filter_problems_by_topic(self.PROBLEMS, [])
+        assert result == self.PROBLEMS
+
+    def test_matches_problem_text(self):
+        """Keyword match in problem text."""
+        result = filter_problems_by_topic(self.PROBLEMS, ["LLM"])
+        assert len(result) == 1
+        assert result[0]["problem_id"] == "p1"
+
+    def test_matches_tags(self):
+        """Keyword match in tags list."""
+        result = filter_problems_by_topic(self.PROBLEMS, ["software"])
+        assert any(p["problem_id"] == "p4" for p in result)
+
+    def test_case_insensitive(self):
+        """Matching must be case-insensitive."""
+        result_lower = filter_problems_by_topic(self.PROBLEMS, ["llm"])
+        result_upper = filter_problems_by_topic(self.PROBLEMS, ["LLM"])
+        assert [p["problem_id"] for p in result_lower] == [p["problem_id"] for p in result_upper]
+
+    def test_non_tech_problem_excluded(self):
+        """Health/lifestyle problem should not match tech keywords."""
+        result = filter_problems_by_topic(self.PROBLEMS, ["software", "engineering", "LLM", "agent"])
+        ids = [p["problem_id"] for p in result]
+        assert "p3" not in ids  # "gesünder / health / lifestyle" — no match
+
+    def test_german_problem_matches_german_keyword(self):
+        """German problems must be matchable with German keywords."""
+        result = filter_problems_by_topic(self.PROBLEMS, ["Entwickler"])
+        assert len(result) == 1
+        assert result[0]["problem_id"] == "p2"
+
+    def test_multiple_keywords_union(self):
+        """Multiple keywords use OR logic — any match includes the problem."""
+        result = filter_problems_by_topic(self.PROBLEMS, ["LLM", "platform"])
+        ids = [p["problem_id"] for p in result]
+        assert "p1" in ids
+        assert "p4" in ids
+        assert "p3" not in ids

@@ -48,8 +48,8 @@ _llm_client: Optional[BaseLLMClient] = None
 
 # Default ranking weights (sum must equal 1.0)
 DEFAULT_RANKING_WEIGHTS = {
-    "relevance": 0.40,  # Semantic similarity to KB content
-    "recency": 0.20,  # Publication freshness
+    "relevance": 0.45,  # Semantic similarity to KB content (dominant signal)
+    "recency": 0.15,  # Publication freshness
     "depth": 0.15,  # Content quality (Gemini score)
     "authority": 0.25,  # Author/source credibility
 }
@@ -71,8 +71,8 @@ DISCOVERY_MODES = {
     "balanced": {
         "description": "Standard mix - good for daily use",
         "weights": {
-            "relevance": 0.40,
-            "recency": 0.20,
+            "relevance": 0.45,
+            "recency": 0.15,
             "depth": 0.15,
             "authority": 0.25,
         },
@@ -109,8 +109,8 @@ DISCOVERY_MODES = {
     "deep": {
         "description": "Prioritize in-depth content - weekend reading",
         "weights": {
-            "relevance": 0.30,
-            "recency": 0.10,
+            "relevance": 0.35,
+            "recency": 0.05,
             "depth": 0.35,
             "authority": 0.25,
         },
