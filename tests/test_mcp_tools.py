@@ -1326,5 +1326,87 @@ class TestConfigureKB(unittest.TestCase):
         self.assertIn("example", result)
 
 
+class TestSearchWithinSource(unittest.TestCase):
+    """Test suite for search_within_source tool (Story 3.10 consistency)."""
+
+    MOCK_SOURCE = {
+        "source_id": "test-source",
+        "title": "Test Book",
+        "author": "Test Author",
+        "chunks": [{"chunk_id": "chunk-1"}, {"chunk_id": "chunk-2"}],
+    }
+
+    MOCK_CHUNK = {
+        "id": "chunk-1",
+        "chunk_id": "chunk-1",
+        "title": "Test Book",
+        "author": "Test Author",
+        "source": "kindle",
+        "tags": ["productivity"],
+        "content": "Full raw content that should not appear by default.",
+        "chunk_index": 0,
+        "total_chunks": 2,
+        "knowledge_card": {
+            "summary": "Test summary",
+            "takeaways": ["Takeaway 1"],
+        },
+    }
+
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    @patch("mcp_server.tools.firestore_client.get_source_by_id")
+    def test_returns_detail_hint_no_snippet(
+        self, mock_get_source, mock_find_nearest, mock_generate_embedding
+    ):
+        """Story 3.10: search_within_source must return detail_hint, not raw snippet."""
+        mock_get_source.return_value = self.MOCK_SOURCE
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_find_nearest.return_value = [self.MOCK_CHUNK]
+
+        result = tools.search_within_source("test-source", "test query", limit=5)
+
+        self.assertEqual(result["result_count"], 1)
+        r = result["results"][0]
+
+        # Must have detail_hint pointing to get_chunk
+        self.assertIn("detail_hint", r)
+        self.assertIn("get_chunk", r["detail_hint"])
+        self.assertIn("chunk-1", r["detail_hint"])
+
+        # Must NOT include raw content by default
+        self.assertNotIn("snippet", r)
+        self.assertNotIn("full_content", r)
+
+        # Must still include knowledge card
+        self.assertIn("knowledge_card", r)
+        self.assertEqual(r["knowledge_card"]["summary"], "Test summary")
+
+    @patch("mcp_server.tools.firestore_client.get_source_by_id")
+    def test_source_not_found(self, mock_get_source):
+        """Returns error dict when source does not exist."""
+        mock_get_source.return_value = None
+
+        result = tools.search_within_source("nonexistent", "query")
+
+        self.assertIn("error", result)
+        self.assertEqual(result["result_count"], 0)
+
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    @patch("mcp_server.tools.firestore_client.get_source_by_id")
+    def test_no_matching_chunks(
+        self, mock_get_source, mock_find_nearest, mock_generate_embedding
+    ):
+        """Returns empty results when vector search finds no chunks in source."""
+        mock_get_source.return_value = self.MOCK_SOURCE
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_find_nearest.return_value = []  # No results from vector search
+
+        result = tools.search_within_source("test-source", "unrelated query")
+
+        self.assertEqual(result["result_count"], 0)
+        self.assertEqual(result["results"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

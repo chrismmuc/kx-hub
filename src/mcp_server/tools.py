@@ -2455,22 +2455,18 @@ def search_within_source(source_id: str, query: str, limit: int = 10) -> Dict[st
         )
 
         # Filter to only chunks from this source
-        results = []
+        filtered_chunks = []
         for chunk in all_results:
             chunk_id = chunk.get("id") or chunk.get("chunk_id")
             if chunk_id in chunk_ids:
-                results.append(
-                    {
-                        "rank": len(results) + 1,
-                        "chunk_id": chunk_id,
-                        "title": chunk.get("title"),
-                        "author": chunk.get("author"),
-                        "snippet": chunk.get("content", "")[:300] + "...",
-                        "knowledge_card": _format_knowledge_card(chunk),
-                    }
-                )
-                if len(results) >= limit:
+                filtered_chunks.append(chunk)
+                if len(filtered_chunks) >= limit:
                     break
+
+        results = [
+            _format_search_result(chunk, rank)
+            for rank, chunk in enumerate(filtered_chunks, 1)
+        ]
 
         return {
             "source_id": source_id,

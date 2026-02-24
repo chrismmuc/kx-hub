@@ -93,7 +93,7 @@ Two-step pattern: search_kb → scan cards → get_chunk for details.""",
     },
     {
         "name": "get_recent",
-        "description": "Get recent reading activity and chunks.",
+        "description": "Get recent reading activity and chunks. Returns Knowledge Cards by default for fast comprehension.",
         "inputSchema": {
             "type": "object",
             "properties": {
