@@ -1468,6 +1468,11 @@ def update_recommendations_defaults(
         # Fetch updated config
         updated_config = get_recommendations_defaults()
 
+        # Convert datetime fields to strings for JSON serialization
+        for key, value in updated_config.items():
+            if hasattr(value, 'isoformat'):
+                updated_config[key] = value.isoformat()
+
         return {
             "success": True,
             "config": updated_config,

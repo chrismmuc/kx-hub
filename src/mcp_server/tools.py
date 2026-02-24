@@ -2225,6 +2225,9 @@ def configure_kb(
             domains = get_recommendation_config()
             hot_sites = get_hot_sites_config()
             recommendations = firestore_client.get_recommendations_defaults()
+            for key, value in recommendations.items():
+                if hasattr(value, 'isoformat'):
+                    recommendations[key] = value.isoformat()
 
             return {
                 "action": "show_all",
@@ -2316,6 +2319,9 @@ def configure_kb(
         elif action == "show_recommendations":
             # Return recommendations defaults
             defaults = firestore_client.get_recommendations_defaults()
+            for key, value in defaults.items():
+                if hasattr(value, 'isoformat'):
+                    defaults[key] = value.isoformat()
             return {"action": "show_recommendations", **defaults}
 
         elif action == "update_recommendations":
