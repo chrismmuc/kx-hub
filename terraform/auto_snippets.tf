@@ -2,7 +2,7 @@
 # Auto-Snippets Nightly Trigger & Tag Management (Epic 13, Story 13.4)
 # ============================================================================
 # Nightly auto-ingest: Cloud Scheduler → Pub/Sub → Cloud Function
-# Processes Reader articles tagged 'kx-auto-ingest' into KB snippets
+# Processes Reader articles tagged 'kx-auto' into KB snippets
 
 # Pub/Sub topic for auto-snippets trigger
 resource "google_pubsub_topic" "auto_snippets" {

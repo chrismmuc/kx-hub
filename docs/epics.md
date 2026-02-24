@@ -241,13 +241,13 @@ See [epics/epic12.md](epics/epic12.md) for full implementation details.
 
 ## Epic 13: Auto-Snippets from Reader ✅
 
-**Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto-ingest` via LLM, store as searchable kb_items.
+**Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto` via LLM, store as searchable kb_items.
 
 **Status:** Complete
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 13.1 | **Reader API Client** - Fetch docs tagged `kx-auto-ingest` with full text from Reader API v3 | ✅ Done |
+| 13.1 | **Reader API Client** - Fetch docs tagged `kx-auto` with full text from Reader API v3 | ✅ Done |
 | 13.2 | **KB-Aware Two-Stage Snippet Extraction** - LLM extracts candidates, KB enrichment for novelty + problem relevance, LLM judge selects best | ✅ Done |
 | 13.3 | **Write Back to Readwise & Pipeline Integration** - Readwise v2 highlight writer, direct snippet embedding to Firestore kb_items, full orchestration (extract → Readwise → embed → problem match) | ✅ Done |
 | 13.4 | **Nightly Trigger & Tag Management** - Cloud Scheduler, remove tag after processing | ✅ Done |

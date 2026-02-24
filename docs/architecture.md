@@ -404,6 +404,7 @@ The use of Vertex AI and Google Cloud Serverless components significantly simpli
 | Generative | Vertex AI (Gemini 2.5 Flash) | $1.50 |
 | Functions/Storage | Google Cloud | $0.50 |
 | MCP Server Queries | Vertex AI Embeddings (local) | +$0.10-0.20 (optional) |
+| Firestore Backups | Managed Backup (daily, 7d retention) | <$0.01 |
 | **Total** | | **~$2.40 - 2.60** |
 
 ✅ **Goal achieved: ~$5/month budget. Current estimate ~50% under budget with all features enabled.**
@@ -419,6 +420,38 @@ The architecture is designed to be scalable from the ground up.
 - **MVP**: The current architecture is already the scalable solution. Vertex AI Vector Search can handle billions of vectors with low latency.
 - **Phase 2**: For extremely high demands, the number of replicas in the Vector Search Index can be increased to further boost throughput.
 - **Phase 3**: Not required. The need to migrate to another Vector DB solution is eliminated.
+
+---
+
+## Backup & Disaster Recovery
+
+### Firestore Managed Backups
+
+Daily automated backups via Firestore's built-in backup service.
+
+| Setting | Value |
+|---------|-------|
+| **Recurrence** | Daily |
+| **Retention** | 7 days (rolling, auto-deleted) |
+| **Database** | `(default)` |
+| **Region** | `europe-west4` |
+| **Cost** | ~$0.005/month (negligible at current DB size) |
+
+**Note:** Firestore managed backups do not support time-of-day scheduling. Backups run once per day at a Google-determined time.
+
+**Manage:**
+```bash
+# List backup schedules
+gcloud firestore backups schedules list --database='(default)'
+
+# List existing backups
+gcloud firestore backups list --format="table(name, database, state)"
+
+# Restore to a new database (does NOT overwrite existing)
+gcloud firestore databases restore \
+  --source-backup=projects/kx-hub/locations/europe-west4/backups/BACKUP_ID \
+  --destination-database='restored-db'
+```
 
 ---
 

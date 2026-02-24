@@ -1,6 +1,6 @@
 # Epic 12: Auto-Snippets from Reader
 
-**Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto-ingest`, so they become searchable in the KB without manual highlighting.
+**Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto`, so they become searchable in the KB without manual highlighting.
 
 **Business Value:**
 - Articles tagged in Reader get automatically distilled into searchable snippets
@@ -27,11 +27,11 @@ Current pipeline only ingests **user-made highlights** from Readwise Export API.
 
 **Problem:** Many interesting articles get saved but never read/highlighted. They sit in Reader forever, their knowledge inaccessible to the KB.
 
-**Solution:** Tag unread articles with `kx-auto-ingest` in Reader. A nightly job fetches the full text and uses Gemini Flash to extract 3-7 key passages as "auto-snippets". These flow through the existing pipeline (embed, store, knowledge cards) and become searchable immediately.
+**Solution:** Tag unread articles with `kx-auto` in Reader. A nightly job fetches the full text and uses Gemini Flash to extract 3-7 key passages as "auto-snippets". These flow through the existing pipeline (embed, store, knowledge cards) and become searchable immediately.
 
 **Example:**
 - User saves "How Netflix Reinvented HR" in Reader
-- Tags it `kx-auto-ingest` (one tap in Reader app)
+- Tags it `kx-auto` (one tap in Reader app)
 - Nightly: System fetches full text, LLM extracts key passages
 - Next day: `search_kb("Netflix culture")` finds the auto-snippets
 - Problem matching: Auto-matched to "Wie baue ich eine starke Team-Kultur?"
@@ -48,7 +48,7 @@ Current pipeline only ingests **user-made highlights** from Readwise Export API.
 ├─────────────────────────────────────────────────────────┤
 │ GET /api/v3/list/                                       │
 │   ?category=article                                     │
-│   &tag=kx-auto-ingest                                   │
+│   &tag=kx-auto                                   │
 │                                                         │
 │ For each document:                                      │
 │   → Fetch full HTML content via document endpoint       │
@@ -104,7 +104,7 @@ Current pipeline only ingests **user-made highlights** from Readwise Export API.
 │     - highlighted_at: current timestamp                 │
 │                                                         │
 │ → Snippets appear as highlights in Reader (auto-sync)   │
-│ → Remove kx-auto-ingest tag from Reader document        │
+│ → Remove kx-auto tag from Reader document        │
 │ → Add kx-processed tag (audit trail)                    │
 └─────────────────────────────────────────────────────────┘
                            ↓
@@ -165,13 +165,13 @@ At 10 articles/week: **~$1.80/month**
 
 ### Story 13.1: Reader API Client
 
-**Goal:** Fetch documents tagged `kx-auto-ingest` with full text content.
+**Goal:** Fetch documents tagged `kx-auto` with full text content.
 
 **New file:** `src/ingest/reader_client.py`
 
 **Tasks:**
 1. [ ] **Reader API v3 client** with auth (reuse existing Readwise API key)
-2. [ ] `fetch_tagged_documents(tag="kx-auto-ingest")` — list documents with tag
+2. [ ] `fetch_tagged_documents(tag="kx-auto")` — list documents with tag
 3. [ ] Extract full text from Reader API response (`html_content` field)
 4. [ ] HTML → clean text conversion (strip nav, ads, boilerplate) using BeautifulSoup
 5. [ ] Extract metadata: title, author, source_url, word_count, reading_time
@@ -180,11 +180,11 @@ At 10 articles/week: **~$1.80/month**
 8. [ ] Unit tests with mocked API responses
 
 **Reader API v3 Endpoints:**
-- `GET /api/v3/list/?tag=kx-auto-ingest&category=article` — list tagged documents
+- `GET /api/v3/list/?tag=kx-auto&category=article` — list tagged documents
 - Response includes `html_content` field with full article HTML
 
 **Acceptance Criteria:**
-- Fetches all documents with `kx-auto-ingest` tag
+- Fetches all documents with `kx-auto` tag
 - Extracts clean text from HTML content
 - Extracts word_count (calculate if not provided by API)
 - Raw JSON stored in GCS for audit trail
@@ -342,7 +342,7 @@ Where:
 **Tasks:**
 1. [ ] Cloud Scheduler job (nightly, e.g., 2:00 AM UTC)
 2. [ ] Cloud Function entry point for auto-snippet pipeline
-3. [ ] After successful Readwise write: remove `kx-auto-ingest` tag via Reader v3 API
+3. [ ] After successful Readwise write: remove `kx-auto` tag via Reader v3 API
 4. [ ] After successful Readwise write: add `kx-processed` tag via Reader v3 API
 5. [ ] Idempotency: skip documents already processed (check `kb_items` by `reader_doc_id`)
 6. [ ] Error handling: don't remove tag if snippet extraction or Readwise write fails
@@ -355,8 +355,8 @@ Where:
 
 **Acceptance Criteria:**
 - Runs nightly without manual intervention
-- Processed documents get `kx-processed` tag, lose `kx-auto-ingest` tag
-- Failed documents retain `kx-auto-ingest` tag for retry next night
+- Processed documents get `kx-processed` tag, lose `kx-auto` tag
+- Failed documents retain `kx-auto` tag for retry next night
 - Duplicate processing prevented (idempotent)
 - User sees highlights in Reader app immediately after processing
 - Terraform manages all infrastructure
@@ -389,7 +389,7 @@ Where:
 
 ## Open Questions
 
-1. **Tag naming:** `kx-auto-ingest` oder kürzer? (z.B. `kx-ai`, `kx-auto`)
+1. **Tag naming:** `kx-auto` oder kürzer? (z.B. `kx-ai`, `kx-auto`)
 2. **Snippet language:** Articles können EN oder DE sein. Snippets in Originalsprache behalten?
 3. **Existing highlights:** Wenn ein Artikel sowohl Highlights als auch Auto-Snippets hat, beide behalten?
 4. **Reader categories:** Nur `article` oder auch `book`, `pdf`, `email`?

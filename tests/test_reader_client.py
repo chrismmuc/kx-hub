@@ -30,7 +30,7 @@ class TestReaderDocument:
             "author": "John Doe",
             "source_url": "https://example.com/article",
             "url": "https://reader.example.com/doc/123",
-            "tags": ["test", "kx-auto-ingest"],
+            "tags": ["test", "kx-auto"],
             "reading_progress": 15,  # minutes
             "category": "article",
             "created_at": "2026-02-14T10:00:00Z",
@@ -47,7 +47,7 @@ class TestReaderDocument:
         assert doc.title == "Test Article"
         assert doc.author == "John Doe"
         assert doc.source_url == "https://example.com/article"
-        assert doc.tags == ["test", "kx-auto-ingest"]
+        assert doc.tags == ["test", "kx-auto"]
         assert doc.reading_time == 15
         assert doc.category == "article"
         assert doc.clean_text == "Test content"
@@ -349,8 +349,8 @@ class TestReadwiseReaderClient:
 
         client.update_document_tags(
             document_id="doc_123",
-            current_tags=["kx-auto-ingest", "tech", "ai"],
-            remove_tags=["kx-auto-ingest"],
+            current_tags=["kx-auto", "tech", "ai"],
+            remove_tags=["kx-auto"],
             add_tags=["kx-processed"],
         )
 
