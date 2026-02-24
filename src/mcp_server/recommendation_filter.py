@@ -36,6 +36,9 @@ MAX_PER_DOMAIN = 2
 # Minimum depth score required
 MIN_DEPTH_SCORE = 3
 
+# Minimum authority score required
+MIN_AUTHORITY_SCORE = 2
+
 # Global LLM client cache
 _llm_client: Optional[BaseLLMClient] = None
 
@@ -45,10 +48,10 @@ _llm_client: Optional[BaseLLMClient] = None
 
 # Default ranking weights (sum must equal 1.0)
 DEFAULT_RANKING_WEIGHTS = {
-    "relevance": 0.50,  # Semantic similarity to KB content
-    "recency": 0.25,  # Publication freshness
+    "relevance": 0.45,  # Semantic similarity to KB content (dominant signal)
+    "recency": 0.15,  # Publication freshness
     "depth": 0.15,  # Content quality (Gemini score)
-    "authority": 0.10,  # Author recognition from KB
+    "authority": 0.25,  # Author/source credibility
 }
 
 # Default recency settings
@@ -68,14 +71,15 @@ DISCOVERY_MODES = {
     "balanced": {
         "description": "Standard mix - good for daily use",
         "weights": {
-            "relevance": 0.50,
-            "recency": 0.25,
+            "relevance": 0.45,
+            "recency": 0.15,
             "depth": 0.15,
-            "authority": 0.10,
+            "authority": 0.25,
         },
         "temperature": 0.3,
         "tavily_days": 180,
         "min_depth_score": 3,
+        "min_authority_score": 2,
         "slots": {
             "relevance_count": 2,
             "serendipity_count": 1,
@@ -87,13 +91,14 @@ DISCOVERY_MODES = {
         "description": "Prioritize recent content - great for catching up",
         "weights": {
             "relevance": 0.25,
-            "recency": 0.50,
+            "recency": 0.40,
             "depth": 0.15,
-            "authority": 0.10,
+            "authority": 0.20,
         },
         "temperature": 0.2,
         "tavily_days": 30,  # Recent content only
         "min_depth_score": 2,  # Lower quality bar for fresh content
+        "min_authority_score": 2,
         "slots": {
             "relevance_count": 1,
             "serendipity_count": 1,
@@ -105,13 +110,14 @@ DISCOVERY_MODES = {
         "description": "Prioritize in-depth content - weekend reading",
         "weights": {
             "relevance": 0.35,
-            "recency": 0.15,
-            "depth": 0.40,
-            "authority": 0.10,
+            "recency": 0.05,
+            "depth": 0.35,
+            "authority": 0.25,
         },
         "temperature": 0.2,
         "tavily_days": 365,  # Include older evergreen content
         "min_depth_score": 4,  # Higher quality bar
+        "min_authority_score": 3,  # Only reputable sources
         "slots": {
             "relevance_count": 3,
             "serendipity_count": 1,
@@ -122,14 +128,15 @@ DISCOVERY_MODES = {
     "surprise_me": {
         "description": "Break filter bubble - explore new topics",
         "weights": {
-            "relevance": 0.30,
-            "recency": 0.25,
+            "relevance": 0.25,
+            "recency": 0.20,
             "depth": 0.25,
-            "authority": 0.20,
+            "authority": 0.30,
         },
         "temperature": 0.8,  # High randomization
         "tavily_days": 180,
         "min_depth_score": 3,
+        "min_authority_score": 2,
         "slots": {
             "relevance_count": 1,
             "serendipity_count": 3,
@@ -879,6 +886,7 @@ def filter_recommendations(
     recommendations: List[Dict[str, Any]],
     query_contexts: List[Dict[str, Any]],
     min_depth_score: int = MIN_DEPTH_SCORE,
+    min_authority_score: int = MIN_AUTHORITY_SCORE,
     max_per_domain: int = MAX_PER_DOMAIN,
     check_duplicates: bool = True,
     known_authors: Optional[List[str]] = None,
@@ -892,6 +900,7 @@ def filter_recommendations(
     Applies:
     - Recency filter (max_age_days)
     - Gemini depth scoring (with author/source credibility boost)
+    - Authority scoring (source/author credibility filter)
     - Source diversity cap
     - KB deduplication
     - Trusted source boost for public credibility
@@ -900,6 +909,7 @@ def filter_recommendations(
         recommendations: List of raw recommendations from Tavily
         query_contexts: Query context for each recommendation
         min_depth_score: Minimum depth score to include (default 3)
+        min_authority_score: Minimum authority score to include (default 2)
         max_per_domain: Max recommendations per domain (default 2)
         check_duplicates: Whether to check KB for duplicates
         known_authors: Authors from user's KB (credibility signal)
@@ -921,6 +931,7 @@ def filter_recommendations(
         filtered_out = {
             "duplicate_count": 0,
             "low_quality_count": 0,
+            "low_authority_count": 0,
             "diversity_cap_count": 0,
             "too_old_count": 0,
         }
@@ -1047,7 +1058,7 @@ def filter_recommendations(
         logger.info(f"Pass 2 complete: {len(scored_candidates)} scored")
 
         # ============================================================
-        # PASS 3: Filter by depth score and build final results
+        # PASS 3: Filter by depth + authority score and build final results
         # ============================================================
         for scored in scored_candidates:
             candidate = scored["candidate"]
@@ -1059,6 +1070,11 @@ def filter_recommendations(
             if depth_score < min_depth_score:
                 filtered_out["low_quality_count"] += 1
                 logger.debug(f"Filtered (low depth {depth_score}): {candidate['title'][:50]}...")
+                continue
+
+            if authority_score < min_authority_score:
+                filtered_out["low_authority_count"] += 1
+                logger.debug(f"Filtered (low authority {authority_score}): {candidate['title'][:50]}...")
                 continue
 
             # Calculate combined credibility score
@@ -1422,6 +1438,7 @@ def filter_recommendations_with_graph(
     problem_evidence: Optional[List[Dict[str, Any]]] = None,
     mode: str = "balanced",
     min_depth_score: int = MIN_DEPTH_SCORE,
+    min_authority_score: int = MIN_AUTHORITY_SCORE,
     max_per_domain: int = MAX_PER_DOMAIN,
     check_duplicates: bool = True,
     known_authors: Optional[List[str]] = None,
@@ -1445,6 +1462,7 @@ def filter_recommendations_with_graph(
         problem_evidence: Evidence sources from the active problem(s)
         mode: "deepen" | "explore" | "balanced"
         min_depth_score: Minimum depth score to include (default 3)
+        min_authority_score: Minimum authority score to include (default 2)
         max_per_domain: Max recommendations per domain (default 2)
         check_duplicates: Whether to check KB for duplicates
         known_authors: Authors from user's KB (credibility signal)
@@ -1468,6 +1486,7 @@ def filter_recommendations_with_graph(
             recommendations=recommendations,
             query_contexts=query_contexts,
             min_depth_score=min_depth_score,
+            min_authority_score=min_authority_score,
             max_per_domain=max_per_domain,
             check_duplicates=check_duplicates,
             known_authors=known_authors,
@@ -1691,6 +1710,7 @@ def filter_recommendations_with_evidence_dedup(
     problem_evidence: Optional[List[Dict[str, Any]]] = None,
     mode: str = "balanced",
     min_depth_score: int = MIN_DEPTH_SCORE,
+    min_authority_score: int = MIN_AUTHORITY_SCORE,
     max_per_domain: int = MAX_PER_DOMAIN,
     check_duplicates: bool = True,
     known_authors: Optional[List[str]] = None,
@@ -1706,7 +1726,7 @@ def filter_recommendations_with_evidence_dedup(
     Complete filtering pipeline:
     1. Filter out evidence duplicates (11.4)
     2. Apply graph-enhanced filtering (11.2)
-    3. Standard filtering (depth, domain, etc.)
+    3. Standard filtering (depth, authority, domain, etc.)
 
     Args:
         recommendations: List of raw recommendations from Tavily
@@ -1715,6 +1735,7 @@ def filter_recommendations_with_evidence_dedup(
         problem_evidence: Evidence sources for graph context
         mode: "deepen" | "explore" | "balanced"
         min_depth_score: Minimum depth score to include (default 3)
+        min_authority_score: Minimum authority score to include (default 2)
         max_per_domain: Max recommendations per domain (default 2)
         check_duplicates: Whether to check KB for duplicates
         known_authors: Authors from user's KB (credibility signal)
@@ -1765,6 +1786,7 @@ def filter_recommendations_with_evidence_dedup(
             problem_evidence=problem_evidence,
             mode=mode,
             min_depth_score=min_depth_score,
+            min_authority_score=min_authority_score,
             max_per_domain=max_per_domain,
             check_duplicates=check_duplicates,
             known_authors=known_authors,
@@ -1792,6 +1814,7 @@ def filter_recommendations_with_evidence_dedup(
             problem_evidence=problem_evidence,
             mode=mode,
             min_depth_score=min_depth_score,
+            min_authority_score=min_authority_score,
             max_per_domain=max_per_domain,
             check_duplicates=check_duplicates,
             known_authors=known_authors,

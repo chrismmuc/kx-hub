@@ -203,11 +203,55 @@ def get_evidence_keywords(problem: Dict[str, Any], max_keywords: int = 5) -> Lis
     return list(keywords)[:max_keywords]
 
 
+def filter_problems_by_topic(
+    problems: List[Dict[str, Any]],
+    topic_filter: List[str],
+) -> List[Dict[str, Any]]:
+    """
+    Filter problems to only those matching topic keywords.
+
+    Matches against problem text, tags, and category fields.
+    Case-insensitive keyword matching.
+
+    Args:
+        problems: List of problem dictionaries
+        topic_filter: List of topic keywords to match (e.g. ["AI", "software", "development"])
+
+    Returns:
+        Filtered list of problems matching at least one keyword
+    """
+    if not topic_filter:
+        return problems
+
+    keywords_lower = [kw.lower() for kw in topic_filter]
+    filtered = []
+
+    for problem in problems:
+        # Build searchable text from problem fields
+        searchable_parts = [
+            problem.get("problem", ""),
+            problem.get("category", ""),
+            " ".join(problem.get("tags", [])),
+        ]
+        searchable_text = " ".join(searchable_parts).lower()
+
+        # Match if any keyword appears in searchable text
+        if any(kw in searchable_text for kw in keywords_lower):
+            filtered.append(problem)
+
+    logger.info(
+        f"Topic filter [{', '.join(topic_filter)}]: "
+        f"{len(filtered)}/{len(problems)} problems matched"
+    )
+    return filtered
+
+
 def generate_problem_queries(
     problems: Optional[List[str]] = None,
     mode: str = "balanced",
     max_queries: int = 8,
     queries_per_problem: int = 2,
+    topic_filter: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Generate search queries based on Feynman problems.
@@ -217,6 +261,9 @@ def generate_problem_queries(
         mode: "deepen" | "explore" | "balanced"
         max_queries: Maximum total queries to generate
         queries_per_problem: Queries to generate per problem
+        topic_filter: Optional list of topic keywords to restrict which problems
+                      are used for query generation (e.g. ["AI", "software", "development"]).
+                      Only problems matching at least one keyword are included.
 
     Returns:
         List of query dictionaries:
@@ -227,7 +274,7 @@ def generate_problem_queries(
         - evidence_count: Problem's current evidence count
     """
     try:
-        logger.info(f"Generating queries: mode={mode}, max={max_queries}")
+        logger.info(f"Generating queries: mode={mode}, max={max_queries}, topic_filter={topic_filter}")
 
         # Load problems
         problem_list = get_active_problems(problems)
@@ -235,6 +282,13 @@ def generate_problem_queries(
         if not problem_list:
             logger.warning("No active problems found")
             return []
+
+        # Apply topic filter to restrict which problems generate queries
+        if topic_filter:
+            problem_list = filter_problems_by_topic(problem_list, topic_filter)
+            if not problem_list:
+                logger.warning(f"No problems matched topic filter: {topic_filter}")
+                return []
 
         # Sort by mode
         sorted_problems = sort_problems_by_mode(problem_list, mode)

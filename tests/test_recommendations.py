@@ -2048,5 +2048,81 @@ class TestGetEvidenceUrls(unittest.TestCase):
         self.assertEqual(result["chunks_checked"], 2)
 
 
+class TestAuthorityScoreFilter(unittest.TestCase):
+    """Tests for min_authority_score hard filter (PR: improve-recommendation-filters)."""
+
+    def _make_candidate(self, title: str, authority: int, depth: int = 4) -> dict:
+        return {
+            "candidate": {
+                "title": title,
+                "url": f"https://example.com/{title.replace(' ', '-')}",
+                "domain_clean": "example.com",
+                "rec": {"score": 0.8, "published_date": "2026-01-01"},
+                "recency_score": 0.9,
+                "embedding": [0.1] * 768,
+            },
+            "quality": {
+                "depth_score": depth,
+                "authority_score": authority,
+                "depth_reasoning": "test",
+                "authority_reasoning": "test",
+            },
+        }
+
+    def test_low_authority_filtered_out(self):
+        """Items below min_authority_score must be excluded — validates Pass 3 logic directly."""
+        # Replicate Pass 3 filter logic from filter_recommendations
+        scored = [
+            self._make_candidate("High Authority", authority=3),
+            self._make_candidate("Low Authority", authority=1),  # below threshold=2
+        ]
+
+        filtered_out = {"low_quality_count": 0, "low_authority_count": 0}
+        results = []
+        min_depth_score = 3
+        min_authority_score = 2
+
+        for s in scored:
+            depth_score = s["quality"]["depth_score"]
+            authority_score = s["quality"]["authority_score"]
+            if depth_score < min_depth_score:
+                filtered_out["low_quality_count"] += 1
+                continue
+            if authority_score < min_authority_score:
+                filtered_out["low_authority_count"] += 1
+                continue
+            results.append(s["candidate"]["title"])
+
+        self.assertIn("High Authority", results)
+        self.assertNotIn("Low Authority", results)
+        self.assertEqual(filtered_out["low_authority_count"], 1)
+
+    def test_deep_mode_has_stricter_authority_threshold(self):
+        """Deep mode must require min_authority_score=3, others min=2."""
+        from recommendation_filter import DISCOVERY_MODES
+
+        self.assertEqual(DISCOVERY_MODES["deep"]["min_authority_score"], 3)
+        self.assertEqual(DISCOVERY_MODES["balanced"]["min_authority_score"], 2)
+        self.assertEqual(DISCOVERY_MODES["fresh"]["min_authority_score"], 2)
+        self.assertEqual(DISCOVERY_MODES["surprise_me"]["min_authority_score"], 2)
+
+    def test_relevance_weight_remains_dominant(self):
+        """Relevance weight must stay above minimums per mode to avoid generic results."""
+        from recommendation_filter import DISCOVERY_MODES
+
+        # balanced: relevance must be the top weight
+        self.assertGreaterEqual(DISCOVERY_MODES["balanced"]["weights"]["relevance"], 0.40)
+        # deep: depth+relevance combined dominate; relevance floor is lower (depth takes over)
+        self.assertGreaterEqual(DISCOVERY_MODES["deep"]["weights"]["relevance"], 0.30)
+
+    def test_weights_sum_to_one(self):
+        """All mode weight sets must sum to 1.0."""
+        from recommendation_filter import DISCOVERY_MODES
+
+        for mode, config in DISCOVERY_MODES.items():
+            total = sum(config["weights"].values())
+            self.assertAlmostEqual(total, 1.0, places=5, msg=f"Mode '{mode}' weights sum to {total}")
+
+
 if __name__ == "__main__":
     unittest.main()

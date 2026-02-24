@@ -1383,6 +1383,7 @@ def _get_reading_recommendations(
     tavily_days: Optional[int] = None,
     topic: Optional[str] = None,
     problems: Optional[List[str]] = None,
+    topic_filter: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Internal: Get AI-powered reading recommendations based on KB content.
@@ -1410,6 +1411,9 @@ def _get_reading_recommendations(
         tavily_days: Override tavily search days (default: from mode config)
         topic: Optional topic override for query generation (deprecated, use problems)
         problems: Optional list of problem IDs to focus recommendations on
+        topic_filter: Optional list of topic keywords to restrict which problems
+                      are used (e.g. ["AI", "software"]). Only problems matching
+                      at least one keyword will generate search queries.
 
     Returns:
         Dictionary with recommendations and metadata.
@@ -1451,6 +1455,8 @@ def _get_reading_recommendations(
 
         # Build filters_applied for response
         filters_applied = {"include_seen": include_seen, "predictable": predictable}
+        if topic_filter:
+            filters_applied["topic_filter"] = topic_filter
 
         # Resolve hot sites domain filtering
         hot_sites_domains = []
@@ -1500,8 +1506,9 @@ def _get_reading_recommendations(
         # Story 3.9: Use mode-specific slot configuration
         slot_config = mode_config.get("slots", settings.get("slots", {}))
 
-        # Story 3.9: Use mode-specific min_depth_score
+        # Story 3.9: Use mode-specific min_depth_score and min_authority_score
         min_depth_score = mode_config.get("min_depth_score", 3)
+        min_authority_score = mode_config.get("min_authority_score", 2)
 
         novelty_bonus = diversity_settings.get(
             "novelty_bonus", recommendation_filter.DEFAULT_NOVELTY_BONUS
@@ -1540,6 +1547,7 @@ def _get_reading_recommendations(
             problems=problems,
             mode=mode,
             max_queries=8,
+            topic_filter=topic_filter,
         )
 
         if problem_queries:
@@ -1731,6 +1739,7 @@ def _get_reading_recommendations(
                     problem_evidence=problem_evidence,
                     mode=mode,
                     min_depth_score=min_depth_score,
+                    min_authority_score=min_authority_score,
                     max_per_domain=diversity_settings.get("max_per_domain", 2),
                     check_duplicates=True,
                     known_authors=known_authors,
@@ -1753,6 +1762,7 @@ def _get_reading_recommendations(
                 recommendations=all_results,
                 query_contexts=all_contexts,
                 min_depth_score=min_depth_score,  # Story 3.9: mode-specific
+                min_authority_score=min_authority_score,
                 max_per_domain=diversity_settings.get("max_per_domain", 2),
                 check_duplicates=True,
                 known_authors=known_authors,
@@ -2560,6 +2570,7 @@ def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
 
         # Execute the actual recommendations logic
         # Story 11.3: Added problems parameter
+        # Story 14: Added topic_filter for thematic restriction
         result = _get_reading_recommendations(
             days=params.get("days", 14),
             limit=params.get("limit", 10),
@@ -2571,6 +2582,7 @@ def execute_recommendations_job(job_id: str, params: Dict[str, Any]) -> None:
             tavily_days=params.get("tavily_days"),
             topic=params.get("topic"),
             problems=params.get("problems"),
+            topic_filter=params.get("topic_filter"),
         )
 
         # Check for error in result
@@ -2593,6 +2605,7 @@ def recommendations(
     topic: Optional[str] = None,
     problems: Optional[List[str]] = None,
     mode: str = "balanced",
+    topic_filter: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Async recommendations: start a new job or poll for results.
@@ -2600,12 +2613,14 @@ def recommendations(
     Story 7.1: Async Recommendations
     Story 7.2: Simplified interface with config-based defaults
     Story 11.3: Problem-driven recommendations with mode selection
+    Story 14: Topic filter for thematic restriction
 
     Usage:
     - recommendations() - Start job with defaults (all active problems, balanced mode)
     - recommendations(problems=["prob_123"]) - Focus on specific problems
     - recommendations(mode="deepen") - Go deeper on well-researched topics
     - recommendations(mode="explore") - Fill knowledge gaps
+    - recommendations(topic_filter=["AI", "software"]) - Only AI/software problems
     - recommendations(job_id="...") - Poll for results
 
     Args:
@@ -2617,13 +2632,18 @@ def recommendations(
               - "balanced" (default): Mix of deepen and explore
               - "deepen": Go deeper on topics with existing evidence
               - "explore": Fill knowledge gaps, find new perspectives
+        topic_filter: Optional list of topic keywords to restrict which problems
+                      generate search queries (e.g. ["AI", "software", "development"]).
+                      Only problems whose text/tags/category match at least one keyword
+                      will be used. This prevents irrelevant topics (e.g. training,
+                      family) from diluting recommendations.
 
     Returns:
         When starting (no job_id):
         - job_id: Unique job identifier
         - status: "pending"
         - poll_after_seconds: Suggested wait time before polling
-        - config_used: Settings including problems and mode
+        - config_used: Settings including problems, mode, and topic_filter
 
         When polling (with job_id):
         - job_id: Job identifier
@@ -2671,8 +2691,12 @@ def recommendations(
 
     logger.info(
         f"Starting recommendations job: mode={mode}, problems={problems}, "
-        f"hot_sites={hot_sites}, limit={limit}"
+        f"hot_sites={hot_sites}, limit={limit}, topic_filter={topic_filter}"
     )
+
+    # Story 14: Load topic_filter from config defaults if not provided
+    if topic_filter is None:
+        topic_filter = defaults.get("topic_filter")
 
     params = {
         "days": 14,  # KB lookback always 14 days
@@ -2683,6 +2707,7 @@ def recommendations(
         "tavily_days": tavily_days,
         "topic": topic,  # Deprecated, kept for backwards compatibility
         "problems": problems,  # Story 11.3: Problem filter
+        "topic_filter": topic_filter,  # Story 14: Thematic restriction
     }
 
     # Create job in Firestore

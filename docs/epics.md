@@ -258,6 +258,23 @@ See [epics/epic13.md](epics/epic13.md) for full details.
 
 ---
 
+## Epic 14: Evidence-Aware Query Generation 🚧
+
+**Goal:** Replace static template queries with LLM-generated, evidence-aware Tavily search queries that target actual knowledge gaps — instead of re-discovering what the user already knows.
+
+**Status:** In Progress
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 14.1 | **LLM Query Generation** - Replace `{problem} + template` with LLM call that takes problem + existing evidence titles → generates gap-targeted search queries | 🚧 In Progress |
+| 14.2 | **Evidence Summary for Prompt** - Extract compact evidence context (source titles, key concepts, contradictions) for the LLM prompt | 🚧 In Progress |
+
+**Key Design:** No new infrastructure, no new MCP tools. Pure improvement to `generate_problem_queries()` in `recommendation_problems.py`. Fallback to templates on LLM failure.
+
+See [epics/epic14.md](epics/epic14.md) for full details.
+
+---
+
 ## Backlog
 
 See [backlog.md](backlog.md) for future ideas:
