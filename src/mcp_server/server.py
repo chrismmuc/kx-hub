@@ -230,7 +230,8 @@ Usage:
 2. recommendations(job_id="...") → poll for results
 3. recommendations(topic="kubernetes") → one-time topic override
 4. recommendations(mode="deepen") → go deeper on well-researched topics
-5. recommendations(problems=["prob_123"]) → focus on specific problems""",
+5. recommendations(problems=["prob_123"]) → focus on specific problems
+6. recommendations(topic_filter=["AI", "software"]) → only AI/software problems""",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -252,6 +253,11 @@ Usage:
                     "enum": ["deepen", "explore", "balanced"],
                     "description": "Discovery mode: 'deepen' (go deeper), 'explore' (fill gaps), 'balanced' (mix)",
                     "default": "balanced",
+                },
+                "topic_filter": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Topic keywords to restrict which problems generate queries (e.g. ['AI', 'software']). Only problems matching at least one keyword are used. Default from config.",
                 },
             },
         },
@@ -380,13 +386,14 @@ def call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
     elif name == "get_contradictions":
         return tools.get_contradictions(limit=arguments.get("limit", 10))
-    # Story 7.1: Async Recommendations, Story 11.3: Problem-driven
+    # Story 7.1: Async Recommendations, Story 11.3: Problem-driven, Story 14: Topic filter
     elif name == "recommendations":
         return tools.recommendations(
             job_id=arguments.get("job_id"),
             topic=arguments.get("topic"),
             problems=arguments.get("problems"),
             mode=arguments.get("mode", "balanced"),
+            topic_filter=arguments.get("topic_filter"),
         )
     elif name == "recommendations_history":
         return tools.recommendations_history(
@@ -480,7 +487,8 @@ async def post_recommendations(request: Request):
             "job_id": "rec-abc123",  # Optional: poll existing job
             "mode": "balanced",      # Optional: discovery mode
             "problems": [...],       # Optional: specific problem IDs
-            "topic": "..."           # Optional: topic override (deprecated)
+            "topic": "...",          # Optional: topic override (deprecated)
+            "topic_filter": [...]    # Optional: topic keywords to restrict problems
         }
 
     Returns:
@@ -493,7 +501,8 @@ async def post_recommendations(request: Request):
             job_id=body.get("job_id"),
             mode=body.get("mode", "balanced"),
             problems=body.get("problems"),
-            topic=body.get("topic")
+            topic=body.get("topic"),
+            topic_filter=body.get("topic_filter"),
         )
 
         return result
