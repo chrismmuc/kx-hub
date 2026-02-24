@@ -277,25 +277,6 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 
 ---
 
-## Epic 15: Google Search for Recommendations
-
-**Goal:** Replace Tavily with Google Custom Search API for recommendation queries — dramatically better result quality (tier-1 sources vs. tier-3 blogs), zero additional cost (~32 queries/month, within 100/day free tier).
-
-**Status:** Planned
-
-| Task | Description | Status |
-|------|-------------|--------|
-| 1 | Create Programmable Search Engine in Google Console + store secrets | ⬚ |
-| 2 | `google_search_client.py` — Custom Search API with same interface as `tavily_client.py` | ⬚ |
-| 3 | Integrate into recommendation pipeline, Tavily as fallback | ⬚ |
-| 4 | Tests: mock HTTP responses, fallback behavior, result format | ⬚ |
-
-**Key Design:** Same interface as Tavily (`search()` + `search_batch()`), drop-in replacement. Tavily stays as fallback. `search_provider` field for observability. Vertex AI Search was evaluated but is site-restricted only — not usable for open web discovery.
-
-See [epics/epic15.md](epics/epic15.md) for full details.
-
----
-
 ## Backlog
 
 See [backlog.md](backlog.md) for future ideas:
