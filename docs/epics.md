@@ -277,6 +277,25 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 
 ---
 
+## Epic 15: Google Search for Recommendations
+
+**Goal:** Replace Tavily with Vertex AI Search for recommendation queries — dramatically better result quality (tier-1 sources vs. tier-3 blogs), zero additional cost at our scale (~32 queries/month, within free tier).
+
+**Status:** Planned
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 1 | `google_search_client.py` — Vertex AI Search with same interface as `tavily_client.py` | ⬚ |
+| 2 | Integrate into recommendation pipeline, Tavily as fallback | ⬚ |
+| 3 | Terraform — Vertex AI Search app + data store | ⬚ |
+| 4 | Tests: mock responses, fallback behavior, result format | ⬚ |
+
+**Key Design:** Same interface as Tavily (`search()` + `search_batch()`), drop-in replacement. Tavily stays as fallback. `search_provider` field for observability.
+
+See [epics/epic15.md](epics/epic15.md) for full details.
+
+---
+
 ## Backlog
 
 See [backlog.md](backlog.md) for future ideas:
