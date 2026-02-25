@@ -148,16 +148,14 @@ Auto-snippets are stored as regular `kb_items` with additional metadata:
 | Operation | Cost per Article | Notes |
 |-----------|-----------------|-------|
 | Reader API (fetch) | $0 | Included in Readwise subscription |
-| Stage 1: Extract candidates (Gemini Flash) | ~$0.01 | ~2K input + 1K output (N×2 snippets) |
-| Stage 1.5: KB semantic search (12 queries) | ~$0 | Firestore vector search (negligible) |
-| Stage 2: Judge selection (Gemini Flash) | ~$0.01 | ~1K input + 500 output |
+| Snippet extraction (Gemini Flash) | ~$0.01 | Single LLM call, open-ended count |
 | Readwise v2 API (write highlights) | $0 | Included in Readwise subscription |
-| Embeddings (6 snippets) | ~$0.0006 | Vertex AI embedding |
-| Knowledge Cards (6 snippets) | ~$0.024 | Gemini Flash per snippet |
+| Embeddings (~10 snippets avg) | ~$0.001 | Vertex AI embedding |
+| Knowledge Cards (~10 snippets) | ~$0.04 | Gemini Flash per snippet |
 | Firestore writes | ~$0.00001 | Negligible |
-| **Total per article** | **~$0.045** | |
+| **Total per article** | **~$0.05** | |
 
-At 10 articles/week: **~$1.80/month**
+At 10 articles/week: **~$2.00/month**
 
 ---
 
@@ -193,51 +191,25 @@ At 10 articles/week: **~$1.80/month**
 
 ---
 
-### Story 13.2: LLM Snippet Extraction (KB-Aware Two-Stage)
+### Story 13.2: LLM Snippet Extraction
 
-**Goal:** Extract key passages using KB-aware two-stage approach: generate candidates, enrich with KB context, judge selects best.
+**Goal:** Extract key passages from articles using a single LLM call with open-ended count and full-article coverage.
 
-**New file:** `src/knowledge_cards/snippet_extractor.py`
+**File:** `src/knowledge_cards/snippet_extractor.py`
 
-**Tasks:**
+**Status:** ✅ Done (simplified 2026-02-25)
 
-**Stage 1: Candidate Generation**
-1. [ ] Calculate dynamic snippet count: `N = max(2, min(15, word_count // 800))`
-2. [ ] Extract `N × 2` candidate snippets (e.g., 12 candidates for 6 final snippets)
-3. [ ] Candidate extraction prompt: "Extract {N×2} key passages (direct quotes, 2-4 sentences each)"
-4. [ ] `extract_candidate_snippets(full_text, title, author, count)` → list of candidates
-5. [ ] JSON schema validation for candidate output
+**History:** Originally implemented as a 3-stage pipeline (extract candidates → KB enrichment → LLM judge). Simplified to a single-stage approach after testing revealed:
+- Long articles (21K+ words) had poor coverage in later sections due to LLM attention degradation
+- The KB enrichment and judge stages added complexity without proportional value
+- Multiple references to the same topic are actually valuable (no need to deduplicate)
 
-**Stage 1.5: KB Context Enrichment**
-6. [ ] For each candidate: semantic search in `kb_items` (reuse existing `search_kb`)
-7. [ ] Calculate novelty score: `1.0 - similarity_score` (higher = more novel)
-8. [ ] Classify: Novel (<0.75 similarity), Related (0.75-0.90), Duplicate (>0.90)
-9. [ ] Check problem relevance: match against active Feynman problems
-10. [ ] `enrich_with_kb_context(candidates)` → candidates with metadata:
-    ```python
-    {
-      "text": "...",
-      "context": "...",
-      "position": "middle",
-      "kb_novelty": 0.85,          # 1.0 - similarity_score
-      "is_novel": True,             # novelty > 0.25
-      "similar_to": "title",        # Most similar kb_item (if any)
-      "problem_relevance": 0.92,    # Max score across active problems
-      "problem_id": "prob_123"      # Best matching problem
-    }
-    ```
-
-**Stage 2: KB-Aware Judge**
-11. [ ] Judge prompt: Select best N snippets based on:
-    - Quality: insight value, actionability (0-10)
-    - Diversity: coverage across article sections (0-10)
-    - Novelty: prefer novel over duplicate insights (0-10)
-    - Problem relevance: match to active problems (0-10)
-12. [ ] `judge_snippets(candidates, target_count=N)` → final N snippets
-13. [ ] Judge receives full KB context for each candidate
-14. [ ] Handle edge case: all candidates are duplicates (lower novelty threshold to 0.50)
-15. [ ] Reuse existing `src/llm/` abstraction for Gemini Flash calls
-16. [ ] Unit tests with sample articles + mocked KB search results
+**Current Design:**
+- Single LLM call with open-ended extraction (no fixed snippet count)
+- Enhanced prompt: "Distribute proportionally across the ENTIRE article"
+- LLM decides how many snippets based on article content and length
+- Retry logic (2 attempts) for JSON parse errors
+- Overflow threshold for extremely long articles (model context window limit)
 
 **Snippet Schema:**
 ```python
@@ -248,45 +220,18 @@ class ExtractedSnippet:
     position: str       # "intro" | "middle" | "conclusion"
 ```
 
-**Prompt Strategy:**
-- Instruct LLM to find the most insightful/actionable passages
-- **Important**: Passages must be direct quotes from the article (for Readwise highlight accuracy)
-- Require diversity (don't cluster snippets from one section)
-- Self-contained: each snippet understandable without the full article
-- **Dynamic snippet count** based on article length:
-  - Formula: `snippets = max(2, min(15, word_count // 800))`
-  - ~1,000 words (5 min read): 2 snippets
-  - ~2,000 words (10 min read): 3 snippets
-  - ~5,000 words (20 min read): 6 snippets
-  - ~8,000 words (30 min read): 10 snippets
-  - ~15,000+ words (1 hour read): 15 snippets (capped)
-
-**KB-Aware Two-Stage Extraction**:
-- **Stage 1**: Extract `N × 2` candidate snippets (e.g., 12 candidates for 6 final)
-- **Stage 1.5**: Enrich candidates with KB context (semantic search, novelty, problem relevance)
-- **Stage 2**: "Judge" model selects best N using quality + KB intelligence
-- Inspired by Snipd + kx-hub's problem-driven philosophy
-
-**Judge Selection Criteria**:
-```
-Score = (0.3 × quality) + (0.3 × novelty) + (0.3 × problem_relevance) + (0.1 × diversity)
-
-Where:
-- quality: LLM-assessed insight value (0-10)
-- novelty: 1.0 - kb_similarity (prefer novel insights)
-- problem_relevance: max match score to active Feynman problems
-- diversity: coverage across article sections
-```
+**Verified Results (21K-word article):**
+- 18 snippets extracted (vs 15 with old capped pipeline)
+- 18/18 verbatim quotes verified against source text
+- Coverage: 0.7% to 99.1% of article (all quintiles represented)
 
 **Acceptance Criteria:**
 - Extracts meaningful snippets from various article types
 - Snippets are direct quotes (verifiable against source text)
-- Prioritizes novel insights over KB duplicates
-- Aligns with active Feynman problems when available
+- Full article coverage (intro through conclusion)
 - Output validates against schema
 - Handles short and long articles gracefully
-- Handles edge case: all duplicates (fallback to quality-only)
-- Cost per article < $0.02 (Stage 1: $0.01, Stage 1.5: ~$0, Stage 2: $0.01)
+- Cost per article: ~$0.01 (single Gemini Flash call)
 
 ---
 
@@ -401,6 +346,6 @@ Where:
 | Story | Description | Status |
 |-------|-------------|--------|
 | 13.1 | Reader API Client (v3 - fetch documents) | ✅ Done |
-| 13.2 | KB-Aware Two-Stage Snippet Extraction | ✅ Done |
-| 13.3 | Write Back to Readwise (v2 API - create highlights) + Pipeline Integration | Planned |
-| 13.4 | Nightly Trigger & Tag Management | Planned |
+| 13.2 | Snippet Extraction (single-stage, open-ended count) | ✅ Done (simplified 2026-02-25) |
+| 13.3 | Write Back to Readwise (v2 API) + Pipeline Integration | ✅ Done |
+| 13.4 | Nightly Trigger & Tag Management | ✅ Done |

@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-02-25
 
 ---
 
@@ -243,16 +243,22 @@ See [epics/epic12.md](epics/epic12.md) for full implementation details.
 
 **Goal:** Automatically extract key passages from unread Reader documents tagged `kx-auto` via LLM, store as searchable kb_items.
 
-**Status:** Complete
+**Status:** Complete (simplified 2026-02-25)
 
 | Story | Description | Status |
 |-------|-------------|--------|
 | 13.1 | **Reader API Client** - Fetch docs tagged `kx-auto` with full text from Reader API v3 | ✅ Done |
-| 13.2 | **KB-Aware Two-Stage Snippet Extraction** - LLM extracts candidates, KB enrichment for novelty + problem relevance, LLM judge selects best | ✅ Done |
+| 13.2 | **Snippet Extraction** - Single-stage LLM extraction with open-ended count and full-article coverage | ✅ Done (simplified) |
 | 13.3 | **Write Back to Readwise & Pipeline Integration** - Readwise v2 highlight writer, direct snippet embedding to Firestore kb_items, full orchestration (extract → Readwise → embed → problem match) | ✅ Done |
 | 13.4 | **Nightly Trigger & Tag Management** - Cloud Scheduler, remove tag after processing | ✅ Done |
 
 **Key Design:** No new MCP tools or collections. Snippets are regular `kb_items` with `source_type: "auto-snippet"`, searchable via existing `search_kb`.
+
+**2026-02-25 Simplification:** Removed the 3-stage pipeline (extract candidates → KB enrichment → LLM judge) in favor of a single LLM call. The old pipeline missed later sections of long articles due to LLM attention degradation, and the KB enrichment/judge stages added complexity without proportional value. Changes:
+- Removed 15-snippet cap — LLM decides how many to extract based on article content
+- Removed Stage 1.5 (KB novelty scoring via embeddings) and Stage 2 (LLM judge with composite scoring)
+- Enhanced prompt with "distribute proportionally across the ENTIRE article" instruction
+- Net result: -929 lines of code, better coverage (verified: 18/18 verbatim quotes spanning 0.7%-99.1% of a 21K-word article)
 
 See [epics/epic13.md](epics/epic13.md) for full details.
 

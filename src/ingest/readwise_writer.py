@@ -63,6 +63,14 @@ except ImportError:
         from problem_matcher import match_chunks_to_problems
 
 try:
+    from src.knowledge_cards.generator import generate_knowledge_card
+except ImportError:
+    try:
+        from knowledge_cards.generator import generate_knowledge_card
+    except ImportError:
+        from generator import generate_knowledge_card
+
+try:
     from src.ingest.reader_client import ReaderDocument
 except ImportError:
     from reader_client import ReaderDocument
@@ -354,6 +362,7 @@ def process_document(
         "highlights_created": 0,
         "highlights_failed": 0,
         "chunks_embedded": 0,
+        "knowledge_cards_generated": 0,
         "problem_matches": 0,
     }
 
@@ -407,7 +416,36 @@ def process_document(
         logger.error(f"Embedding failed for '{reader_doc.title}': {e}")
         chunk_ids = []
 
-    # Step 4: Problem matching
+    # Step 4: Generate knowledge cards
+    if chunk_ids:
+        from google.cloud import firestore as _firestore
+
+        _db = _firestore.Client()
+        cards_generated = 0
+        for i, snippet in enumerate(snippets):
+            chunk_id = chunk_ids[i] if i < len(chunk_ids) else None
+            if not chunk_id:
+                continue
+            try:
+                card = generate_knowledge_card(
+                    chunk_id=chunk_id,
+                    title=reader_doc.title,
+                    author=reader_doc.author or "Unknown",
+                    content=snippet.text,
+                )
+                _db.collection("kb_items").document(chunk_id).set(
+                    {"knowledge_card": card.to_dict()}, merge=True
+                )
+                cards_generated += 1
+            except Exception as e:
+                logger.warning(f"Knowledge card failed for {chunk_id}: {e}")
+        result["knowledge_cards_generated"] = cards_generated
+        logger.info(
+            f"Generated {cards_generated}/{len(chunk_ids)} knowledge cards "
+            f"for '{reader_doc.title}'"
+        )
+
+    # Step 5: Problem matching
     if chunk_ids:
         try:
             match_result = match_chunks_to_problems(chunk_ids)
@@ -420,6 +458,7 @@ def process_document(
         f"{result['snippets_extracted']} snippets, "
         f"{result['highlights_created']} highlights, "
         f"{result['chunks_embedded']} embedded, "
+        f"{result['knowledge_cards_generated']} cards, "
         f"{result['problem_matches']} problem matches"
     )
 

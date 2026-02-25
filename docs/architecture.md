@@ -1,6 +1,6 @@
 # Architecture – Google Cloud + Vertex AI (MVP)
 
-**Last Updated:** 2026-01-01
+**Last Updated:** 2026-02-25
 
 ## Overview
 
@@ -16,11 +16,12 @@ src/
 ├── ingest/            # Readwise/Reader API ingestion (Cloud Function)
 ├── normalize/         # JSON → Markdown normalization (Cloud Function)
 ├── embed/             # Embedding generation + storage (Cloud Function)
-├── knowledge_cards/   # AI summaries via Gemini (Cloud Function)
+├── knowledge_cards/   # AI summaries + snippet extraction
 │   ├── main.py        # Cloud Function entry point
 │   ├── cli.py         # CLI for manual execution
 │   ├── generator.py   # Core generation logic
-│   └── schema.py      # KnowledgeCard dataclass
+│   ├── schema.py      # KnowledgeCard dataclass
+│   └── snippet_extractor.py  # Single-stage LLM snippet extraction
 ├── relationships/     # Cross-source relationship extraction (Cloud Function)
 │   ├── main.py        # Cloud Function entry point
 │   ├── cli.py         # CLI for full re-extraction

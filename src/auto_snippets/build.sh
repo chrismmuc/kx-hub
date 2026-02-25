@@ -23,8 +23,15 @@ cp "$SCRIPT_DIR/requirements.txt" "$BUILD_DIR/"
 cp "$SRC_DIR/ingest/reader_client.py" "$BUILD_DIR/"
 cp "$SRC_DIR/ingest/readwise_writer.py" "$BUILD_DIR/"
 cp "$SRC_DIR/knowledge_cards/snippet_extractor.py" "$BUILD_DIR/"
+cp "$SRC_DIR/knowledge_cards/generator.py" "$BUILD_DIR/"
+cp "$SRC_DIR/knowledge_cards/prompt_manager.py" "$BUILD_DIR/"
+cp "$SRC_DIR/knowledge_cards/schema.py" "$BUILD_DIR/"
 cp "$SRC_DIR/embed/main.py" "$BUILD_DIR/embed_main.py"  # Renamed to avoid conflict
 cp "$SRC_DIR/embed/problem_matcher.py" "$BUILD_DIR/"
+
+# Copy prompt template
+mkdir -p "$BUILD_DIR/prompts"
+cp "$SRC_DIR/knowledge_cards/prompts/card_generation_prompt.txt" "$BUILD_DIR/prompts/"
 
 # Copy llm module (preserves package structure)
 mkdir -p "$BUILD_DIR/llm"

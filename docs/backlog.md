@@ -2,7 +2,7 @@
 
 **Project:** kx-hub - Personal AI Knowledge Base (Google Cloud + Vertex AI)
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-02-25
 
 This document contains planned but not-yet-implemented stories and epics.
 
