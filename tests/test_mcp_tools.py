@@ -320,11 +320,11 @@ class TestSearchKBUnified(unittest.TestCase):
         # Assertions
         self.assertEqual(result["result_count"], 1)
 
-        # Verify date range query called
+        # Verify date range query called (overfetch: limit * 1.5)
         mock_query_date.assert_called_once_with(
             start_date="2025-01-01",
             end_date="2025-12-31",
-            limit=10,
+            limit=15,
             tags=None,
             author=None,
             source=None,
@@ -341,9 +341,9 @@ class TestSearchKBUnified(unittest.TestCase):
             query="test query", filters={"period": "last_week"}, limit=10
         )
 
-        # Verify period query called
+        # Verify period query called (overfetch: limit * 1.5)
         mock_query_time.assert_called_once_with(
-            period="last_week", limit=10, tags=None, author=None, source=None
+            period="last_week", limit=15, tags=None, author=None, source=None
         )
 
     @patch("mcp_server.tools.embeddings.generate_query_embedding")
@@ -417,11 +417,11 @@ class TestSearchKBUnified(unittest.TestCase):
             limit=10,
         )
 
-        # Verify all filters passed together (AND logic)
+        # Verify all filters passed together (AND logic, overfetch: limit * 1.5)
         mock_query_date.assert_called_once_with(
             start_date="2025-01-01",
             end_date="2025-12-31",
-            limit=10,
+            limit=15,
             tags=["productivity"],
             author="Test Author",
             source=None,
@@ -648,7 +648,7 @@ class TestSearchKBDeduplication(unittest.TestCase):
     def test_dedup_caps_per_source(
         self, mock_find_nearest, mock_generate_embedding, mock_get_connections
     ):
-        """Max 2 chunks per source, rest backfilled."""
+        """Max 2 chunks per source, duplicates dropped (no backfill)."""
         mock_generate_embedding.return_value = [0.1] * 768
         mock_get_connections.return_value = []
         # 4 chunks from src-a, 1 from src-b
@@ -663,9 +663,9 @@ class TestSearchKBDeduplication(unittest.TestCase):
         result = tools.search_kb(query="test", limit=5)
 
         ids = [r["chunk_id"] for r in result["results"]]
-        # First 2 from src-a kept, src-b promoted, then overflow backfilled
-        self.assertEqual(ids[:3], ["a1", "a2", "b1"])
-        self.assertEqual(result["result_count"], 5)
+        # First 2 from src-a kept, src-b included, duplicates dropped
+        self.assertEqual(ids, ["a1", "a2", "b1"])
+        self.assertEqual(result["result_count"], 3)
 
     @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
     @patch("mcp_server.tools.embeddings.generate_query_embedding")
@@ -693,7 +693,28 @@ class TestSearchKBDeduplication(unittest.TestCase):
     def test_dedup_respects_limit(
         self, mock_find_nearest, mock_generate_embedding, mock_get_connections
     ):
-        """Backfill doesn't exceed the requested limit."""
+        """Dedup stops at limit even with diverse sources."""
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_get_connections.return_value = []
+        mock_find_nearest.return_value = [
+            self._make_chunk("a1", "src-a"),
+            self._make_chunk("b1", "src-b"),
+            self._make_chunk("c1", "src-c"),
+            self._make_chunk("d1", "src-d"),
+            self._make_chunk("e1", "src-e"),
+        ]
+
+        result = tools.search_kb(query="test", limit=3)
+
+        self.assertEqual(result["result_count"], 3)
+
+    @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    def test_dedup_single_source_returns_max_two(
+        self, mock_find_nearest, mock_generate_embedding, mock_get_connections
+    ):
+        """All chunks from one source: returns only 2."""
         mock_generate_embedding.return_value = [0.1] * 768
         mock_get_connections.return_value = []
         mock_find_nearest.return_value = [
@@ -704,9 +725,9 @@ class TestSearchKBDeduplication(unittest.TestCase):
             self._make_chunk("a5", "src-a"),
         ]
 
-        result = tools.search_kb(query="test", limit=3)
+        result = tools.search_kb(query="test", limit=10)
 
-        self.assertEqual(result["result_count"], 3)
+        self.assertEqual(result["result_count"], 2)
 
 
 class TestGetChunk(unittest.TestCase):

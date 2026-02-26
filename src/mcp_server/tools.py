@@ -608,6 +608,8 @@ def search_kb(
             }
 
         # Route to appropriate backend — each branch sets `chunks` and optional `extra`
+        # Overfetch to give deduplication enough diverse sources to work with
+        fetch_limit = int(limit * 1.5)
         extra = {}
 
         # 1. Cluster-scoped search
@@ -626,7 +628,7 @@ def search_kb(
 
             query_embedding = embeddings.generate_query_embedding(query)
             chunks = firestore_client.search_within_cluster(
-                cluster_id=cluster_id, embedding_vector=query_embedding, limit=limit
+                cluster_id=cluster_id, embedding_vector=query_embedding, limit=fetch_limit
             )
             extra["cluster_name"] = cluster.get("name", f"Cluster {cluster_id}")
 
@@ -648,7 +650,7 @@ def search_kb(
             chunks = firestore_client.query_by_date_range(
                 start_date=start_date,
                 end_date=end_date,
-                limit=limit,
+                limit=fetch_limit,
                 tags=tags,
                 author=author,
                 source=source,
@@ -658,7 +660,7 @@ def search_kb(
         elif period:
             logger.info(f"Routing to relative time search (period: {period})")
             chunks = firestore_client.query_by_relative_time(
-                period=period, limit=limit, tags=tags, author=author, source=source
+                period=period, limit=fetch_limit, tags=tags, author=author, source=source
             )
 
         # 4. Default: Semantic search with optional metadata filters
@@ -667,16 +669,15 @@ def search_kb(
             query_embedding = embeddings.generate_query_embedding(query)
             chunks = firestore_client.find_nearest(
                 embedding_vector=query_embedding,
-                limit=limit,
+                limit=fetch_limit,
                 filters={"tags": tags, "author": author, "source": source}
                 if (tags or author or source)
                 else None,
             )
 
-        # Source deduplication: max 2 chunks per source, backfill with others
+        # Source deduplication: max 2 chunks per source, no backfill with duplicates
         max_per_source = 2
         deduped: List[Dict[str, Any]] = []
-        overflow: List[Dict[str, Any]] = []
         source_counts: Dict[str, int] = {}
         for chunk in chunks:
             sid = chunk.get("source_id") or chunk.get("source", "unknown")
@@ -684,13 +685,8 @@ def search_kb(
             if count < max_per_source:
                 deduped.append(chunk)
                 source_counts[sid] = count + 1
-            else:
-                overflow.append(chunk)
-        # Backfill to reach original limit
-        for chunk in overflow:
             if len(deduped) >= limit:
                 break
-            deduped.append(chunk)
         chunks = deduped
 
         # Format results
