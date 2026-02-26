@@ -82,23 +82,11 @@ See [epic4.md](epic4.md) for full details.
 
 ---
 
-## Epic 6: AI-Powered Blogging Engine 🚧
+## Epic 6: AI-Powered Blogging Engine ~~🚧~~ ✅ Superseded
 
 **Goal:** Transform KB content into polished blog articles with AI assistance.
 
-**Status:** In Progress
-
-| Story | Description | Status |
-|-------|-------------|--------|
-| 6.1 | ~~Blog Idea Extraction~~ | ⚠️ **Replaced by Epic 10** |
-| 6.2 | **Article Outline Generation** - Structure and outline creation | Planned |
-| 6.3 | **AI-Assisted Drafting** - Section expansion and refinement | Planned |
-| 6.4 | **Article Development Log** - Session tracking and history | Planned |
-| 6.5 | **Article Series** - Multi-part article management | Planned |
-| 6.6 | **Obsidian Export** - Markdown export with frontmatter | Planned |
-| 6.7 | **Claude Code Integration** - Direct editing support | Planned |
-
-See [epics/epic6.md](epics/epic6.md) for full details.
+**Status:** Superseded — replaced by `article-synthesis` Claude Code skill + Epic 10 (Feynman Problems). The skill handles the full workflow: problem analysis → evidence gathering → article drafting → Obsidian export.
 
 ---
 
@@ -288,6 +276,6 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 
 ## Backlog
 
-See [backlog.md](backlog.md) for future ideas:
-- Reader article integration
-- MCP tool consolidation
+See [backlog.md](backlog.md) for remaining ideas:
+- Story 3.6/Epic 5: Email digest for recommendations/knowledge
+- Story 3.9: Recommendation performance optimization (low priority)

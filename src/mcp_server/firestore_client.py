@@ -2148,6 +2148,8 @@ def get_source_relationships(source_id: str) -> List[Dict[str, Any]]:
     """
     Get all relationships for chunks belonging to a specific source.
 
+    Uses batch IN queries + batch chunk fetch to avoid N+1 reads.
+
     Args:
         source_id: The source ID to find relationships for
 
@@ -2169,57 +2171,87 @@ def get_source_relationships(source_id: str) -> List[Dict[str, Any]]:
         if not chunk_ids:
             return []
 
-        # Collect all relationships for this source's chunks
+        chunk_ids_set = set(chunk_ids)
+
+        # Batch fetch all relationships using IN queries (max 30 per query)
+        raw_rels = []
+        for i in range(0, len(chunk_ids), 30):
+            batch = chunk_ids[i : i + 30]
+
+            for doc in (
+                db.collection("relationships")
+                .where("source_chunk_id", "in", batch)
+                .stream()
+            ):
+                raw_rels.append(doc.to_dict())
+
+            for doc in (
+                db.collection("relationships")
+                .where("target_chunk_id", "in", batch)
+                .stream()
+            ):
+                data = doc.to_dict()
+                # Avoid duplicates when both source and target are in our chunk set
+                if data.get("source_chunk_id") not in chunk_ids_set:
+                    raw_rels.append(data)
+
+        if not raw_rels:
+            return []
+
+        # Collect all target chunk IDs we need to look up
+        target_chunk_ids = set()
+        for rel in raw_rels:
+            source_cid = rel.get("source_chunk_id")
+            target_cid = rel.get("target_chunk_id")
+            # The "other" chunk is the one not in our source
+            if source_cid in chunk_ids_set:
+                target_chunk_ids.add(target_cid)
+            else:
+                target_chunk_ids.add(source_cid)
+
+        # Batch fetch all target chunks in one read
+        target_chunks = get_chunks_batch(list(target_chunk_ids))
+
+        # Aggregate by target source
         relationships_by_target_source = {}
 
-        for chunk_id in chunk_ids:
-            chunk_rels = get_chunk_relationships(chunk_id)
-            for rel in chunk_rels:
-                # Get target chunk to find its source
-                target_chunk_id = rel["connected_chunk_id"]
-                target_chunk = get_chunk_by_id(target_chunk_id)
-                if not target_chunk:
-                    continue
+        for rel in raw_rels:
+            source_cid = rel.get("source_chunk_id")
+            target_cid = rel.get("target_chunk_id")
+            # Determine which chunk is the "other" one
+            other_cid = target_cid if source_cid in chunk_ids_set else source_cid
 
-                target_source_id = target_chunk.get("source_id", "unknown")
+            other_chunk = target_chunks.get(other_cid)
+            if not other_chunk:
+                continue
 
-                # Skip same-source relationships
-                if target_source_id == source_id:
-                    continue
+            target_source_id = other_chunk.get("source_id", "unknown")
 
-                # Aggregate by target source
-                if target_source_id not in relationships_by_target_source:
-                    relationships_by_target_source[target_source_id] = {
-                        "target_source_id": target_source_id,
-                        "target_title": target_chunk.get("title", "Unknown"),
-                        "target_author": target_chunk.get("author", "Unknown"),
-                        "relationship_types": {},
-                        "examples": [],
-                    }
+            # Skip same-source relationships
+            if target_source_id == source_id:
+                continue
 
-                # Count relationship types
-                rel_type = rel["type"]
-                if (
-                    rel_type
-                    not in relationships_by_target_source[target_source_id][
-                        "relationship_types"
-                    ]
-                ):
-                    relationships_by_target_source[target_source_id][
-                        "relationship_types"
-                    ][rel_type] = 0
-                relationships_by_target_source[target_source_id]["relationship_types"][
-                    rel_type
-                ] += 1
+            if target_source_id not in relationships_by_target_source:
+                relationships_by_target_source[target_source_id] = {
+                    "target_source_id": target_source_id,
+                    "target_title": other_chunk.get("title", "Unknown"),
+                    "target_author": other_chunk.get("author", "Unknown"),
+                    "relationship_types": {},
+                    "examples": [],
+                }
 
-                # Keep first few examples
-                if (
-                    len(relationships_by_target_source[target_source_id]["examples"])
-                    < 3
-                ):
-                    relationships_by_target_source[target_source_id]["examples"].append(
-                        {"type": rel_type, "explanation": rel["explanation"]}
-                    )
+            rel_type = rel.get("type", "unknown")
+            type_counts = relationships_by_target_source[target_source_id][
+                "relationship_types"
+            ]
+            type_counts[rel_type] = type_counts.get(rel_type, 0) + 1
+
+            if (
+                len(relationships_by_target_source[target_source_id]["examples"]) < 3
+            ):
+                relationships_by_target_source[target_source_id]["examples"].append(
+                    {"type": rel_type, "explanation": rel.get("explanation", "")}
+                )
 
         result = list(relationships_by_target_source.values())
         logger.info(
@@ -2333,6 +2365,8 @@ def find_contradictions(limit: int = 10) -> List[Dict[str, Any]]:
     """
     Find chunks with contradicting relationships.
 
+    Uses batch chunk fetch to avoid N+1 reads.
+
     Args:
         limit: Maximum contradictions to return
 
@@ -2342,24 +2376,40 @@ def find_contradictions(limit: int = 10) -> List[Dict[str, Any]]:
     try:
         db = get_firestore_client()
 
-        contradictions = []
         query = (
             db.collection("relationships")
             .where("type", "==", "contradicts")
             .limit(limit)
         )
 
+        # Collect all relationship docs first
+        rel_docs = []
+        chunk_ids_needed = set()
         for doc in query.stream():
             data = doc.to_dict()
+            rel_docs.append(data)
+            chunk_ids_needed.add(data.get("source_chunk_id"))
+            chunk_ids_needed.add(data.get("target_chunk_id"))
 
-            source_chunk = get_chunk_by_id(data.get("source_chunk_id"))
-            target_chunk = get_chunk_by_id(data.get("target_chunk_id"))
+        if not rel_docs:
+            return []
+
+        # Batch fetch all chunks in one read
+        chunks = get_chunks_batch(list(chunk_ids_needed))
+
+        # Build contradiction pairs
+        contradictions = []
+        for data in rel_docs:
+            source_cid = data.get("source_chunk_id")
+            target_cid = data.get("target_chunk_id")
+            source_chunk = chunks.get(source_cid)
+            target_chunk = chunks.get(target_cid)
 
             if source_chunk and target_chunk:
                 contradictions.append(
                     {
                         "chunk_a": {
-                            "chunk_id": data.get("source_chunk_id"),
+                            "chunk_id": source_cid,
                             "title": source_chunk.get("title"),
                             "author": source_chunk.get("author"),
                             "summary": source_chunk.get("knowledge_card", {}).get(
@@ -2367,7 +2417,7 @@ def find_contradictions(limit: int = 10) -> List[Dict[str, Any]]:
                             ),
                         },
                         "chunk_b": {
-                            "chunk_id": data.get("target_chunk_id"),
+                            "chunk_id": target_cid,
                             "title": target_chunk.get("title"),
                             "author": target_chunk.get("author"),
                             "summary": target_chunk.get("knowledge_card", {}).get(
