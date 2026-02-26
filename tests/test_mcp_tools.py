@@ -626,6 +626,89 @@ class TestSearchKBConnections(unittest.TestCase):
         self.assertNotIn("connections", result)
 
 
+class TestSearchKBDeduplication(unittest.TestCase):
+    """Test source deduplication in search_kb (max 2 per source)."""
+
+    def _make_chunk(self, chunk_id, source_id, title="Book"):
+        return {
+            "id": chunk_id,
+            "title": title,
+            "author": "Author",
+            "source": "kindle",
+            "source_id": source_id,
+            "tags": [],
+            "content": "Content",
+            "chunk_index": 0,
+            "total_chunks": 1,
+        }
+
+    @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    def test_dedup_caps_per_source(
+        self, mock_find_nearest, mock_generate_embedding, mock_get_connections
+    ):
+        """Max 2 chunks per source, rest backfilled."""
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_get_connections.return_value = []
+        # 4 chunks from src-a, 1 from src-b
+        mock_find_nearest.return_value = [
+            self._make_chunk("a1", "src-a", "Book A"),
+            self._make_chunk("a2", "src-a", "Book A"),
+            self._make_chunk("a3", "src-a", "Book A"),
+            self._make_chunk("a4", "src-a", "Book A"),
+            self._make_chunk("b1", "src-b", "Book B"),
+        ]
+
+        result = tools.search_kb(query="test", limit=5)
+
+        ids = [r["chunk_id"] for r in result["results"]]
+        # First 2 from src-a kept, src-b promoted, then overflow backfilled
+        self.assertEqual(ids[:3], ["a1", "a2", "b1"])
+        self.assertEqual(result["result_count"], 5)
+
+    @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    def test_dedup_diverse_sources_unchanged(
+        self, mock_find_nearest, mock_generate_embedding, mock_get_connections
+    ):
+        """Results with all different sources pass through unchanged."""
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_get_connections.return_value = []
+        mock_find_nearest.return_value = [
+            self._make_chunk("a1", "src-a", "Book A"),
+            self._make_chunk("b1", "src-b", "Book B"),
+            self._make_chunk("c1", "src-c", "Book C"),
+        ]
+
+        result = tools.search_kb(query="test", limit=3)
+
+        ids = [r["chunk_id"] for r in result["results"]]
+        self.assertEqual(ids, ["a1", "b1", "c1"])
+
+    @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    def test_dedup_respects_limit(
+        self, mock_find_nearest, mock_generate_embedding, mock_get_connections
+    ):
+        """Backfill doesn't exceed the requested limit."""
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_get_connections.return_value = []
+        mock_find_nearest.return_value = [
+            self._make_chunk("a1", "src-a"),
+            self._make_chunk("a2", "src-a"),
+            self._make_chunk("a3", "src-a"),
+            self._make_chunk("a4", "src-a"),
+            self._make_chunk("a5", "src-a"),
+        ]
+
+        result = tools.search_kb(query="test", limit=3)
+
+        self.assertEqual(result["result_count"], 3)
+
+
 class TestGetChunk(unittest.TestCase):
     """Test suite for get_chunk tool (Story 4.2)."""
 

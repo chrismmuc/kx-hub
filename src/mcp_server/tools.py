@@ -673,6 +673,26 @@ def search_kb(
                 else None,
             )
 
+        # Source deduplication: max 2 chunks per source, backfill with others
+        max_per_source = 2
+        deduped: List[Dict[str, Any]] = []
+        overflow: List[Dict[str, Any]] = []
+        source_counts: Dict[str, int] = {}
+        for chunk in chunks:
+            sid = chunk.get("source_id") or chunk.get("source", "unknown")
+            count = source_counts.get(sid, 0)
+            if count < max_per_source:
+                deduped.append(chunk)
+                source_counts[sid] = count + 1
+            else:
+                overflow.append(chunk)
+        # Backfill to reach original limit
+        for chunk in overflow:
+            if len(deduped) >= limit:
+                break
+            deduped.append(chunk)
+        chunks = deduped
+
         # Format results
         results = [
             _format_search_result(chunk, rank, include_content)
