@@ -2095,6 +2095,55 @@ def get_chunk_relationships(chunk_id: str) -> List[Dict[str, Any]]:
         return []
 
 
+def get_connections_for_chunks(chunk_ids: List[str]) -> List[Dict[str, Any]]:
+    """
+    Find cross-source relationships between a set of chunks (e.g. search results).
+
+    Uses 2 Firestore queries (source_chunk_id IN [...], target_chunk_id IN [...])
+    to efficiently find connections, then aggregates by source pair.
+
+    Args:
+        chunk_ids: List of chunk IDs to find connections between
+
+    Returns:
+        List of relationship dicts between source pairs found in the chunk set
+    """
+    if len(chunk_ids) < 2:
+        return []
+
+    try:
+        db = get_firestore_client()
+        raw_rels = []
+
+        # Firestore 'in' supports up to 30 values — chunk_ids from search are ≤ limit (10)
+        # Query both directions
+        for doc in (
+            db.collection("relationships")
+            .where("source_chunk_id", "in", chunk_ids)
+            .stream()
+        ):
+            raw_rels.append(doc.to_dict())
+
+        for doc in (
+            db.collection("relationships")
+            .where("target_chunk_id", "in", chunk_ids)
+            .stream()
+        ):
+            data = doc.to_dict()
+            # Avoid duplicates when both source and target are in chunk_ids
+            if data.get("source_chunk_id") not in chunk_ids:
+                raw_rels.append(data)
+
+        logger.info(
+            f"Found {len(raw_rels)} relationships between {len(chunk_ids)} chunks"
+        )
+        return raw_rels
+
+    except Exception as e:
+        logger.error(f"Failed to get connections for chunks: {e}")
+        return []
+
+
 def get_source_relationships(source_id: str) -> List[Dict[str, Any]]:
     """
     Get all relationships for chunks belonging to a specific source.

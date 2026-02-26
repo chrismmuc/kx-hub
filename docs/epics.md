@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-02-25
+**Last Updated:** 2026-02-26
 
 ---
 
@@ -69,11 +69,14 @@
 | 4.4 | **Cluster Deprecation** - Remove all cluster logic from MCP server, use sources instead | ✅ Done |
 | 4.5 | **Incremental Updates** - Auto-find relationships when new chunks ingested (pipeline integration) | ✅ Done |
 
+| 4.6 | **Source Connections in Search Results** - Surface cross-source relationships directly in `search_kb` results (2 efficient Firestore `IN` queries) | ✅ Done |
+
 **Key Changes:**
 - Clusters replaced by Sources (books, articles) as first-class entities
 - Explicit typed relationships (`extends`, `supports`, `contradicts`)
 - 18 MCP tools (down from 22, removed cluster tools)
 - Automatic relationship extraction in daily pipeline
+- Search results include `connections` section showing how sources relate
 
 See [epic4.md](epic4.md) for full details.
 

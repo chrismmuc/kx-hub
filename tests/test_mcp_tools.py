@@ -494,6 +494,138 @@ class TestSearchKBUnified(unittest.TestCase):
         )
 
 
+class TestSearchKBConnections(unittest.TestCase):
+    """Test cross-source connections in search_kb results."""
+
+    @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    def test_connections_included_for_multi_source_results(
+        self, mock_find_nearest, mock_generate_embedding, mock_get_connections
+    ):
+        """When results span multiple sources with relationships, connections are returned."""
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_find_nearest.return_value = [
+            {
+                "id": "chunk-a",
+                "title": "Book A",
+                "author": "Author A",
+                "source": "kindle",
+                "source_id": "src-a",
+                "tags": [],
+                "content": "Content A",
+                "chunk_index": 0,
+                "total_chunks": 1,
+            },
+            {
+                "id": "chunk-b",
+                "title": "Book B",
+                "author": "Author B",
+                "source": "kindle",
+                "source_id": "src-b",
+                "tags": [],
+                "content": "Content B",
+                "chunk_index": 0,
+                "total_chunks": 1,
+            },
+        ]
+        mock_get_connections.return_value = [
+            {
+                "source_chunk_id": "chunk-a",
+                "target_chunk_id": "chunk-b",
+                "type": "extends",
+                "confidence": 0.85,
+                "explanation": "Book B builds on ideas from Book A",
+            }
+        ]
+
+        result = tools.search_kb(query="test", limit=10)
+
+        self.assertIn("connections", result)
+        self.assertEqual(len(result["connections"]), 1)
+        conn = result["connections"][0]
+        self.assertEqual(conn["types"], {"extends": 1})
+        self.assertEqual(len(conn["sources"]), 2)
+        self.assertTrue(len(conn["examples"]) > 0)
+        mock_get_connections.assert_called_once_with(["chunk-a", "chunk-b"])
+
+    @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    def test_no_connections_for_single_source(
+        self, mock_find_nearest, mock_generate_embedding, mock_get_connections
+    ):
+        """When all results are from the same source, no connections section."""
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_find_nearest.return_value = [
+            {
+                "id": "chunk-1",
+                "title": "Book A",
+                "author": "Author A",
+                "source": "kindle",
+                "source_id": "src-a",
+                "tags": [],
+                "content": "Content",
+                "chunk_index": 0,
+                "total_chunks": 2,
+            },
+            {
+                "id": "chunk-2",
+                "title": "Book A",
+                "author": "Author A",
+                "source": "kindle",
+                "source_id": "src-a",
+                "tags": [],
+                "content": "Content 2",
+                "chunk_index": 1,
+                "total_chunks": 2,
+            },
+        ]
+
+        result = tools.search_kb(query="test", limit=10)
+
+        self.assertNotIn("connections", result)
+        mock_get_connections.assert_not_called()
+
+    @patch("mcp_server.tools.firestore_client.get_connections_for_chunks")
+    @patch("mcp_server.tools.embeddings.generate_query_embedding")
+    @patch("mcp_server.tools.firestore_client.find_nearest")
+    def test_no_connections_key_when_empty(
+        self, mock_find_nearest, mock_generate_embedding, mock_get_connections
+    ):
+        """When sources have no relationships, connections key is omitted."""
+        mock_generate_embedding.return_value = [0.1] * 768
+        mock_find_nearest.return_value = [
+            {
+                "id": "chunk-a",
+                "title": "Book A",
+                "author": "Author A",
+                "source": "kindle",
+                "source_id": "src-a",
+                "tags": [],
+                "content": "Content A",
+                "chunk_index": 0,
+                "total_chunks": 1,
+            },
+            {
+                "id": "chunk-b",
+                "title": "Book B",
+                "author": "Author B",
+                "source": "kindle",
+                "source_id": "src-b",
+                "tags": [],
+                "content": "Content B",
+                "chunk_index": 0,
+                "total_chunks": 1,
+            },
+        ]
+        mock_get_connections.return_value = []
+
+        result = tools.search_kb(query="test", limit=10)
+
+        self.assertNotIn("connections", result)
+
+
 class TestGetChunk(unittest.TestCase):
     """Test suite for get_chunk tool (Story 4.2)."""
 

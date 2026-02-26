@@ -49,6 +49,9 @@ Each result includes a detail_hint - use get_chunk(chunk_id) when you need:
 - Related chunks via vector similarity
 - Complete context for deep analysis
 
+When results span multiple sources, includes a `connections` section showing
+cross-source relationships (extends/supports/contradicts) between them.
+
 Two-step pattern: search_kb → scan cards → get_chunk for details.""",
         "inputSchema": {
             "type": "object",

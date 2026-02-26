@@ -173,6 +173,74 @@ def _format_search_result(
     return result
 
 
+def _build_source_connections(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build cross-source connection summaries from a list of search result chunks.
+
+    Extracts chunk_ids, queries relationships between them, and aggregates
+    by source pair so users see how sources in their results relate.
+
+    Returns empty list if < 2 unique sources in results.
+    """
+    # Build chunk_id → source mapping
+    chunk_source_map = {}
+    source_meta = {}  # source_id → {title, author}
+    for chunk in chunks:
+        cid = chunk.get("id") or chunk.get("chunk_id")
+        sid = chunk.get("source_id")
+        if not cid or not sid:
+            continue
+        chunk_source_map[cid] = sid
+        if sid not in source_meta:
+            source_meta[sid] = {
+                "title": chunk.get("title", "Unknown"),
+                "author": chunk.get("author", "Unknown"),
+            }
+
+    if len(source_meta) < 2:
+        return []
+
+    raw_rels = firestore_client.get_connections_for_chunks(list(chunk_source_map.keys()))
+    if not raw_rels:
+        return []
+
+    # Aggregate by source pair (order-independent key)
+    pair_map: Dict[tuple, Dict[str, Any]] = {}
+    for rel in raw_rels:
+        src_cid = rel.get("source_chunk_id")
+        tgt_cid = rel.get("target_chunk_id")
+        src_sid = chunk_source_map.get(src_cid)
+        tgt_sid = chunk_source_map.get(tgt_cid)
+
+        # If one side isn't in our results, look up its source_id from the rel
+        if not src_sid or not tgt_sid:
+            continue
+        # Skip same-source
+        if src_sid == tgt_sid:
+            continue
+
+        pair_key = tuple(sorted([src_sid, tgt_sid]))
+        if pair_key not in pair_map:
+            pair_map[pair_key] = {
+                "sources": [
+                    f"{source_meta[pair_key[0]]['title']} ({source_meta[pair_key[0]]['author']})",
+                    f"{source_meta[pair_key[1]]['title']} ({source_meta[pair_key[1]]['author']})",
+                ],
+                "types": {},
+                "examples": [],
+            }
+
+        entry = pair_map[pair_key]
+        rel_type = rel.get("type", "relates_to")
+        entry["types"][rel_type] = entry["types"].get(rel_type, 0) + 1
+        if len(entry["examples"]) < 2:
+            entry["examples"].append(
+                {"type": rel_type, "explanation": rel.get("explanation", "")}
+            )
+
+    return list(pair_map.values())
+
+
 def get_chunk(
     chunk_id: str, include_related: bool = True, related_limit: int = 5
 ) -> Dict[str, Any]:
@@ -539,13 +607,13 @@ def search_kb(
                 "results": [],
             }
 
-        # Route to appropriate backend
+        # Route to appropriate backend — each branch sets `chunks` and optional `extra`
+        extra = {}
 
         # 1. Cluster-scoped search
         if cluster_id:
             logger.info(f"Routing to cluster-scoped search (cluster: {cluster_id})")
 
-            # Verify cluster exists
             cluster = firestore_client.get_cluster_by_id(cluster_id)
             if not cluster:
                 return {
@@ -556,31 +624,14 @@ def search_kb(
                     "results": [],
                 }
 
-            # Generate embedding for query
             query_embedding = embeddings.generate_query_embedding(query)
-
-            # Execute cluster-scoped vector search
             chunks = firestore_client.search_within_cluster(
                 cluster_id=cluster_id, embedding_vector=query_embedding, limit=limit
             )
-
-            # Story 3.10: Use unified formatter with include_content
-            results = [
-                _format_search_result(chunk, rank, include_content)
-                for rank, chunk in enumerate(chunks, 1)
-            ]
-
-            return {
-                "query": query,
-                "filters": filters,
-                "result_count": len(results),
-                "limit": limit,
-                "cluster_name": cluster.get("name", f"Cluster {cluster_id}"),
-                "results": results,
-            }
+            extra["cluster_name"] = cluster.get("name", f"Cluster {cluster_id}")
 
         # 2. Date range filtering
-        if date_range:
+        elif date_range:
             logger.info("Routing to date range search")
             start_date = date_range.get("start")
             end_date = date_range.get("end")
@@ -594,7 +645,6 @@ def search_kb(
                     "results": [],
                 }
 
-            # Query with date range
             chunks = firestore_client.query_by_date_range(
                 start_date=start_date,
                 end_date=end_date,
@@ -604,71 +654,46 @@ def search_kb(
                 source=source,
             )
 
-            # Story 3.10: Use unified formatter with include_content
-            results = [
-                _format_search_result(chunk, rank, include_content)
-                for rank, chunk in enumerate(chunks, 1)
-            ]
-
-            return {
-                "query": query,
-                "filters": filters,
-                "result_count": len(results),
-                "limit": limit,
-                "results": results,
-            }
-
         # 3. Relative time filtering
-        if period:
+        elif period:
             logger.info(f"Routing to relative time search (period: {period})")
-
-            # Query with relative time
             chunks = firestore_client.query_by_relative_time(
                 period=period, limit=limit, tags=tags, author=author, source=source
             )
 
-            # Story 3.10: Use unified formatter with include_content
-            results = [
-                _format_search_result(chunk, rank, include_content)
-                for rank, chunk in enumerate(chunks, 1)
-            ]
-
-            return {
-                "query": query,
-                "filters": filters,
-                "result_count": len(results),
-                "limit": limit,
-                "results": results,
-            }
-
         # 4. Default: Semantic search with optional metadata filters
-        logger.info("Routing to semantic search with metadata filters")
+        else:
+            logger.info("Routing to semantic search with metadata filters")
+            query_embedding = embeddings.generate_query_embedding(query)
+            chunks = firestore_client.find_nearest(
+                embedding_vector=query_embedding,
+                limit=limit,
+                filters={"tags": tags, "author": author, "source": source}
+                if (tags or author or source)
+                else None,
+            )
 
-        # Generate embedding for query
-        query_embedding = embeddings.generate_query_embedding(query)
-
-        # Execute vector search with filters
-        chunks = firestore_client.find_nearest(
-            embedding_vector=query_embedding,
-            limit=limit,
-            filters={"tags": tags, "author": author, "source": source}
-            if (tags or author or source)
-            else None,
-        )
-
-        # Story 3.10: Use unified formatter with include_content
+        # Format results
         results = [
             _format_search_result(chunk, rank, include_content)
             for rank, chunk in enumerate(chunks, 1)
         ]
 
-        return {
+        # Build cross-source connections from result chunks
+        connections = _build_source_connections(chunks)
+
+        response = {
             "query": query,
             "filters": filters,
             "result_count": len(results),
             "limit": limit,
             "results": results,
+            **extra,
         }
+        if connections:
+            response["connections"] = connections
+
+        return response
 
     except Exception as e:
         logger.error(f"Unified search failed: {e}")

@@ -381,7 +381,8 @@ The daily pipeline processes new content through 4 sequential steps, orchestrate
 2. **Query Embedding**: Vertex AI `gemini-embedding-001`
 3. **Similarity Search**: Firestore native vector search `FIND_NEAREST`
 4. **Metadata Fetch**: Direct Firestore queries
-5. **Tool Response**: JSON results returned to Claude
+5. **Cross-Source Connections**: Query relationships between result chunks (2 Firestore `IN` queries), aggregate by source pair
+6. **Tool Response**: JSON results with knowledge cards + optional connections returned to Claude
    - Response time target: <1s (P95)
 
 ---
