@@ -3,7 +3,7 @@ Cloud Function Entry Point for Weekly Knowledge Summary (Epic 9).
 
 Story 9.1: Data pipeline — collects recent chunks, sources, relationships.
 Story 9.2: LLM generation — Gemini 3.1 Pro narrative synthesis.
-Story 9.3 will add Reader delivery.
+Story 9.3: Reader delivery — save to Readwise Reader inbox.
 """
 
 import logging
@@ -15,9 +15,11 @@ import functions_framework
 # Support both package imports (local/tests) and flat imports (Cloud Functions)
 try:
     from .data_pipeline import collect_summary_data
+    from .delivery import deliver_to_reader
     from .generator import generate_summary as generate_summary_text
 except ImportError:
     from data_pipeline import collect_summary_data
+    from delivery import deliver_to_reader
     from generator import generate_summary as generate_summary_text
 
 logging.basicConfig(level=logging.INFO)
@@ -25,8 +27,9 @@ logger = logging.getLogger(__name__)
 
 GCP_PROJECT = os.environ.get("GCP_PROJECT", "kx-hub")
 
-# Lazy-init Firestore
+# Lazy-init clients
 _firestore_client = None
+_secret_client = None
 
 
 def get_firestore_client():
@@ -38,6 +41,19 @@ def get_firestore_client():
     return _firestore_client
 
 
+def get_secret(secret_id: str) -> str:
+    """Fetch secret from Secret Manager."""
+    from google.cloud import secretmanager
+
+    global _secret_client
+    if _secret_client is None:
+        _secret_client = secretmanager.SecretManagerServiceClient()
+
+    name = f"projects/{GCP_PROJECT}/secrets/{secret_id}/versions/latest"
+    response = _secret_client.access_secret_version(request={"name": name})
+    return response.payload.data.decode("UTF-8")
+
+
 def load_config() -> dict:
     """Load config from Firestore config/summary_generator."""
     db = get_firestore_client()
@@ -47,11 +63,26 @@ def load_config() -> dict:
         "enabled": True,
         "days": 7,
         "limit": 100,
+        "deliver_to_reader": True,
     }
 
     if doc.exists:
         return {**defaults, **doc.to_dict()}
     return defaults
+
+
+def _extract_title(data: dict) -> str:
+    """Build title from pipeline data period."""
+    period = data["period"]
+    from datetime import datetime as dt
+
+    months_de = {
+        1: "Jan", 2: "Feb", 3: "Mär", 4: "Apr", 5: "Mai", 6: "Jun",
+        7: "Jul", 8: "Aug", 9: "Sep", 10: "Okt", 11: "Nov", 12: "Dez",
+    }
+    start = dt.strptime(period["start"], "%Y-%m-%d")
+    end = dt.strptime(period["end"], "%Y-%m-%d")
+    return f"Knowledge Summary: {start.day}. {months_de[start.month]} – {end.day}. {months_de[end.month]} {end.year}"
 
 
 @functions_framework.http
@@ -63,7 +94,8 @@ def generate_summary(request):
     {
         "days": 7,
         "limit": 100,
-        "model": "gemini-3.1-pro-preview"
+        "model": "gemini-3.1-pro-preview",
+        "dry_run": false
     }
     """
     try:
@@ -77,6 +109,7 @@ def generate_summary(request):
         days = request_json.get("days", config["days"])
         limit = request_json.get("limit", config["limit"])
         model = request_json.get("model")
+        dry_run = request_json.get("dry_run", False)
 
         logger.info(f"Collecting summary data: days={days}, limit={limit}")
 
@@ -94,9 +127,7 @@ def generate_summary(request):
         # Story 9.2: LLM generation
         result = generate_summary_text(data, model=model)
 
-        # Story 9.3 will add: deliver_to_reader(result["markdown"])
-
-        return {
+        response = {
             "status": "success",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": data["stats"],
@@ -106,6 +137,21 @@ def generate_summary(request):
             "output_tokens": result["output_tokens"],
             "markdown": result["markdown"],
         }
+
+        # Story 9.3: Reader delivery
+        if config.get("deliver_to_reader") and not dry_run:
+            api_key = get_secret("readwise-api-key")
+            title = _extract_title(data)
+            delivery = deliver_to_reader(
+                markdown=result["markdown"],
+                title=title,
+                api_key=api_key,
+            )
+            response["delivery"] = delivery
+        elif dry_run:
+            response["delivery"] = {"status": "dry_run"}
+
+        return response
 
     except Exception as e:
         logger.exception(f"Summary generation failed: {e}")

@@ -1,5 +1,5 @@
 """
-Tests for Summary Data Pipeline (Story 9.1) and Generator (Story 9.2).
+Tests for Summary Data Pipeline (9.1), Generator (9.2), and Delivery (9.3).
 """
 
 from datetime import datetime, timedelta, timezone
@@ -13,6 +13,12 @@ from src.summary.data_pipeline import (
     fetch_recent_chunks,
     fetch_relationships_for_sources,
     resolve_url,
+)
+from src.summary.delivery import (
+    _inline_format,
+    _markdown_to_html,
+    _slugify,
+    deliver_to_reader,
 )
 from src.summary.generator import (
     _build_frontmatter,
@@ -686,17 +692,193 @@ class TestGenerateSummary:
 
 
 # ---------------------------------------------------------------------------
+# Delivery: Markdown to HTML
+# ---------------------------------------------------------------------------
+
+class TestMarkdownToHtml:
+    def test_strips_frontmatter(self):
+        md = "---\ntags:\n  - test\n---\n\n# Title\n\nContent"
+        html = _markdown_to_html(md)
+        assert "tags" not in html
+        assert "<h1>Title</h1>" in html
+
+    def test_headers(self):
+        md = "## Section\n\n### Subsection"
+        html = _markdown_to_html(md)
+        assert "<h2>Section</h2>" in html
+        assert "<h3>Subsection</h3>" in html
+
+    def test_bold_and_links(self):
+        md = "**Bold text** and [Link](https://example.com)"
+        html = _markdown_to_html(md)
+        assert "<strong>Bold text</strong>" in html
+        assert '<a href="https://example.com">Link</a>' in html
+
+    def test_blockquote(self):
+        md = "> Some quote\n> continued"
+        html = _markdown_to_html(md)
+        assert "<blockquote>" in html
+        assert "Some quote" in html
+
+    def test_callout(self):
+        md = "> [!tip] Takeaway\n> Important insight"
+        html = _markdown_to_html(md)
+        assert "<strong>Takeaway</strong>" in html
+        assert "Important insight" in html
+
+    def test_list_items(self):
+        md = "- Item one\n- Item two"
+        html = _markdown_to_html(md)
+        assert "<li>Item one</li>" in html
+        assert "<li>Item two</li>" in html
+
+    def test_horizontal_rule(self):
+        md = "Text\n\n---\n\nMore text"
+        html = _markdown_to_html(md)
+        assert "<hr>" in html
+
+    def test_emoji_preserved(self):
+        md = "🎙️ Podcast title"
+        html = _markdown_to_html(md)
+        assert "🎙️" in html
+
+
+class TestInlineFormat:
+    def test_bold(self):
+        assert "<strong>test</strong>" in _inline_format("**test**")
+
+    def test_link(self):
+        result = _inline_format("[text](https://url.com)")
+        assert '<a href="https://url.com">text</a>' in result
+
+    def test_italic(self):
+        assert "<em>test</em>" in _inline_format("*test*")
+
+
+class TestSlugify:
+    def test_basic(self):
+        result = _slugify("Knowledge Summary: 23. Feb – 2. Mär 2026")
+        assert "knowledge-summary" in result
+        assert result.startswith("knowledge")
+
+    def test_empty(self):
+        assert _slugify("") == ""
+
+
+# ---------------------------------------------------------------------------
+# Delivery: deliver_to_reader
+# ---------------------------------------------------------------------------
+
+class TestDeliverToReader:
+    @patch("src.summary.delivery.requests.post")
+    def test_saves_to_reader(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": "reader-123", "url": "https://read.readwise.io/123"}
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        result = deliver_to_reader(
+            markdown="# Test\n\nContent",
+            title="Knowledge Summary: Test",
+            api_key="test-key",
+        )
+
+        assert result["status"] == "saved"
+        assert result["reader_id"] == "reader-123"
+
+        # Check API call
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs["json"]
+        assert payload["title"] == "Knowledge Summary: Test"
+        assert "ai-weekly-summary" in payload["tags"]
+        assert "kx-hub.internal" in payload["url"]
+        assert "<h1>Test</h1>" in payload["html"]
+
+    @patch("src.summary.delivery.requests.post")
+    def test_stable_url_for_dedup(self, mock_post):
+        """Same title produces same URL for Reader dedup."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": "1"}
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        deliver_to_reader("# Test", "Same Title", "key")
+        url1 = mock_post.call_args.kwargs["json"]["url"]
+
+        deliver_to_reader("# Test 2", "Same Title", "key")
+        url2 = mock_post.call_args.kwargs["json"]["url"]
+
+        assert url1 == url2
+
+    @patch("src.summary.delivery.requests.post")
+    def test_extra_tags(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": "1"}
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        deliver_to_reader("# Test", "Title", "key", tags=["extra-tag"])
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "ai-weekly-summary" in payload["tags"]
+        assert "extra-tag" in payload["tags"]
+
+    @patch("src.summary.delivery.requests.post")
+    def test_html_has_content(self, mock_post):
+        """HTML contains converted markdown content."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": "1"}
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        md = "---\ntags:\n  - test\n---\n\n# Title\n\n**Bold** and [link](https://x.com)"
+        deliver_to_reader(md, "Title", "key")
+
+        html = mock_post.call_args.kwargs["json"]["html"]
+        assert "<strong>Bold</strong>" in html
+        assert '<a href="https://x.com">link</a>' in html
+
+
+# ---------------------------------------------------------------------------
 # Cloud Function entry point
 # ---------------------------------------------------------------------------
 
 class TestMainHandler:
+    @patch("src.summary.main.deliver_to_reader")
+    @patch("src.summary.main.get_secret")
     @patch("src.summary.main.generate_summary_text")
     @patch("src.summary.main.load_config")
     @patch("src.summary.main.collect_summary_data")
-    def test_handler_success(self, mock_collect, mock_config, mock_gen):
+    def test_handler_success_with_delivery(self, mock_collect, mock_config, mock_gen, mock_secret, mock_deliver):
         from src.summary.main import generate_summary
 
-        mock_config.return_value = {"enabled": True, "days": 7, "limit": 100}
+        mock_config.return_value = {"enabled": True, "days": 7, "limit": 100, "deliver_to_reader": True}
+        mock_collect.return_value = _make_pipeline_data()
+        mock_gen.return_value = {
+            "markdown": "# Summary\n...",
+            "model": "gemini-3.1-pro-preview",
+            "input_tokens": 1000,
+            "output_tokens": 500,
+        }
+        mock_secret.return_value = "fake-api-key"
+        mock_deliver.return_value = {"status": "saved", "reader_id": "r-1", "reader_url": "https://read.readwise.io/1"}
+
+        mock_request = MagicMock()
+        mock_request.get_json.return_value = {}
+
+        response = generate_summary(mock_request)
+
+        assert response["status"] == "success"
+        assert response["delivery"]["status"] == "saved"
+        mock_deliver.assert_called_once()
+
+    @patch("src.summary.main.generate_summary_text")
+    @patch("src.summary.main.load_config")
+    @patch("src.summary.main.collect_summary_data")
+    def test_handler_dry_run_skips_delivery(self, mock_collect, mock_config, mock_gen):
+        from src.summary.main import generate_summary
+
+        mock_config.return_value = {"enabled": True, "days": 7, "limit": 100, "deliver_to_reader": True}
         mock_collect.return_value = _make_pipeline_data()
         mock_gen.return_value = {
             "markdown": "# Summary\n...",
@@ -706,13 +888,12 @@ class TestMainHandler:
         }
 
         mock_request = MagicMock()
-        mock_request.get_json.return_value = {}
+        mock_request.get_json.return_value = {"dry_run": True}
 
         response = generate_summary(mock_request)
 
         assert response["status"] == "success"
-        assert response["markdown"] == "# Summary\n..."
-        assert response["model"] == "gemini-3.1-pro-preview"
+        assert response["delivery"]["status"] == "dry_run"
 
     @patch("src.summary.main.load_config")
     def test_handler_disabled(self, mock_config):
@@ -756,7 +937,6 @@ class TestMainHandler:
 
         mock_config.return_value = {"enabled": True, "days": 7, "limit": 100}
         mock_collect.return_value = _make_pipeline_data(sources=[])
-        # No sources → won't call generate_summary_text
 
         mock_request = MagicMock()
         mock_request.get_json.return_value = {"days": 14, "limit": 50}
@@ -794,7 +974,7 @@ class TestMainHandler:
         }
 
         mock_request = MagicMock()
-        mock_request.get_json.return_value = {"model": "gemini-2.5-flash"}
+        mock_request.get_json.return_value = {"model": "gemini-2.5-flash", "dry_run": True}
 
         generate_summary(mock_request)
 
