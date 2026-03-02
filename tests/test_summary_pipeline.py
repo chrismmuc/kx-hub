@@ -1,5 +1,5 @@
 """
-Tests for Summary Data Pipeline (Story 9.1).
+Tests for Summary Data Pipeline (Story 9.1) and Generator (Story 9.2).
 """
 
 from datetime import datetime, timedelta, timezone
@@ -13,6 +13,12 @@ from src.summary.data_pipeline import (
     fetch_recent_chunks,
     fetch_relationships_for_sources,
     resolve_url,
+)
+from src.summary.generator import (
+    _build_frontmatter,
+    _build_header,
+    _build_prompt,
+    generate_summary as generate_summary_text,
 )
 
 
@@ -58,6 +64,73 @@ def _make_relationship(src_cid, tgt_cid, rel_type="extends", explanation="Relate
         "type": rel_type,
         "explanation": explanation,
     }
+
+
+def _make_pipeline_data(**overrides):
+    """Build a minimal pipeline data dict for generator tests."""
+    defaults = {
+        "period": {"start": "2026-02-23", "end": "2026-03-02", "days": 7},
+        "stats": {
+            "total_chunks": 3,
+            "total_sources": 2,
+            "total_highlights": 3,
+            "total_relationships": 1,
+            "source_types": {"article": 1, "podcast": 1},
+        },
+        "sources": [
+            {
+                "source_id": "src-1",
+                "title": "AI Trends",
+                "author": "Alice",
+                "type": "article",
+                "readwise_url": "https://readwise.io/bookreview/111",
+                "source_url": "https://example.com/ai",
+                "chunks": [
+                    {
+                        "chunk_id": "c1",
+                        "knowledge_card": {
+                            "summary": "AI is evolving fast",
+                            "takeaways": ["Agents are key"],
+                        },
+                        "highlight_url": "",
+                    }
+                ],
+            },
+            {
+                "source_id": "src-2",
+                "title": "Tech Podcast",
+                "author": "Bob",
+                "type": "podcast",
+                "readwise_url": "",
+                "source_url": "https://share.snipd.com/ep/123",
+                "chunks": [
+                    {
+                        "chunk_id": "c2",
+                        "knowledge_card": {
+                            "summary": "Podcast about tech trends",
+                            "takeaways": ["Listen more"],
+                        },
+                        "highlight_url": "",
+                    }
+                ],
+            },
+        ],
+        "relationships": [
+            {
+                "from_source_id": "src-1",
+                "from_title": "AI Trends",
+                "target_source_id": "src-99",
+                "target_title": "Old AI Paper",
+                "target_author": "Prof X",
+                "target_readwise_url": "https://readwise.io/bookreview/999",
+                "target_source_url": "",
+                "relationship_type": "extends",
+                "explanation": "Builds on earlier work",
+            }
+        ],
+    }
+    defaults.update(overrides)
+    return defaults
 
 
 # ---------------------------------------------------------------------------
@@ -437,27 +510,199 @@ class TestFetchRelationships:
 
 
 # ---------------------------------------------------------------------------
+# Generator: Frontmatter
+# ---------------------------------------------------------------------------
+
+class TestBuildFrontmatter:
+    def test_contains_tags(self):
+        data = _make_pipeline_data()
+        fm = _build_frontmatter(data)
+        assert "ai-weekly-summary" in fm
+        assert fm.startswith("---")
+        assert fm.endswith("---")
+
+    def test_stats_in_frontmatter(self):
+        data = _make_pipeline_data()
+        fm = _build_frontmatter(data)
+        assert "sources: 2" in fm
+        assert "highlights: 3" in fm
+        assert "connections: 1" in fm
+
+    def test_period_in_frontmatter(self):
+        data = _make_pipeline_data()
+        fm = _build_frontmatter(data)
+        assert "2026-02-23 to 2026-03-02" in fm
+
+
+# ---------------------------------------------------------------------------
+# Generator: Header
+# ---------------------------------------------------------------------------
+
+class TestBuildHeader:
+    def test_h1_with_date_range(self):
+        data = _make_pipeline_data()
+        header = _build_header(data)
+        assert header.startswith("# Knowledge Summary:")
+        assert "23. Feb" in header
+        assert "2. Mär 2026" in header
+
+    def test_highlight_count(self):
+        data = _make_pipeline_data()
+        header = _build_header(data)
+        assert "**3 neue Highlights**" in header
+
+    def test_source_types(self):
+        data = _make_pipeline_data()
+        header = _build_header(data)
+        assert "1 Artikel" in header
+        assert "1 🎙️ Podcast" in header
+
+    def test_connections_count(self):
+        data = _make_pipeline_data()
+        header = _build_header(data)
+        assert "**1 Verbindungen**" in header
+
+    def test_no_connections_when_zero(self):
+        data = _make_pipeline_data()
+        data["stats"]["total_relationships"] = 0
+        header = _build_header(data)
+        assert "Verbindungen" not in header
+
+
+# ---------------------------------------------------------------------------
+# Generator: Prompt building
+# ---------------------------------------------------------------------------
+
+class TestBuildPrompt:
+    def test_contains_sources(self):
+        data = _make_pipeline_data()
+        prompt = _build_prompt(data)
+        assert "AI Trends" in prompt
+        assert "Alice" in prompt
+
+    def test_contains_podcast_icon(self):
+        data = _make_pipeline_data()
+        prompt = _build_prompt(data)
+        assert "🎙️ Tech Podcast" in prompt
+
+    def test_contains_relationships(self):
+        data = _make_pipeline_data()
+        prompt = _build_prompt(data)
+        assert "extends" in prompt
+        assert "Old AI Paper" in prompt
+
+    def test_contains_knowledge_cards(self):
+        data = _make_pipeline_data()
+        prompt = _build_prompt(data)
+        assert "AI is evolving fast" in prompt
+        assert "Agents are key" in prompt
+
+    def test_contains_urls(self):
+        data = _make_pipeline_data()
+        prompt = _build_prompt(data)
+        assert "https://readwise.io/bookreview/111" in prompt
+        assert "https://share.snipd.com/ep/123" in prompt
+
+    def test_instructions_at_end(self):
+        data = _make_pipeline_data()
+        prompt = _build_prompt(data)
+        assert "ANWEISUNGEN" in prompt
+        assert "OHNE Frontmatter" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Generator: generate_summary
+# ---------------------------------------------------------------------------
+
+class TestGenerateSummary:
+    @patch("src.summary.generator._GenerationConfig")
+    @patch("src.summary.generator._get_client")
+    def test_generates_full_markdown(self, mock_get_client, mock_gen_config):
+        mock_response = MagicMock()
+        mock_response.text = "## AI Trends\n\nSome narrative text.\n"
+        mock_response.input_tokens = 1000
+        mock_response.output_tokens = 500
+
+        mock_client = MagicMock()
+        mock_client.generate.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        data = _make_pipeline_data()
+        result = generate_summary_text(data)
+
+        assert result["model"] == "gemini-3.1-pro-preview"
+        assert result["input_tokens"] == 1000
+        assert result["output_tokens"] == 500
+
+        md = result["markdown"]
+        assert md.startswith("---")
+        assert "ai-weekly-summary" in md
+        assert "# Knowledge Summary:" in md
+        assert "## AI Trends" in md
+
+    def test_empty_sources_returns_empty(self):
+        data = _make_pipeline_data(sources=[])
+        result = generate_summary_text(data)
+
+        assert result["markdown"] == ""
+        assert result["input_tokens"] == 0
+
+    @patch("src.summary.generator._GenerationConfig")
+    @patch("src.summary.generator._get_client")
+    def test_model_override(self, mock_get_client, mock_gen_config):
+        mock_response = MagicMock()
+        mock_response.text = "## Test\n"
+        mock_response.input_tokens = 100
+        mock_response.output_tokens = 50
+
+        mock_client = MagicMock()
+        mock_client.generate.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        data = _make_pipeline_data()
+        result = generate_summary_text(data, model="gemini-2.5-flash")
+
+        assert result["model"] == "gemini-2.5-flash"
+        mock_get_client.assert_called_once_with("gemini-2.5-flash")
+
+    @patch("src.summary.generator._GenerationConfig")
+    @patch("src.summary.generator._get_client")
+    def test_system_prompt_passed(self, mock_get_client, mock_gen_config):
+        mock_response = MagicMock()
+        mock_response.text = "## Output\n"
+        mock_response.input_tokens = 100
+        mock_response.output_tokens = 50
+
+        mock_client = MagicMock()
+        mock_client.generate.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        data = _make_pipeline_data()
+        generate_summary_text(data)
+
+        call_args = mock_client.generate.call_args
+        assert call_args.kwargs["system_prompt"] is not None
+        assert "Deutsch" in call_args.kwargs["system_prompt"]
+
+
+# ---------------------------------------------------------------------------
 # Cloud Function entry point
 # ---------------------------------------------------------------------------
 
 class TestMainHandler:
+    @patch("src.summary.main.generate_summary_text")
     @patch("src.summary.main.load_config")
     @patch("src.summary.main.collect_summary_data")
-    def test_handler_success(self, mock_collect, mock_config):
+    def test_handler_success(self, mock_collect, mock_config, mock_gen):
         from src.summary.main import generate_summary
 
         mock_config.return_value = {"enabled": True, "days": 7, "limit": 100}
-        mock_collect.return_value = {
-            "period": {"start": "2026-02-23", "end": "2026-03-02", "days": 7},
-            "stats": {
-                "total_chunks": 5,
-                "total_sources": 2,
-                "total_highlights": 5,
-                "total_relationships": 1,
-                "source_types": {"article": 2},
-            },
-            "sources": [],
-            "relationships": [],
+        mock_collect.return_value = _make_pipeline_data()
+        mock_gen.return_value = {
+            "markdown": "# Summary\n...",
+            "model": "gemini-3.1-pro-preview",
+            "input_tokens": 1000,
+            "output_tokens": 500,
         }
 
         mock_request = MagicMock()
@@ -466,7 +711,8 @@ class TestMainHandler:
         response = generate_summary(mock_request)
 
         assert response["status"] == "success"
-        assert response["stats"]["total_chunks"] == 5
+        assert response["markdown"] == "# Summary\n..."
+        assert response["model"] == "gemini-3.1-pro-preview"
 
     @patch("src.summary.main.load_config")
     def test_handler_disabled(self, mock_config):
@@ -482,20 +728,35 @@ class TestMainHandler:
 
     @patch("src.summary.main.load_config")
     @patch("src.summary.main.collect_summary_data")
-    def test_handler_request_overrides(self, mock_collect, mock_config):
+    def test_handler_no_sources(self, mock_collect, mock_config):
         from src.summary.main import generate_summary
 
         mock_config.return_value = {"enabled": True, "days": 7, "limit": 100}
-        mock_collect.return_value = {
-            "period": {"start": "2026-02-16", "end": "2026-03-02", "days": 14},
-            "stats": {
+        mock_collect.return_value = _make_pipeline_data(
+            sources=[],
+            stats={
                 "total_chunks": 0, "total_sources": 0,
                 "total_highlights": 0, "total_relationships": 0,
                 "source_types": {},
             },
-            "sources": [],
-            "relationships": [],
-        }
+        )
+
+        mock_request = MagicMock()
+        mock_request.get_json.return_value = {}
+
+        response = generate_summary(mock_request)
+        assert response["status"] == "success"
+        assert "No sources" in response["message"]
+
+    @patch("src.summary.main.generate_summary_text")
+    @patch("src.summary.main.load_config")
+    @patch("src.summary.main.collect_summary_data")
+    def test_handler_request_overrides(self, mock_collect, mock_config, mock_gen):
+        from src.summary.main import generate_summary
+
+        mock_config.return_value = {"enabled": True, "days": 7, "limit": 100}
+        mock_collect.return_value = _make_pipeline_data(sources=[])
+        # No sources → won't call generate_summary_text
 
         mock_request = MagicMock()
         mock_request.get_json.return_value = {"days": 14, "limit": 50}
@@ -518,3 +779,24 @@ class TestMainHandler:
         response = generate_summary(mock_request)
         assert response["status"] == "error"
         assert "Firestore down" in response["error"]
+
+    @patch("src.summary.main.generate_summary_text")
+    @patch("src.summary.main.load_config")
+    @patch("src.summary.main.collect_summary_data")
+    def test_handler_passes_model_override(self, mock_collect, mock_config, mock_gen):
+        from src.summary.main import generate_summary
+
+        mock_config.return_value = {"enabled": True, "days": 7, "limit": 100}
+        mock_collect.return_value = _make_pipeline_data()
+        mock_gen.return_value = {
+            "markdown": "# Test", "model": "gemini-2.5-flash",
+            "input_tokens": 0, "output_tokens": 0,
+        }
+
+        mock_request = MagicMock()
+        mock_request.get_json.return_value = {"model": "gemini-2.5-flash"}
+
+        generate_summary(mock_request)
+
+        mock_gen.assert_called_once()
+        assert mock_gen.call_args.kwargs["model"] == "gemini-2.5-flash"

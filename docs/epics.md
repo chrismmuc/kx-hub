@@ -112,14 +112,14 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 
 **Goal:** Automatische wöchentliche Zusammenfassung neuer KB-Inhalte als narrative Synthese mit Cross-Source-Verbindungen. Output: Obsidian Markdown (via Headless Sync) und/oder Readwise Reader.
 
-**Status:** Planned
+**Status:** In Progress
 
 **Model:** Gemini 3.1 Pro (Qualität > Preis, im Google-Stack, ~$0.06/Summary, ~$0.25/Monat)
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 9.1 | **Summary Data Pipeline** - Collect chunks, sources, relationships with URL resolution | Planned |
-| 9.2 | **LLM Summary Generation** - Gemini 3.1 Pro narrative synthesis in German, thematic grouping | Planned |
+| 9.1 | **Summary Data Pipeline** - Collect chunks, sources, relationships with URL resolution | ✅ Done |
+| 9.2 | **LLM Summary Generation** - Gemini 3.1 Pro narrative synthesis in German, thematic grouping | ✅ Done |
 | 9.3 | **Reader Delivery** - Save summary to Readwise Reader with `ai-weekly-summary` tag | Planned |
 | 9.4 | **Obsidian Delivery** - Headless Sync via Cloud Run + GCS FUSE + Obsidian Sync | Planned |
 | 9.5 | **get_recent mit Connections** - Optional: MCP tool enhancement for interactive use | Optional |

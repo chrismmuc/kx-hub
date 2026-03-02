@@ -2,11 +2,10 @@
 Cloud Function Entry Point for Weekly Knowledge Summary (Epic 9).
 
 Story 9.1: Data pipeline — collects recent chunks, sources, relationships.
-Story 9.2 will add LLM generation.
+Story 9.2: LLM generation — Gemini 3.1 Pro narrative synthesis.
 Story 9.3 will add Reader delivery.
 """
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -16,8 +15,10 @@ import functions_framework
 # Support both package imports (local/tests) and flat imports (Cloud Functions)
 try:
     from .data_pipeline import collect_summary_data
+    from .generator import generate_summary as generate_summary_text
 except ImportError:
     from data_pipeline import collect_summary_data
+    from generator import generate_summary as generate_summary_text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -61,7 +62,8 @@ def generate_summary(request):
     Request body (all optional):
     {
         "days": 7,
-        "limit": 100
+        "limit": 100,
+        "model": "gemini-3.1-pro-preview"
     }
     """
     try:
@@ -74,21 +76,35 @@ def generate_summary(request):
 
         days = request_json.get("days", config["days"])
         limit = request_json.get("limit", config["limit"])
+        model = request_json.get("model")
 
         logger.info(f"Collecting summary data: days={days}, limit={limit}")
 
         # Story 9.1: Data collection
         data = collect_summary_data(days=days, limit=limit)
 
-        # Story 9.2 will add: summary_text = generate_summary_text(data)
-        # Story 9.3 will add: deliver_to_reader(summary_text)
+        if not data.get("sources"):
+            return {
+                "status": "success",
+                "message": "No sources found for period",
+                "stats": data["stats"],
+                "period": data["period"],
+            }
+
+        # Story 9.2: LLM generation
+        result = generate_summary_text(data, model=model)
+
+        # Story 9.3 will add: deliver_to_reader(result["markdown"])
 
         return {
             "status": "success",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": data["stats"],
             "period": data["period"],
-            "data": data,
+            "model": result["model"],
+            "input_tokens": result["input_tokens"],
+            "output_tokens": result["output_tokens"],
+            "markdown": result["markdown"],
         }
 
     except Exception as e:

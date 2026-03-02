@@ -38,7 +38,7 @@ Alle Modelle via Vertex AI (registriert in `src/llm/config.py`):
 - ~$0.25/Monat bei wöchentlicher Ausführung
 - Region: Global (bereits konfiguriert für Preview-Modelle)
 
-**Fallback-Kette:** `gemini-3.1-pro-preview` → `gemini-2.5-flash`
+**Kein Fallback** — wenn Vertex AI down ist, hilft ein anderes Modell nicht.
 
 ---
 
@@ -190,7 +190,7 @@ connections: 12
 4. [ ] Frontmatter automatisch generieren (date, period, counts)
 5. [ ] Podcast/Buch-Icons im Text korrekt setzen
 6. [ ] Validierung: Alle Source-Links sind externe URLs (keine Wikilinks)
-7. [ ] Fallback auf `gemini-2.5-flash` bei API-Fehler
+7. [x] ~~Fallback auf `gemini-2.5-flash` bei API-Fehler~~ — Removed: unlikely that 2.5 works when 3.1 doesn't
 
 **Acceptance Criteria:**
 - [ ] Thematische Gruppierung (nicht 1:1 pro Source)
