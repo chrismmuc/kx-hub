@@ -810,6 +810,15 @@ def embed(request):
         except Exception as e:
             logger.warning(f"Problem matching failed (non-fatal): {e}")
 
+    # Include chunk_ids in response for downstream relationship extraction
+    if stats["processed"] > 0:
+        processed_ids = []
+        for snapshot in candidate_snapshots:
+            doc = snapshot.to_dict() or {}
+            if doc.get("embedding_status") == "complete":
+                processed_ids.append(doc.get("id", snapshot.id))
+        stats["chunk_ids"] = processed_ids
+
     logger.info(f"Embed processing complete: {stats}")
     return stats, 200
 
