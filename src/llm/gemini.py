@@ -21,7 +21,7 @@ MAX_BACKOFF = 30.0
 # Models that require global endpoint (preview models)
 GLOBAL_ONLY_MODELS = [
     "gemini-3-flash-preview",
-    "gemini-3-pro-preview",
+    "gemini-3.1-pro-preview",
 ]
 
 

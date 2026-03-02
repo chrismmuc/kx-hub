@@ -60,5 +60,11 @@ Thumbs.db
 *.log
 .env
 
+# Build artifacts
+src/auto_snippets/build/
+
+# Local scripts (not committed)
+scripts/apps-script/
+
 # Input documentation (reference only, not committed)
 input/
