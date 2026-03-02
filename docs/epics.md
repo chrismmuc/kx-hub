@@ -108,18 +108,32 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 
 ---
 
-## Epic 9: Recent Knowledge Connections & Daily Digest
+## Epic 9: Weekly Knowledge Summary
 
-**Goal:** Zeige bei neuen Chunks automatisch die Verbindungen zu existierenden Sources. Täglicher Email-Digest mit neuen Learnings und deren Cross-Source Relationships.
+**Goal:** Automatische wöchentliche Zusammenfassung neuer KB-Inhalte als narrative Synthese mit Cross-Source-Verbindungen. Output: Obsidian Markdown (via Headless Sync) und/oder Readwise Reader.
 
 **Status:** Planned
 
+**Model:** Gemini 3.1 Pro (Qualität > Preis, im Google-Stack, ~$0.06/Summary, ~$0.25/Monat)
+
 | Story | Description | Status |
 |-------|-------------|--------|
-| 9.1 | **Extend get_recent** - Add `include_connections` parameter with grouped relationships | Planned |
-| 9.2 | **MCP Server Integration** - Update tool schema and handler | Planned |
-| 9.3 | **Daily Email Digest** - Scheduled email with new chunks and connections | Planned |
-| 9.4 | **Natural Language Summary** - LLM-generated fließtext summary (optional) | Planned |
+| 9.1 | **Summary Data Pipeline** - Collect chunks, sources, relationships with URL resolution | Planned |
+| 9.2 | **LLM Summary Generation** - Gemini 3.1 Pro narrative synthesis in German, thematic grouping | Planned |
+| 9.3 | **Reader Delivery** - Save summary to Readwise Reader with `ai-weekly-summary` tag | Planned |
+| 9.4 | **Obsidian Delivery** - Headless Sync via Cloud Run + GCS FUSE + Obsidian Sync | Planned |
+| 9.5 | **get_recent mit Connections** - Optional: MCP tool enhancement for interactive use | Optional |
+
+**Key Features:**
+- Narrative deutsche Texte mit thematischer Gruppierung (nicht 1:1 pro Source)
+- Cross-Source Relationships aus DB als Hauptmehrwert
+- Podcast-Erkennung (🎙️ Snipd), Buch-Erkennung (📖)
+- Obsidian Callouts (`[!tip]`, `[!example]`) für Takeaways und Verbindungen
+- Externe Links (readwise.io, share.snipd.com, original URLs)
+
+**Phases:**
+1. MVP: Stories 9.1-9.3 (Reader Delivery)
+2. Rich: Story 9.4 (Obsidian Headless Sync)
 
 See [epics/epic9.md](epics/epic9.md) for full details.
 
@@ -277,5 +291,6 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 ## Backlog
 
 See [backlog.md](backlog.md) for remaining ideas:
-- Story 3.6/Epic 5: Email digest for recommendations/knowledge
 - Story 3.9: Recommendation performance optimization (low priority)
+
+*Note: Story 3.6/Epic 5 (Email Digest) superseded by Epic 9 (Weekly Knowledge Summary via Obsidian + Reader)*

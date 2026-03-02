@@ -10,26 +10,9 @@ This document contains planned but not-yet-implemented stories and epics.
 
 ## Open Stories from Epic 3: Knowledge Graph Enhancement & Optimization
 
-### Story 3.6: Email Digest for Reading Recommendations
+### ~~Story 3.6: Email Digest~~ → Superseded by Epic 9
 
-**Status:** Backlog (subsumed by Epic 9)
-
-**Summary:** Implement a scheduled email digest that sends personalized reading recommendations to the user on a configurable schedule (weekly/daily). Extends Story 3.5's recommendation engine with email delivery via SendGrid, allowing users to receive curated article suggestions without actively querying Claude.
-
-**Key Features:**
-- **Scheduled Delivery:** Cloud Scheduler triggers weekly (default: Monday 8am) or daily
-- **Email Template:** HTML email with recommendation cards, "why recommended" explanations
-- **SendGrid Integration:** Transactional email delivery via SendGrid API
-- **Digest Configuration:** Firestore config for schedule, recipient, preferences
-
-**Dependencies:**
-- Story 3.5 (Reading Recommendations) - provides recommendation engine
-- SendGrid account and API key
-
-**Business Value:**
-- Passive knowledge discovery (recommendations come to you)
-- Stay informed without active querying
-- Weekly digest promotes consistent learning habits
+Email als Delivery-Kanal ersetzt durch Obsidian + Readwise Reader (Epic 9).
 
 ---
 
@@ -48,23 +31,9 @@ This document contains planned but not-yet-implemented stories and epics.
 
 ---
 
-## Epic 5: Knowledge Digest & Email Summaries
+## ~~Epic 5: Knowledge Digest & Email Summaries~~ → Superseded by Epic 9
 
-**Goal:** Build an AI-powered knowledge digest system that regularly summarizes content from the Knowledge Base and Reader Inbox, delivering comprehensive email summaries with key insights, actionable takeaways, and one-click Reader integration.
-
-**Business Value:** Enables users to stay informed about their accumulated knowledge without manually reviewing every article.
-
-**Dependencies:** Epic 3 (Story 3.5 - Reading Recommendations, Story 3.6 - Email Digest infrastructure)
-
-**Status:** Planned — overlaps significantly with Epic 9
-
-### Stories:
-- Story 5.1: Knowledge Base Digest Engine
-- Story 5.2: Reader Inbox Summarization
-- Story 5.3: Weekly Knowledge Email Digest
-- Story 5.4: On-Demand Digest Generation via MCP
-- Story 5.5: Digest Personalization & Preferences
-- Story 5.6: Digest Analytics & Feedback Loop
+Vollständig ersetzt durch Epic 9 (Weekly Knowledge Summary). Email-Delivery durch Obsidian + Reader ersetzt. LLM-Synthese statt strukturierter Digests.
 
 ---
 

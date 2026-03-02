@@ -1,283 +1,288 @@
-# Epic 9: Recent Knowledge Connections & Daily Digest
+# Epic 9: Weekly Knowledge Summary
 
-**Goal:** Zeige bei neuen Chunks automatisch die Verbindungen zu existierenden Sources an. Ermögliche einen täglichen Email-Digest der neuen Learnings mit ihren Cross-Source-Relationships.
+**Goal:** Automatische wöchentliche Zusammenfassung neuer KB-Inhalte als narrative Synthese mit Cross-Source-Verbindungen. Output: Obsidian Markdown (via Headless Sync) und/oder Readwise Reader.
 
 **Business Value:**
-- Sofortiger Kontext: "Was ich heute gelernt habe, verbindet sich mit..."
-- Wissensvernetzung sichtbar machen ohne manuelles Nachfragen
-- Tägliche passive Wissenszusammenfassung per Email
-
-**Dependencies:** Epic 4 (Source-Based Knowledge Graph)
+- Passive Wissensvernetzung: "Was ich diese Woche gelernt habe und wie es sich verbindet"
+- Redaktionelle Qualität statt Rohdaten — thematische Gruppierung, Fließtext, Takeaways
+- Verbindungen aus der Relationships-DB als Hauptmehrwert sichtbar machen
+- Podcasts (Snipd) automatisch erkennen und mit 🎙️ markieren
 
 **Status:** Planned
 
----
-
-## Problem Statement
-
-`get_recent` zeigt neue Chunks, aber **nicht** wie sie sich mit existierendem Wissen verbinden:
-
-```python
-# Aktuell:
-get_recent(period="last_7_days", limit=10)
-# → Liste von Chunks mit Knowledge Cards
-
-# Gewünscht:
-get_recent(period="last_7_days", limit=10, include_connections=True)
-# → Chunks + Cross-Source Relationships, gruppiert nach Typ
-```
-
-Der User muss aktuell für jeden Chunk einzeln `get_chunk()` oder `get_source()` aufrufen um Relationships zu sehen.
+**Prototype:** `/Users/christian/Obsidian/ResearchVault/ResearchVault/Summaries/2026-03-02-knowledge-summary.md`
 
 ---
 
-## Solution: Enhanced get_recent with Connections
+## Modell: `gemini-3.1-pro-preview`
 
-### Response-Struktur (erweitert)
+**Qualität über Preis, im Google-Stack** — die Summary erfordert:
+1. Thematische Gruppierung von 20-50 Chunks in kohärente Abschnitte
+2. Narrative deutsche Texte mit redaktionellem Stil
+3. Sinnvolle Integration von DB-Relationships in den Kontext
+4. Korrekte Source-Attribution mit externen Links (Readwise, Snipd, Web)
 
-```json
-{
-  "period": "last_7_days",
-  "chunk_count": 5,
-  "recent_chunks": [...],
-  "activity_summary": {...},
+Alle Modelle via Vertex AI (registriert in `src/llm/config.py`):
 
-  "connections_summary": {
-    "total_connections": 12,
-    "new_sources": ["Deep Work", "Atomic Habits"],
-    "connected_sources": ["Flow", "Peak Performance", "Digital Minimalism"],
+| Modell (config key) | Vertex AI ID | Kosten/Summary | Bewertung |
+|--------|--------------|----------------|-----------|
+| **`gemini-3.1-pro-preview`** | `gemini-3.1-pro-preview` | ~$0.06 | **Gewählt** — bestes Gemini, 1M Context, GPQA 94.3% |
+| `gemini-3-flash-preview` | `gemini-3-flash-preview` | ~$0.02 | Guter Fallback, etwas schwächer bei Nuancen |
+| `gemini-2.5-flash` | `gemini-2.5-flash` | ~$0.01 | Ultimate Fallback, Textqualität niedriger |
 
-    "by_relationship_type": {
-      "extends": {
-        "count": 5,
-        "examples": [
-          {
-            "new_source": "Deep Work",
-            "connected_source": "Flow",
-            "explanation": "Deep Work extends Flow's concept of..."
-          }
-        ]
-      },
-      "supports": {
-        "count": 4,
-        "examples": [...]
-      },
-      "contradicts": {
-        "count": 2,
-        "examples": [...]
-      },
-      "applies": {
-        "count": 1,
-        "examples": [...]
-      }
-    }
-  }
-}
-```
+**Warum Gemini 3.1 Pro:**
+- Bleibt im Google-Stack (kein Cross-Cloud-Call zu Anthropic)
+- 1M Context Window — problemlos 50+ Chunks + Relationships in einem Call
+- GPQA 94.3% — stärkstes Reasoning aller verfügbaren Modelle
+- $2/$12 pro 1M Tokens — 33% günstiger als Claude Sonnet
+- ~$0.25/Monat bei wöchentlicher Ausführung
+- Region: Global (bereits konfiguriert für Preview-Modelle)
+
+**Fallback-Kette:** `gemini-3.1-pro-preview` → `gemini-2.5-flash`
 
 ---
 
-## Story 9.1: Extend get_recent with Cross-Source Connections
+## Delivery: Obsidian vs. Reader
 
-### Beschreibung
+### Option A: Obsidian (empfohlen)
 
-Erweitere `get_recent()` um einen optionalen Parameter `include_connections` der die Cross-Source Relationships für alle neuen Chunks sammelt und gruppiert zurückgibt.
+**Pro:**
+- Reiches Markdown-Rendering: Callouts (`> [!tip]`, `> [!example]`), Frontmatter, Wikilinks
+- Integriert in Vault — durchsuchbar, verlinkbar, Teil des Second Brain
+- Prototype sieht exzellent aus
 
-### Tasks
+**Contra:**
+- Erfordert Obsidian Headless Sync für serverlose Ausführung
+- Zusätzliche Infrastruktur: Cloud Run + GCS FUSE + Obsidian Sync Token
 
-1. [ ] Neuen Parameter `include_connections: bool = False` hinzufügen
-2. [ ] Für jeden neuen Chunk die `source_id` sammeln (unique)
-3. [ ] Für jede neue Source `get_source_relationships()` aufrufen
-4. [ ] Relationships nach Typ gruppieren (extends, supports, contradicts, applies)
-5. [ ] `connections_summary` Struktur aufbauen mit:
-   - `total_connections`: Gesamtzahl
-   - `new_sources`: Liste der neuen Source-Titel
-   - `connected_sources`: Liste der verbundenen Source-Titel
-   - `by_relationship_type`: Gruppierung mit Count + Beispielen
-6. [ ] Performance: Batch-Queries wo möglich (Source-Lookups)
-7. [ ] Tests schreiben
-
-### Technische Details
-
-```python
-def get_recent(
-    period: str = "last_7_days",
-    limit: int = 10,
-    include_connections: bool = False  # NEU
-) -> Dict[str, Any]:
-    # ... bestehende Logik ...
-
-    if include_connections:
-        connections = _get_connections_for_chunks(recent_chunks)
-        result["connections_summary"] = connections
-
-    return result
+**Architektur (Headless Sync):**
+```
+Cloud Scheduler (wöchentlich)
+  → Cloud Function: Summary generieren (Gemini 3.1 Pro)
+  → Cloud Run Container:
+      1. GCS FUSE mountet Vault-Bucket
+      2. obsidian-sync --once (pull)
+      3. Summary als .md schreiben
+      4. obsidian-sync --once (push)
+  → Obsidian App (iOS/Desktop) zeigt Summary
 ```
 
-### Acceptance Criteria
+Kritische Config:
+- Concurrency: 1 (keine parallelen Syncs)
+- GCS Bucket als Vault-Speicher
+- `OBSIDIAN_AUTH_TOKEN` via Secret Manager
+- Timeout: 5-10 Min für initialen Sync
 
-- [ ] `include_connections=True` liefert gruppierte Relationships
-- [ ] Relationships nach Typ sortiert (extends, supports, contradicts, applies)
-- [ ] Jeder Typ hat Count + max 3 Beispiele mit Explanation
-- [ ] Performance: < 5s für typische Abfrage (10 Chunks)
-- [ ] Keine Änderung am bestehenden Response wenn `include_connections=False`
+Siehe: `Obsidian Headless Sync.md` im ResearchVault
+
+### Option B: Readwise Reader
+
+**Pro:**
+- API bereits integriert (Epic 12, `readwise_writer.py`)
+- Kein zusätzlicher Infra-Aufwand
+- Mobil sofort verfügbar
+- Tag `ai-weekly-summary` für Organisation
+
+**Contra:**
+- Kein Callout-Support (Reader zeigt Markdown einfacher)
+- Nicht im Obsidian Vault integriert
+- Weniger reiches Rendering
+
+**Architektur:**
+```
+Cloud Scheduler (wöchentlich)
+  → Cloud Function:
+      1. Summary generieren (Gemini 3.1 Pro)
+      2. POST /api/v3/save/ → Reader Inbox
+      3. Tag: ai-weekly-summary
+```
+
+### Empfehlung
+
+**Beide parallel** — Obsidian als primäres Archiv (reiches Format), Reader als mobiler Zugang.
+Obsidian-Delivery ist komplexer und kann als separater Story nachgezogen werden.
 
 ---
 
-## Story 9.2: MCP Server Integration
+## Output-Format (Prototype)
 
-### Beschreibung
+```markdown
+---
+tags:
+  - ai-weekly-summary
+date: 2026-03-02
+period: 2026-02-28 to 2026-03-02
+sources: 7
+highlights: 27
+connections: 12
+---
 
-MCP Tool Definition erweitern um den neuen Parameter.
+# Knowledge Summary: 28. Feb – 2. Mar 2026
 
-### Tasks
-
-1. [ ] Tool-Schema in `server.py` erweitern
-2. [ ] Parameter-Handling in Tool-Handler
-3. [ ] Tool-Beschreibung aktualisieren
-
-### Tool-Schema Update
-
-```python
-"get_recent": {
-    "description": "Get recent reading activity and chunks. "
-                   "Optionally include cross-source relationship connections.",
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "period": {...},
-            "limit": {...},
-            "include_connections": {
-                "type": "boolean",
-                "description": "Include cross-source relationships for new chunks, "
-                              "grouped by type (extends, supports, contradicts)",
-                "default": False
-            }
-        }
-    }
-}
-```
+**27 neue Highlights** aus 7 Quellen (1 Buch, 4 Artikel, 2 🎙️ Podcasts) · **12 Verbindungen**
 
 ---
 
-## Story 9.3: Daily Email Digest
+## [Thematischer Abschnitt]
 
-### Beschreibung
+[Narrative Zusammenfassung der Quellen zum Thema]
 
-Täglicher Email-Digest der neuen Learnings mit ihren Verbindungen zu existierendem Wissen.
+> [!tip] Takeaway
+> [Kernaussage / So-What]
 
-### Abhängigkeiten
+> [!example] Verbindungen aus der KB
+> - **Extends** [Source Title](readwise/snipd URL) (Author) — Erklärung
+> - 🎙️ **Contradicts** [Podcast Title](snipd URL) — Erklärung
 
-- Story 9.1 (get_recent mit Connections)
-- Story 3.6 aus Backlog (Email Digest Infrastruktur)
-
-### Tasks
-
-1. [ ] Cloud Scheduler Job für täglichen Trigger (z.B. 8:00 Uhr)
-2. [ ] Cloud Function die `get_recent(period="yesterday", include_connections=True)` aufruft
-3. [ ] Email-Template (HTML) mit:
-   - Anzahl neue Chunks
-   - Liste der neuen Sources mit Snippet
-   - **Connections-Sektion**: "Verbindungen zu deinem Wissen"
-     - Gruppiert nach Relationship-Typ
-     - Pro Typ: Source-Paar + kurze Explanation
-4. [ ] SendGrid Integration (Story 3.6)
-5. [ ] Firestore Config für Email-Adresse und Einstellungen
-6. [ ] MCP Tool: `configure_daily_digest(enabled, email, time)`
-
-### Email-Template Beispiel
-
-```
-📚 Dein Daily Knowledge Digest - 7. Januar 2026
-
-═══════════════════════════════════════════════
-
-🆕 NEUE HIGHLIGHTS (3)
-
-• Deep Work - Cal Newport
-  "90min focused blocks outperform fragmented sessions..."
-
-• Atomic Habits - James Clear
-  "1% daily improvement compounds to 37x yearly..."
-
-═══════════════════════════════════════════════
-
-🔗 VERBINDUNGEN ZU DEINEM WISSEN
-
-EXTENDS (2)
-• Deep Work → Flow (Mihaly Csikszentmihalyi)
-  "Erweitert das Flow-Konzept um konkrete Zeitblöcke"
-
-• Atomic Habits → The Power of Habit (Charles Duhigg)
-  "Baut auf dem Habit Loop auf, fügt Identity-Based Habits hinzu"
-
-SUPPORTS (1)
-• Deep Work → Digital Minimalism
-  "Bestätigt die Wichtigkeit von Tech-Free Fokuszeit"
-
-CONTRADICTS (1)
-• Atomic Habits → The 4-Hour Workweek
-  "1% tägliche Verbesserung vs. 80/20 Pareto-Ansatz"
-
-═══════════════════════════════════════════════
-
-Generiert von kx-hub
-```
-
-### Acceptance Criteria
-
-- [ ] Tägliche Email um konfigurierte Uhrzeit
-- [ ] Email nur wenn neue Chunks vorhanden
-- [ ] Connections-Sektion gruppiert nach Typ
-- [ ] Unsubscribe-Link funktioniert
-- [ ] Kosten < $0.05/Monat (SendGrid Free Tier)
+**Quellen:**
+- [Title](readwise URL) · [Original](original URL)
+- 🎙️ [Podcast](snipd URL)
 
 ---
 
-## Story 9.4: Natural Language Summary (Optional)
-
-### Beschreibung
-
-Statt nur strukturierter Daten: LLM-generierte Zusammenfassung im Fließtext.
-
-### Beispiel
-
-```
-Heute hast du 3 neue Highlights aus "Deep Work" und "Atomic Habits"
-hinzugefügt. Diese erweitern dein bestehendes Wissen über Flow-Zustände
-und Gewohnheitsbildung. Interessant: Die Atomic Habits-Idee der 1%
-täglichen Verbesserung widerspricht leicht dem 80/20-Ansatz aus
-"The 4-Hour Workweek" - ein guter Punkt zum Nachdenken.
+*Generiert aus N Quellen via kx-hub · M Cross-Source-Verbindungen (K 🎙️ Podcasts)*
 ```
 
-### Tasks
+**Format-Regeln:**
+- Frontmatter: tags, date, period, sources, highlights, connections
+- Thematische Abschnitte (2-5 je nach Inhalt), nicht pro Source
+- Callouts: `[!tip]` für Takeaways, `[!example]` für Verbindungen
+- Links: Readwise URLs für Artikel/Bücher, Snipd URLs für Podcasts, Original-URLs wo verfügbar
+- 🎙️ Icon für Podcast-Quellen (erkannt via `source_url` containing `share.snipd.com`)
+- 📖 Icon für Bücher (erkannt via Readwise `category == "books"`)
+- Sprache: Deutsch
 
-1. [ ] Prompt für Gemini Flash mit Connections-Daten
-2. [ ] Max 100 Wörter, conversational tone
-3. [ ] Als optionalen Teil des Email-Digests
+---
+
+## Stories
+
+### Story 9.1: Summary Data Pipeline
+
+**Beschreibung:** Cloud Function die KB-Daten für die Summary sammelt und aufbereitet.
+
+**Tasks:**
+1. [ ] Firestore-Query: Chunks der letzten N Tage (konfigurierbar, default 7)
+2. [ ] Unique Sources extrahieren mit Typ-Erkennung (Artikel, Buch, Podcast)
+3. [ ] Podcast-Erkennung: `source_url` contains `share.snipd.com`
+4. [ ] Für jede Source: Relationships aus `relationships` Collection laden (batch IN-Query)
+5. [ ] Relationship-URLs auflösen: Readwise URL, Snipd URL, oder Original-URL
+6. [ ] Daten als strukturiertes Dict für LLM-Prompt aufbereiten
+
+**Acceptance Criteria:**
+- [ ] Alle Chunks der Periode gesammelt
+- [ ] Source-Typen korrekt erkannt (Artikel, Buch, Podcast)
+- [ ] Relationships mit korrekten externen URLs aufgelöst
+- [ ] Performance: < 10s für typische Woche (50 Chunks, 10 Sources)
+
+---
+
+### Story 9.2: LLM Summary Generation
+
+**Beschreibung:** Gemini 3.1 Pro generiert die narrative Summary aus den aufbereiteten Daten.
+
+**Tasks:**
+1. [ ] Summary-Modell konfigurierbar: Default `gemini-3.1-pro-preview`, Override via `SUMMARY_MODEL` env var
+2. [ ] LLM-Aufruf über bestehende `src/llm/` Abstraktion (`get_client()` + `generate()`)
+3. [ ] Summary-Prompt entwickeln:
+   - Input: Chunks (Knowledge Cards), Sources, Relationships mit URLs
+   - Output: Obsidian Markdown im definierten Format
+   - Anweisungen: Thematisch gruppieren, Fließtext, Callouts, korrekte Links
+4. [ ] Frontmatter automatisch generieren (date, period, counts)
+5. [ ] Podcast/Buch-Icons im Text korrekt setzen
+6. [ ] Validierung: Alle Source-Links sind externe URLs (keine Wikilinks)
+7. [ ] Fallback auf `gemini-2.5-flash` bei API-Fehler
+
+**Acceptance Criteria:**
+- [ ] Thematische Gruppierung (nicht 1:1 pro Source)
+- [ ] Deutsche Fließtexte mit redaktionellem Stil
+- [ ] Callouts korrekt formatiert
+- [ ] Alle Links sind externe URLs (readwise.io, share.snipd.com, oder original)
+- [ ] Frontmatter-Statistiken stimmen mit Inhalt überein
+
+---
+
+### Story 9.3: Reader Delivery
+
+**Beschreibung:** Summary als Artikel in Readwise Reader speichern.
+
+**Tasks:**
+1. [ ] Readwise Reader API: `POST /api/v3/save/` (bereits in `readwise_writer.py`)
+2. [ ] Tag: `ai-weekly-summary`
+3. [ ] Titel: `Knowledge Summary: [Datumsbereich]`
+4. [ ] Duplikat-Check: Kein erneutes Speichern bei Re-Run
+5. [ ] Cloud Scheduler: Wöchentlich (z.B. Sonntag 20:00 UTC)
+
+**Acceptance Criteria:**
+- [ ] Summary erscheint in Reader Inbox mit Tag
+- [ ] Kein Duplikat bei wiederholter Ausführung
+- [ ] Links im Reader klickbar
+
+---
+
+### Story 9.4: Obsidian Delivery (Headless Sync)
+
+**Beschreibung:** Summary direkt in Obsidian Vault schreiben via Headless Sync.
+
+**Abhängigkeit:** Obsidian Sync Abo, Headless Client Setup
+
+**Tasks:**
+1. [ ] GCS Bucket für Vault-Storage einrichten
+2. [ ] Cloud Run Container mit Obsidian Headless Client + GCS FUSE
+3. [ ] `OBSIDIAN_AUTH_TOKEN` in Secret Manager
+4. [ ] Sync-Workflow: Pull → Write → Push
+5. [ ] Dateiname: `Summaries/YYYY-MM-DD-knowledge-summary.md`
+6. [ ] Concurrency=1 erzwingen
+7. [ ] Terraform für Cloud Run + GCS Bucket
+
+**Acceptance Criteria:**
+- [ ] Summary erscheint in Obsidian Vault unter `Summaries/`
+- [ ] Frontmatter korrekt (durchsuchbar via Obsidian Properties)
+- [ ] Sync < 2 Min (Write + Push)
+- [ ] Kein Datenverlust bei gleichzeitigem mobilem Editing
+
+**Aufwand:** Deutlich höher als Reader-Delivery. Kann als Phase 2 nachgezogen werden.
+
+---
+
+### Story 9.5: get_recent mit Connections (Optional)
+
+**Beschreibung:** `get_recent()` um `include_connections` Parameter erweitern, damit das MCP-Tool direkt Verbindungen mitliefert. Nützlich für On-Demand-Summaries via Claude Chat.
+
+**Tasks:**
+1. [ ] Parameter `include_connections: bool = False`
+2. [ ] Source-IDs aus Chunks sammeln
+3. [ ] Batch-Relationships-Query (IN-Query, max 30 pro Batch)
+4. [ ] `connections_summary` in Response
+5. [ ] MCP Tool-Schema aktualisieren
+6. [ ] Tests
+
+**Status:** Optional — die Summary-Pipeline nutzt Firestore direkt, dieses Feature ist ein Nice-to-Have für interaktive Nutzung.
 
 ---
 
 ## Nicht-Ziele
 
-- Keine Echtzeit-Notifications (nur Daily Digest)
-- Keine interaktive Email (keine Buttons/Actions)
-- Keine Zusammenfassung der Chunk-Inhalte (nur Connections)
+- Keine Echtzeit-Notifications
+- Keine interaktive Email (Epic 5 / Story 3.6 gestrichen zugunsten Obsidian/Reader)
+- Kein eigener Email-Digest — Obsidian + Reader ersetzen Email als Kanal
+- Keine Zusammenfassung jedes einzelnen Highlights — thematische Synthese
 
 ---
 
-## Metriken
+## Kosten
 
-| Metrik | Ziel |
-|--------|------|
-| `get_recent` mit Connections | < 5s Latenz |
-| Email Delivery Rate | > 95% |
-| Tägliche Kosten | < $0.01 |
+| Komponente | Monatlich |
+|------------|-----------|
+| Gemini 3.1 Pro (4x/Monat) | ~$0.25 |
+| Cloud Function | ~$0 (Free Tier) |
+| Cloud Run (Obsidian Sync, 4x/Monat) | ~$0 (Free Tier) |
+| GCS Bucket (Vault) | ~$0 (Free Tier, < 5 GB) |
+| **Gesamt** | **~$0.25/Monat** |
 
 ---
 
-## Referenzen
+## Reihenfolge
 
-- `get_source_relationships()` in `firestore_client.py:1952`
-- Story 3.6 (Email Digest) in `backlog.md`
-- Epic 5 (Knowledge Digest) in `backlog.md`
+1. **Phase 1:** Story 9.1 + 9.2 + 9.3 (Reader Delivery) — funktionierender MVP
+2. **Phase 2:** Story 9.4 (Obsidian Headless Sync) — reicheres Format
+3. **Optional:** Story 9.5 (get_recent mit Connections)
