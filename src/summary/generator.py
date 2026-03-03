@@ -67,6 +67,12 @@ knappen Takeaway-Callout und erkläre ihn erst danach im Fließtext.
 - Jeder Abschnitt MUSS mit `**Quellen:**` enden, gefolgt von einer flachen \
 Liste aller relevanten Quellen-URLs dieses Abschnitts. Eine Quelle pro \
 Listenpunkt, keine Quellen im Fließtext verstecken.
+- Für Verbindungen MUSS jede Bullet den Zielartikel eindeutig verlinken, im \
+Format `[Titel](URL): Erklärung`. Verwende dafür den bereitgestellten `Link` \
+der Zielquelle.
+- Für `**Quellen:**` verwende das Format `[Titel (Autor)](URL)`. Verwende \
+dafür bevorzugt den bereitgestellten `Quellenlink` (Readwise), nur falls \
+dieser fehlt den normalen `Link`.
 - Verbindungen: Formuliere Bezüge in natürlichem Deutsch. Verwende KEINE \
 rohen Schema-Labels wie extends, contradicts, supports, applies_to oder \
 relates_to im finalen Text. Nutze stattdessen kurze, natürliche Formulierungen \
@@ -82,6 +88,20 @@ def _relationship_type_hint(relationship_type: str) -> str:
 
     normalized = relationship_type.strip().lower()
     return RELATIONSHIP_TYPE_LABELS.get(normalized, "steht inhaltlich in Beziehung zu")
+
+
+def _preferred_link(source_url: str | None, readwise_url: str | None) -> str:
+    """Prefer the original source URL, fall back to Readwise only if needed."""
+    if source_url:
+        return source_url
+    return readwise_url or ""
+
+
+def _preferred_sources_list_link(readwise_url: str | None, source_url: str | None) -> str:
+    """Prefer Readwise for section source lists, fall back to original URL."""
+    if readwise_url:
+        return readwise_url
+    return source_url or ""
 
 
 def _build_prompt(data: Dict[str, Any]) -> str:
@@ -112,12 +132,14 @@ def _build_prompt(data: Dict[str, Any]) -> str:
     # Sources with knowledge cards
     for src in sources:
         icon = "🎙️ " if src["type"] == "podcast" else ("📖 " if src["type"] == "book" else "")
+        preferred_link = _preferred_link(src.get("source_url"), src.get("readwise_url"))
+        sources_list_link = _preferred_sources_list_link(src.get("readwise_url"), src.get("source_url"))
         lines.append(f"\n### {icon}{src['title']} ({src['author']})")
         lines.append(f"Typ: {src['type']}")
-        if src.get("readwise_url"):
-            lines.append(f"Readwise: {src['readwise_url']}")
-        if src.get("source_url") and src["source_url"] != src.get("readwise_url"):
-            lines.append(f"Original: {src['source_url']}")
+        if preferred_link:
+            lines.append(f"Link: {preferred_link}")
+        if sources_list_link:
+            lines.append(f"Quellenlink: {sources_list_link}")
 
         for chunk in src["chunks"]:
             kc = chunk.get("knowledge_card", {})
@@ -136,7 +158,7 @@ def _build_prompt(data: Dict[str, Any]) -> str:
             icon = ""
             if "snipd.com" in (rel.get("target_source_url") or ""):
                 icon = "🎙️ "
-            url = rel.get("target_readwise_url") or rel.get("target_source_url") or ""
+            url = _preferred_link(rel.get("target_source_url"), rel.get("target_readwise_url"))
             lines.append(
                 f"- {rel['from_title']} → Beziehungshinweis: "
                 f"{_relationship_type_hint(rel.get('relationship_type', ''))} "
@@ -149,8 +171,11 @@ def _build_prompt(data: Dict[str, Any]) -> str:
         "Generiere NUR den Markdown-Body (OHNE Frontmatter, OHNE die H1-Überschrift, "
         "OHNE die Statistik-Zeile). Beginne direkt mit dem ersten thematischen H2-Abschnitt. "
         "Wenn du einen Takeaway-Callout nutzt, setze ihn direkt unter die H2 und vor den Fließtext. "
+        "Im Abschnitt `Verbindungen` soll jede Bullet einen eindeutig verlinkten Artikel im Format "
+        "`[Titel](URL): Erklärung` enthalten. "
         "Beende jeden Abschnitt mit `**Quellen:**` und einer Bullet-Liste aller zu diesem Abschnitt "
-        "gehörenden Source-URLs. "
+        "gehörenden Quellen. Gib diese Quellen als `[Titel (Autor)](URL)` aus und verwende dafür "
+        "bevorzugt `Quellenlink` (Readwise), sonst `Link`. "
         "Ende mit der Fußzeile: *Generiert aus N Quellen via kx-hub am [Datum] · M Cross-Source-Verbindungen (K 🎙️ Podcasts)*"
     )
 

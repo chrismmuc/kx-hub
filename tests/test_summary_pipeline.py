@@ -25,6 +25,8 @@ from src.summary.generator import (
     _build_frontmatter,
     _build_header,
     _build_prompt,
+    _preferred_link,
+    _preferred_sources_list_link,
     _relationship_type_hint,
     generate_summary as generate_summary_text,
 )
@@ -131,7 +133,7 @@ def _make_pipeline_data(**overrides):
                 "target_title": "Old AI Paper",
                 "target_author": "Prof X",
                 "target_readwise_url": "https://readwise.io/bookreview/999",
-                "target_source_url": "",
+                "target_source_url": "https://example.com/old-ai-paper",
                 "relationship_type": "extends",
                 "explanation": "Builds on earlier work",
             }
@@ -599,6 +601,8 @@ class TestBuildPrompt:
         assert "vertieft oder erweitert" in prompt
         assert "extends" not in prompt
         assert "Old AI Paper" in prompt
+        assert "https://example.com/old-ai-paper" in prompt
+        assert "https://readwise.io/bookreview/999" not in prompt
 
     def test_contains_knowledge_cards(self):
         data = _make_pipeline_data()
@@ -609,7 +613,8 @@ class TestBuildPrompt:
     def test_contains_urls(self):
         data = _make_pipeline_data()
         prompt = _build_prompt(data)
-        assert "https://readwise.io/bookreview/111" in prompt
+        assert "Link: https://example.com/ai" in prompt
+        assert "Quellenlink: https://readwise.io/bookreview/111" in prompt
         assert "https://share.snipd.com/ep/123" in prompt
 
     def test_instructions_at_end(self):
@@ -619,7 +624,24 @@ class TestBuildPrompt:
         assert "OHNE Frontmatter" in prompt
         assert "direkt unter die H2" in prompt
         assert "**Quellen:**" in prompt
-        assert "Bullet-Liste" in prompt
+        assert "Titel (Autor)" in prompt
+        assert "Quellenlink" in prompt
+
+
+class TestPreferredLink:
+    def test_prefers_source_url(self):
+        assert _preferred_link("https://example.com/a", "https://readwise.io/bookreview/1") == "https://example.com/a"
+
+    def test_falls_back_to_readwise_url(self):
+        assert _preferred_link("", "https://readwise.io/bookreview/1") == "https://readwise.io/bookreview/1"
+
+
+class TestPreferredSourcesListLink:
+    def test_prefers_readwise_url(self):
+        assert _preferred_sources_list_link("https://readwise.io/bookreview/1", "https://example.com/a") == "https://readwise.io/bookreview/1"
+
+    def test_falls_back_to_source_url(self):
+        assert _preferred_sources_list_link("", "https://example.com/a") == "https://example.com/a"
 
 
 class TestRelationshipTypeHint:
