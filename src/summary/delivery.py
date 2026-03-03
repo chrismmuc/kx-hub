@@ -157,7 +157,7 @@ def deliver_to_reader(
         "html": html,
         "title": title,
         "tags": all_tags,
-        "should_clean_html": False,
+        "saved_using": "kx-hub",
     }
 
     logger.info(f"Saving summary to Reader: {title}")
@@ -171,6 +171,8 @@ def deliver_to_reader(
         },
         timeout=15,
     )
+    if not response.ok:
+        logger.error(f"Reader API error {response.status_code}: {response.text}")
     response.raise_for_status()
 
     data = response.json()
