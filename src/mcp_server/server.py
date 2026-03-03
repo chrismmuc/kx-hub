@@ -52,7 +52,11 @@ Each result includes a detail_hint - use get_chunk(chunk_id) when you need:
 When results span multiple sources, includes a `connections` section showing
 cross-source relationships (extends/supports/contradicts) between them.
 
-Two-step pattern: search_kb → scan cards → get_chunk for details.""",
+Two-step pattern: search_kb → scan cards → get_chunk for details.
+
+IMPORTANT: When presenting results, always show the source_url (original external link)
+for each result. Only show readwise_url if the user explicitly asks for it.
+source_url may be null for books — in that case, omit the link.""",
         "inputSchema": {
             "type": "object",
             "properties": {

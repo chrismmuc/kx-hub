@@ -14,12 +14,14 @@ import functions_framework
 
 # Support both package imports (local/tests) and flat imports (Cloud Functions)
 try:
+    from .cover_image import extract_themes, generate_cover_image, upload_html_to_gcs, upload_to_gcs
     from .data_pipeline import collect_summary_data
-    from .delivery import deliver_to_reader
+    from .delivery import _markdown_to_html, deliver_to_reader
     from .generator import generate_summary as generate_summary_text
 except ImportError:
+    from cover_image import extract_themes, generate_cover_image, upload_html_to_gcs, upload_to_gcs
     from data_pipeline import collect_summary_data
-    from delivery import deliver_to_reader
+    from delivery import _markdown_to_html, deliver_to_reader
     from generator import generate_summary as generate_summary_text
 
 logging.basicConfig(level=logging.INFO)
@@ -170,6 +172,31 @@ def generate_summary(request):
             "markdown": result["markdown"],
         }
 
+        # Cover image generation
+        image_url = None
+        if not dry_run:
+            try:
+                themes = extract_themes(result["markdown"])
+                image_bytes = generate_cover_image(themes, data["period"])
+                ts = now.strftime("%Y%m%d_%H%M%S")
+                image_url = upload_to_gcs(image_bytes, f"{ts}_cover.png")
+                logger.info(f"Cover image uploaded: {image_url}")
+                response["image_url"] = image_url
+            except Exception as e:
+                logger.warning(f"Cover image generation failed (non-fatal): {e}")
+
+        # Upload styled HTML page (used as "Open original" in Reader)
+        html_url = None
+        if not dry_run:
+            try:
+                ts = now.strftime("%Y%m%d_%H%M%S")
+                html_body = _markdown_to_html(result["markdown"])
+                html_url = upload_html_to_gcs(html_body, title, f"{ts}_summary.html", image_url)
+                logger.info(f"HTML page uploaded: {html_url}")
+                response["html_url"] = html_url
+            except Exception as e:
+                logger.warning(f"HTML upload failed (non-fatal): {e}")
+
         # Story 9.3: Reader delivery
         if config.get("deliver_to_reader") and not dry_run:
             api_key = get_secret("readwise-api-key")
@@ -177,6 +204,8 @@ def generate_summary(request):
                 markdown=result["markdown"],
                 title=title,
                 api_key=api_key,
+                image_url=image_url,
+                html_url=html_url,
             )
             response["delivery"] = delivery
         elif dry_run:

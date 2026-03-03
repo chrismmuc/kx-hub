@@ -21,6 +21,7 @@ cp "$SCRIPT_DIR/main.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/data_pipeline.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/generator.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/delivery.py" "$BUILD_DIR/"
+cp "$SCRIPT_DIR/cover_image.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/requirements.txt" "$BUILD_DIR/"
 
 # Copy LLM abstraction layer (as package — generator imports from llm)

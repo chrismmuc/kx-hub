@@ -14,6 +14,7 @@ from src.summary.data_pipeline import (
     fetch_relationships_for_sources,
     resolve_url,
 )
+from src.summary.cover_image import extract_themes, generate_cover_image, upload_to_gcs
 from src.summary.delivery import (
     _inline_format,
     _markdown_to_html,
@@ -791,7 +792,7 @@ class TestDeliverToReader:
         payload = call_kwargs.kwargs["json"]
         assert payload["title"] == "Knowledge Summary: Test"
         assert "ai-weekly-summary" in payload["tags"]
-        assert "kx-hub.internal" in payload["url"]
+        assert "kx-hub.internal" in payload["url"]  # fallback when no html_url
         assert "<h1>Test</h1>" in payload["html"]
 
     @patch("src.summary.delivery.requests.post")
@@ -840,6 +841,123 @@ class TestDeliverToReader:
 
 
 # ---------------------------------------------------------------------------
+# Cover Image
+# ---------------------------------------------------------------------------
+
+class TestExtractThemes:
+    def test_generates_prompt_via_gemini(self):
+        mock_response = MagicMock()
+        mock_response.text = "Interconnected translucent spheres and flowing amber-blue ribbons"
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch("google.genai.Client", return_value=mock_client) as mock_ctor:
+            result = extract_themes("# Summary\n\nAI, cloud, and tools")
+
+        assert result == "Interconnected translucent spheres and flowing amber-blue ribbons"
+        mock_ctor.assert_called_once_with(
+            vertexai=True,
+            project="kx-hub",
+            location="global",
+        )
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert call_kwargs["model"] == "gemini-3-flash-preview"
+        assert "generate a short image prompt" in call_kwargs["contents"]
+        assert "AI, cloud, and tools" in call_kwargs["contents"]
+
+
+class TestGenerateCoverImage:
+    def test_returns_image_bytes(self):
+        """Test generate_cover_image with mocked Imagen API."""
+        mock_image = MagicMock()
+        mock_image.image.image_bytes = b"\x89PNG fake image bytes"
+
+        mock_response = MagicMock()
+        mock_response.generated_images = [mock_image]
+
+        mock_client = MagicMock()
+        mock_client.models.generate_images.return_value = mock_response
+
+        with patch("google.genai.Client", return_value=mock_client):
+            result = generate_cover_image("AI, Cloud", {"start": "2026-02-24", "end": "2026-03-03"})
+
+        assert result == b"\x89PNG fake image bytes"
+        assert mock_client.models.generate_images.call_count == 1
+        call_kwargs = mock_client.models.generate_images.call_args
+        assert "imagen-4.0" in call_kwargs.kwargs["model"]
+        assert call_kwargs.kwargs["config"].aspect_ratio == "16:9"
+
+    def test_raises_when_no_image(self):
+        mock_response = MagicMock()
+        mock_response.generated_images = []
+
+        mock_client = MagicMock()
+        mock_client.models.generate_images.return_value = mock_response
+
+        with patch("google.genai.Client", return_value=mock_client):
+            with pytest.raises(ValueError, match="No image generated"):
+                generate_cover_image("themes", {"start": "2026-02-24", "end": "2026-03-03"})
+
+
+class TestUploadToGcs:
+    def test_uploads_and_returns_url(self):
+        mock_blob = MagicMock()
+        mock_blob.public_url = "https://storage.googleapis.com/kx-hub-summary-images/test.png"
+
+        mock_bucket = MagicMock()
+        mock_bucket.blob.return_value = mock_blob
+
+        mock_storage_client = MagicMock()
+        mock_storage_client.bucket.return_value = mock_bucket
+
+        with patch("google.cloud.storage.Client", return_value=mock_storage_client):
+            url = upload_to_gcs(b"fake-image", "test.png")
+
+        assert url == "https://storage.googleapis.com/kx-hub-summary-images/test.png"
+        mock_blob.upload_from_string.assert_called_once_with(b"fake-image", content_type="image/png")
+
+
+# ---------------------------------------------------------------------------
+# Delivery: image_url support
+# ---------------------------------------------------------------------------
+
+class TestDeliverToReaderWithImage:
+    @patch("src.summary.delivery.requests.post")
+    def test_includes_image_url_in_payload(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": "reader-123", "url": "https://read.readwise.io/123"}
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        deliver_to_reader(
+            markdown="# Test\n\nContent",
+            title="Knowledge Summary: Test",
+            api_key="test-key",
+            image_url="https://storage.googleapis.com/kx-hub-summary-images/test.png",
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["image_url"] == "https://storage.googleapis.com/kx-hub-summary-images/test.png"
+
+    @patch("src.summary.delivery.requests.post")
+    def test_omits_image_url_when_none(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": "reader-123", "url": "https://read.readwise.io/123"}
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        deliver_to_reader(
+            markdown="# Test\n\nContent",
+            title="Knowledge Summary: Test",
+            api_key="test-key",
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "image_url" not in payload
+
+
+# ---------------------------------------------------------------------------
 # Cloud Function entry point
 # ---------------------------------------------------------------------------
 
@@ -847,20 +965,28 @@ class TestMainHandler:
     @patch("src.summary.main._save_summary")
     @patch("src.summary.main.deliver_to_reader")
     @patch("src.summary.main.get_secret")
+    @patch("src.summary.main.upload_html_to_gcs")
+    @patch("src.summary.main.upload_to_gcs")
+    @patch("src.summary.main.generate_cover_image")
+    @patch("src.summary.main.extract_themes")
     @patch("src.summary.main.generate_summary_text")
     @patch("src.summary.main.load_config")
     @patch("src.summary.main.collect_summary_data")
-    def test_handler_success_with_delivery(self, mock_collect, mock_config, mock_gen, mock_secret, mock_deliver, mock_save):
+    def test_handler_success_with_delivery(self, mock_collect, mock_config, mock_gen, mock_extract, mock_cover, mock_upload, mock_upload_html, mock_secret, mock_deliver, mock_save):
         from src.summary.main import generate_summary
 
         mock_config.return_value = {"enabled": True, "days": 7, "limit": 100, "deliver_to_reader": True}
         mock_collect.return_value = _make_pipeline_data()
         mock_gen.return_value = {
-            "markdown": "# Summary\n...",
+            "markdown": "## AI Trends\n\nSome text",
             "model": "gemini-3.1-pro-preview",
             "input_tokens": 1000,
             "output_tokens": 500,
         }
+        mock_extract.return_value = "abstract image prompt"
+        mock_cover.return_value = b"fake-image"
+        mock_upload.return_value = "https://storage.googleapis.com/kx-hub-summary-images/test.png"
+        mock_upload_html.return_value = "https://storage.googleapis.com/kx-hub-summary-images/test_summary.html"
         mock_secret.return_value = "fake-api-key"
         mock_deliver.return_value = {"status": "saved", "reader_id": "r-1", "reader_url": "https://read.readwise.io/1"}
 
@@ -871,11 +997,16 @@ class TestMainHandler:
 
         assert response["status"] == "success"
         assert response["delivery"]["status"] == "saved"
+        assert response["image_url"] == "https://storage.googleapis.com/kx-hub-summary-images/test.png"
+        assert response["html_url"] == "https://storage.googleapis.com/kx-hub-summary-images/test_summary.html"
         mock_deliver.assert_called_once()
+        deliver_kwargs = mock_deliver.call_args.kwargs
+        assert deliver_kwargs["image_url"] == "https://storage.googleapis.com/kx-hub-summary-images/test.png"
+        assert deliver_kwargs["html_url"] == "https://storage.googleapis.com/kx-hub-summary-images/test_summary.html"
         mock_save.assert_called_once()
         save_kwargs = mock_save.call_args.kwargs
         assert save_kwargs["title"].startswith("Knowledge Summary:")
-        assert save_kwargs["markdown"] == "# Summary\n..."
+        assert save_kwargs["markdown"] == "## AI Trends\n\nSome text"
         assert save_kwargs["period"] == _make_pipeline_data()["period"]
         assert save_kwargs["delivery"]["status"] == "saved"
 

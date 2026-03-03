@@ -144,6 +144,32 @@ resource "google_cloud_run_service_iam_member" "summary_scheduler_invoker" {
 }
 
 # ============================================================================
+# Cover Image Storage (GCS)
+# ============================================================================
+
+# Public bucket for weekly summary cover images (1 image/week)
+resource "google_storage_bucket" "summary_images" {
+  name     = "kx-hub-summary-images"
+  location = var.region
+
+  uniform_bucket_level_access = true
+}
+
+# Public read access for Reader to fetch images
+resource "google_storage_bucket_iam_member" "summary_images_public" {
+  bucket = google_storage_bucket.summary_images.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}
+
+# Grant summary SA write access to upload images
+resource "google_storage_bucket_iam_member" "summary_sa_images_writer" {
+  bucket = google_storage_bucket.summary_images.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.summary_sa.email}"
+}
+
+# ============================================================================
 # Outputs
 # ============================================================================
 

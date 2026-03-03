@@ -129,6 +129,8 @@ def deliver_to_reader(
     title: str,
     api_key: str,
     tags: Optional[List[str]] = None,
+    image_url: Optional[str] = None,
+    html_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Save summary to Readwise Reader inbox.
@@ -138,6 +140,8 @@ def deliver_to_reader(
         title: Article title (e.g., "Knowledge Summary: 23. Feb – 2. Mär 2026")
         api_key: Readwise API token
         tags: Optional extra tags (ai-weekly-summary is always added)
+        image_url: Optional cover image URL for Reader thumbnail
+        html_url: Optional URL to hosted HTML page ("Open original" in Reader)
 
     Returns:
         Dict with status, reader_id, url
@@ -148,9 +152,13 @@ def deliver_to_reader(
 
     html = _markdown_to_html(markdown)
 
-    # Use a stable URL based on title for duplicate detection
-    # Reader deduplicates by URL, so re-runs won't create duplicates
-    stable_url = f"https://kx-hub.internal/summaries/{_slugify(title)}"
+    # URL used for Reader dedup and "Open original".
+    # If html_url is available, use it so "Open original" opens a styled page.
+    # Otherwise fall back to a stable slug-based URL for dedup.
+    if html_url:
+        stable_url = html_url
+    else:
+        stable_url = f"https://kx-hub.internal/summaries/{_slugify(title)}"
 
     payload = {
         "url": stable_url,
@@ -159,6 +167,8 @@ def deliver_to_reader(
         "tags": all_tags,
         "saved_using": "kx-hub",
     }
+    if image_url:
+        payload["image_url"] = image_url
 
     logger.info(f"Saving summary to Reader: {title}")
 
