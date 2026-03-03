@@ -25,6 +25,7 @@ from src.summary.generator import (
     _build_frontmatter,
     _build_header,
     _build_prompt,
+    _relationship_type_hint,
     generate_summary as generate_summary_text,
 )
 
@@ -595,7 +596,8 @@ class TestBuildPrompt:
     def test_contains_relationships(self):
         data = _make_pipeline_data()
         prompt = _build_prompt(data)
-        assert "extends" in prompt
+        assert "vertieft oder erweitert" in prompt
+        assert "extends" not in prompt
         assert "Old AI Paper" in prompt
 
     def test_contains_knowledge_cards(self):
@@ -615,6 +617,18 @@ class TestBuildPrompt:
         prompt = _build_prompt(data)
         assert "ANWEISUNGEN" in prompt
         assert "OHNE Frontmatter" in prompt
+        assert "direkt unter die H2" in prompt
+        assert "**Quellen:**" in prompt
+        assert "Bullet-Liste" in prompt
+
+
+class TestRelationshipTypeHint:
+    def test_maps_known_schema_labels(self):
+        assert _relationship_type_hint("extends") == "vertieft oder erweitert"
+        assert _relationship_type_hint("relates_to") == "steht inhaltlich in Beziehung zu"
+
+    def test_falls_back_for_unknown_labels(self):
+        assert _relationship_type_hint("unknown") == "steht inhaltlich in Beziehung zu"
 
 
 # ---------------------------------------------------------------------------
@@ -863,8 +877,24 @@ class TestExtractThemes:
         )
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert call_kwargs["model"] == "gemini-3-flash-preview"
-        assert "generate a short image prompt" in call_kwargs["contents"]
+        assert "Consider the ENTIRE summary" in call_kwargs["contents"]
+        assert "Output ONLY the final image prompt" in call_kwargs["contents"]
         assert "AI, cloud, and tools" in call_kwargs["contents"]
+
+    def test_uses_full_summary_not_prefix_only(self):
+        mock_response = MagicMock()
+        mock_response.text = "editorial motif prompt"
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        markdown = ("intro " * 450) + "FINAL_THEME_MARKER"
+
+        with patch("google.genai.Client", return_value=mock_client):
+            extract_themes(markdown)
+
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert "FINAL_THEME_MARKER" in call_kwargs["contents"]
 
 
 class TestGenerateCoverImage:

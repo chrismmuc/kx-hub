@@ -35,6 +35,16 @@ def _ensure_llm_imports():
 
 SUMMARY_MODEL = "gemini-3.1-pro-preview"
 
+RELATIONSHIP_TYPE_LABELS = {
+    "extends": "vertieft oder erweitert",
+    "contradicts": "widerspricht",
+    "supports": "stützt oder bestätigt",
+    "applies to": "lässt sich anwenden auf",
+    "applies_to": "lässt sich anwenden auf",
+    "relates to": "steht inhaltlich in Beziehung zu",
+    "relates_to": "steht inhaltlich in Beziehung zu",
+}
+
 SYSTEM_PROMPT = """\
 Du bist ein redaktioneller Wissens-Kurator. Du erstellst wöchentliche \
 Knowledge Summaries aus Readwise-Highlights.
@@ -44,15 +54,34 @@ Regeln:
 - Stil: Journalistisch-analytisch, keine Floskeln, konkrete Aussagen
 - Thematische Gruppierung: Fasse verwandte Quellen in 2-5 thematische \
 Abschnitte zusammen. NICHT eine Sektion pro Quelle.
-- Jeder Abschnitt hat: Fließtext-Zusammenfassung, optional Takeaway-Callout, \
-Verbindungen-Callout (wenn vorhanden), Quellenlinks
+- Jeder Abschnitt hat möglichst diese Reihenfolge: optionaler \
+Takeaway-Callout direkt unter der H2, danach Fließtext-Zusammenfassung, \
+danach Verbindungen-Callout (wenn vorhanden), danach eine Quellenliste am \
+Ende des Abschnitts
 - Icons: 🎙️ vor Podcast-Quellen, 📖 vor Buch-Quellen
 - Links: NUR externe URLs (readwise.io, share.snipd.com, Original-URLs). \
 KEINE Obsidian-Wikilinks ([[...]]).
 - Callout-Syntax: > [!tip] für Takeaways, > [!example] für Verbindungen
-- Verbindungen: Nutze relationship_type (extends, contradicts, supports, \
-applies to, relates to) als Präfix in **Bold**
+- Wenn ein Abschnitt einen klaren Kernpunkt hat, formuliere ihn zuerst als \
+knappen Takeaway-Callout und erkläre ihn erst danach im Fließtext.
+- Jeder Abschnitt MUSS mit `**Quellen:**` enden, gefolgt von einer flachen \
+Liste aller relevanten Quellen-URLs dieses Abschnitts. Eine Quelle pro \
+Listenpunkt, keine Quellen im Fließtext verstecken.
+- Verbindungen: Formuliere Bezüge in natürlichem Deutsch. Verwende KEINE \
+rohen Schema-Labels wie extends, contradicts, supports, applies_to oder \
+relates_to im finalen Text. Nutze stattdessen kurze, natürliche Formulierungen \
+wie "vertieft den Gedanken", "steht im Kontrast zu", "bestätigt", \
+"lässt sich übertragen auf" oder "passt thematisch dazu".
 """
+
+
+def _relationship_type_hint(relationship_type: str) -> str:
+    """Map schema relationship types to natural-language German hints."""
+    if not relationship_type:
+        return "steht inhaltlich in Beziehung zu"
+
+    normalized = relationship_type.strip().lower()
+    return RELATIONSHIP_TYPE_LABELS.get(normalized, "steht inhaltlich in Beziehung zu")
 
 
 def _build_prompt(data: Dict[str, Any]) -> str:
@@ -109,8 +138,9 @@ def _build_prompt(data: Dict[str, Any]) -> str:
                 icon = "🎙️ "
             url = rel.get("target_readwise_url") or rel.get("target_source_url") or ""
             lines.append(
-                f"- {rel['from_title']} → **{rel['relationship_type']}** "
-                f"{icon}[{rel['target_title']}]({url}) ({rel.get('target_author', '')}): "
+                f"- {rel['from_title']} → Beziehungshinweis: "
+                f"{_relationship_type_hint(rel.get('relationship_type', ''))} "
+                f"mit {icon}[{rel['target_title']}]({url}) ({rel.get('target_author', '')}): "
                 f"{rel.get('explanation', '')}"
             )
 
@@ -118,6 +148,9 @@ def _build_prompt(data: Dict[str, Any]) -> str:
     lines.append(
         "Generiere NUR den Markdown-Body (OHNE Frontmatter, OHNE die H1-Überschrift, "
         "OHNE die Statistik-Zeile). Beginne direkt mit dem ersten thematischen H2-Abschnitt. "
+        "Wenn du einen Takeaway-Callout nutzt, setze ihn direkt unter die H2 und vor den Fließtext. "
+        "Beende jeden Abschnitt mit `**Quellen:**` und einer Bullet-Liste aller zu diesem Abschnitt "
+        "gehörenden Source-URLs. "
         "Ende mit der Fußzeile: *Generiert aus N Quellen via kx-hub am [Datum] · M Cross-Source-Verbindungen (K 🎙️ Podcasts)*"
     )
 

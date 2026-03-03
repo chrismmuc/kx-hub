@@ -139,10 +139,10 @@ def upload_html_to_gcs(html: str, title: str, blob_name: str, image_url: str | N
 
 
 def extract_themes(markdown: str) -> str:
-    """Generate an English image prompt from summary markdown using Gemini Flash.
+    """Generate an English image prompt from the full summary using Gemini Flash.
 
-    Translates the summary themes into abstract visual elements
-    suitable for Imagen (no text, no words — pure visual descriptions).
+    Distills the summary into a compact set of motifs, mood, and visual
+    cues suitable for Imagen (no text, no words — pure visual descriptions).
 
     Args:
         markdown: Full summary markdown
@@ -154,17 +154,21 @@ def extract_themes(markdown: str) -> str:
 
     response = client.models.generate_content(
         model=SUMMARY_IMAGE_PROMPT_MODEL,
-        contents=f"""Given this weekly knowledge summary, generate a short image prompt (max 60 words) for an abstract illustration.
+        contents=f"""Given this full weekly knowledge summary, first identify the key themes and then generate a short image prompt (max 80 words) for a single cohesive illustration.
 
 Rules:
-- Describe ONLY abstract visual elements: shapes, colors, patterns, compositions
+- Consider the ENTIRE summary, not just the opening section
+- Distill the summary into a few core motifs, mood, and color/visual cues before writing the prompt
+- Describe ONLY visual elements: symbolic objects, shapes, colors, patterns, atmosphere, composition
 - Do NOT include any words, text, labels, titles, or letters in the description
 - Create ONE cohesive composition that captures the overall mood, not separate elements per section
 - Use English only
-- Example output: "Interconnected translucent spheres floating above a circuit-board landscape, warm amber and cool blue gradients, flowing data streams as curved ribbons"
+- Prefer evocative but concrete editorial-illustration language over generic abstraction
+- Output ONLY the final image prompt, nothing else
+- Example output: "A calm editorial scene of interconnected control rooms and glowing terminals overlooking a shifting industrial skyline, warm amber and cool blue light, layered paper-texture shapes, subtle tension between order and volatility"
 
 Summary:
-{markdown[:2000]}""",
+{markdown}""",
     )
 
     return response.text.strip()
