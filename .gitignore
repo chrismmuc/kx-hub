@@ -62,6 +62,7 @@ Thumbs.db
 
 # Build artifacts
 src/auto_snippets/build/
+src/summary/build/
 
 # Local scripts (not committed)
 scripts/apps-script/
