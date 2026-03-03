@@ -844,12 +844,13 @@ class TestDeliverToReader:
 # ---------------------------------------------------------------------------
 
 class TestMainHandler:
+    @patch("src.summary.main._save_summary")
     @patch("src.summary.main.deliver_to_reader")
     @patch("src.summary.main.get_secret")
     @patch("src.summary.main.generate_summary_text")
     @patch("src.summary.main.load_config")
     @patch("src.summary.main.collect_summary_data")
-    def test_handler_success_with_delivery(self, mock_collect, mock_config, mock_gen, mock_secret, mock_deliver):
+    def test_handler_success_with_delivery(self, mock_collect, mock_config, mock_gen, mock_secret, mock_deliver, mock_save):
         from src.summary.main import generate_summary
 
         mock_config.return_value = {"enabled": True, "days": 7, "limit": 100, "deliver_to_reader": True}
@@ -871,11 +872,18 @@ class TestMainHandler:
         assert response["status"] == "success"
         assert response["delivery"]["status"] == "saved"
         mock_deliver.assert_called_once()
+        mock_save.assert_called_once()
+        save_kwargs = mock_save.call_args.kwargs
+        assert save_kwargs["title"].startswith("Knowledge Summary:")
+        assert save_kwargs["markdown"] == "# Summary\n..."
+        assert save_kwargs["period"] == _make_pipeline_data()["period"]
+        assert save_kwargs["delivery"]["status"] == "saved"
 
+    @patch("src.summary.main._save_summary")
     @patch("src.summary.main.generate_summary_text")
     @patch("src.summary.main.load_config")
     @patch("src.summary.main.collect_summary_data")
-    def test_handler_dry_run_skips_delivery(self, mock_collect, mock_config, mock_gen):
+    def test_handler_dry_run_skips_delivery_and_save(self, mock_collect, mock_config, mock_gen, mock_save):
         from src.summary.main import generate_summary
 
         mock_config.return_value = {"enabled": True, "days": 7, "limit": 100, "deliver_to_reader": True}
@@ -894,6 +902,7 @@ class TestMainHandler:
 
         assert response["status"] == "success"
         assert response["delivery"]["status"] == "dry_run"
+        mock_save.assert_not_called()
 
     @patch("src.summary.main.load_config")
     def test_handler_disabled(self, mock_config):

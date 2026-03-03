@@ -85,6 +85,35 @@ def _extract_title(data: dict) -> str:
     return f"Knowledge Summary: {start.day}. {months_de[start.month]} – {end.day}. {months_de[end.month]} {end.year}"
 
 
+def _save_summary(
+    title: str,
+    markdown: str,
+    period: dict,
+    stats: dict,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    delivery: dict | None,
+    timestamp: datetime,
+) -> None:
+    """Save summary to Firestore summaries collection."""
+    db = get_firestore_client()
+    doc_id = period["start"] + "_" + period["end"]
+    doc_data = {
+        "title": title,
+        "markdown": markdown,
+        "period": period,
+        "stats": stats,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "delivery": delivery,
+        "created_at": timestamp,
+    }
+    db.collection("summaries").document(doc_id).set(doc_data)
+    logger.info(f"Summary saved to Firestore: summaries/{doc_id}")
+
+
 @functions_framework.http
 def generate_summary(request):
     """
@@ -127,9 +156,12 @@ def generate_summary(request):
         # Story 9.2: LLM generation
         result = generate_summary_text(data, model=model)
 
+        title = _extract_title(data)
+        now = datetime.now(timezone.utc)
+
         response = {
             "status": "success",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now.isoformat(),
             "stats": data["stats"],
             "period": data["period"],
             "model": result["model"],
@@ -141,7 +173,6 @@ def generate_summary(request):
         # Story 9.3: Reader delivery
         if config.get("deliver_to_reader") and not dry_run:
             api_key = get_secret("readwise-api-key")
-            title = _extract_title(data)
             delivery = deliver_to_reader(
                 markdown=result["markdown"],
                 title=title,
@@ -150,6 +181,20 @@ def generate_summary(request):
             response["delivery"] = delivery
         elif dry_run:
             response["delivery"] = {"status": "dry_run"}
+
+        # Save to Firestore summaries collection
+        if not dry_run:
+            _save_summary(
+                title=title,
+                markdown=result["markdown"],
+                period=data["period"],
+                stats=data["stats"],
+                model=result["model"],
+                input_tokens=result["input_tokens"],
+                output_tokens=result["output_tokens"],
+                delivery=response.get("delivery"),
+                timestamp=now,
+            )
 
         return response
 

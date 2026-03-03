@@ -120,7 +120,7 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 |-------|-------------|--------|
 | 9.1 | **Summary Data Pipeline** - Collect chunks, sources, relationships with URL resolution | ✅ Done |
 | 9.2 | **LLM Summary Generation** - Gemini 3.1 Pro narrative synthesis in German, thematic grouping | ✅ Done |
-| 9.3 | **Reader Delivery** - Save summary to Readwise Reader with `ai-weekly-summary` tag | ✅ Done |
+| 9.3 | **Reader Delivery** - Save summary to Readwise Reader with `ai-weekly-summary` tag, persist to Firestore `summaries` collection | ✅ Done |
 | 9.4 | **Obsidian Delivery** - Headless Sync via Cloud Run + GCS FUSE + Obsidian Sync | Planned |
 | 9.5 | **get_recent mit Connections** - Optional: MCP tool enhancement for interactive use | Optional |
 
