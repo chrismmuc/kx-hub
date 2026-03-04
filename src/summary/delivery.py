@@ -137,7 +137,7 @@ def deliver_to_reader(
 
     Args:
         markdown: Full summary markdown (with frontmatter)
-        title: Article title (e.g., "Knowledge Summary: 23. Feb – 2. Mär 2026")
+        title: Article title (e.g., "Knowledge Summary: 23. Feb – 2. Mar 2026")
         api_key: Readwise API token
         tags: Optional extra tags (ai-weekly-summary is always added)
         image_url: Optional cover image URL for Reader thumbnail

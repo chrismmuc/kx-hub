@@ -2,7 +2,7 @@
 LLM Summary Generation (Story 9.2).
 
 Takes the structured data from data_pipeline.collect_summary_data() and
-generates a narrative weekly knowledge summary in German using Gemini 3.1 Pro.
+generates a narrative weekly knowledge summary in English using Gemini 3.1 Pro.
 
 Output: Obsidian-flavored Markdown with frontmatter, thematic sections,
 callouts, and external links.
@@ -36,58 +36,57 @@ def _ensure_llm_imports():
 SUMMARY_MODEL = "gemini-3.1-pro-preview"
 
 RELATIONSHIP_TYPE_LABELS = {
-    "extends": "vertieft oder erweitert",
-    "contradicts": "widerspricht",
-    "supports": "stützt oder bestätigt",
-    "applies to": "lässt sich anwenden auf",
-    "applies_to": "lässt sich anwenden auf",
-    "relates to": "steht inhaltlich in Beziehung zu",
-    "relates_to": "steht inhaltlich in Beziehung zu",
+    "extends": "deepens the point",
+    "contradicts": "contrasts with",
+    "supports": "supports this view",
+    "applies to": "applies the idea to",
+    "applies_to": "applies the idea to",
+    "relates to": "connects to",
+    "relates_to": "connects to",
 }
 
 SYSTEM_PROMPT = """\
-Du bist ein redaktioneller Wissens-Kurator. Du erstellst wöchentliche \
-Knowledge Summaries aus Readwise-Highlights.
+You are an editorial knowledge curator. You create weekly Knowledge \
+Summaries from Readwise highlights.
 
-Regeln:
-- Sprache: Deutsch
-- Stil: Journalistisch-analytisch, keine Floskeln, konkrete Aussagen
-- Thematische Gruppierung: Fasse verwandte Quellen in 2-5 thematische \
-Abschnitte zusammen. NICHT eine Sektion pro Quelle.
-- Jeder Abschnitt hat möglichst diese Reihenfolge: optionaler \
-Takeaway-Callout direkt unter der H2, danach Fließtext-Zusammenfassung, \
-danach Verbindungen-Callout (wenn vorhanden), danach eine Quellenliste am \
-Ende des Abschnitts
-- Icons: 🎙️ vor Podcast-Quellen, 📖 vor Buch-Quellen
-- Links: NUR externe URLs (readwise.io, share.snipd.com, Original-URLs). \
-KEINE Obsidian-Wikilinks ([[...]]).
-- Callout-Syntax: > [!tip] für Takeaways, > [!example] für Verbindungen
-- Wenn ein Abschnitt einen klaren Kernpunkt hat, formuliere ihn zuerst als \
-knappen Takeaway-Callout und erkläre ihn erst danach im Fließtext.
-- Jeder Abschnitt MUSS mit `**Quellen:**` enden, gefolgt von einer flachen \
-Liste aller relevanten Quellen-URLs dieses Abschnitts. Eine Quelle pro \
-Listenpunkt, keine Quellen im Fließtext verstecken.
-- Für Verbindungen MUSS jede Bullet den Zielartikel eindeutig verlinken, im \
-Format `[Titel](URL): Erklärung`. Verwende dafür den bereitgestellten `Link` \
-der Zielquelle.
-- Für `**Quellen:**` verwende das Format `[Titel (Autor)](URL)`. Verwende \
-dafür bevorzugt den bereitgestellten `Quellenlink` (Readwise), nur falls \
-dieser fehlt den normalen `Link`.
-- Verbindungen: Formuliere Bezüge in natürlichem Deutsch. Verwende KEINE \
-rohen Schema-Labels wie extends, contradicts, supports, applies_to oder \
-relates_to im finalen Text. Nutze stattdessen kurze, natürliche Formulierungen \
-wie "vertieft den Gedanken", "steht im Kontrast zu", "bestätigt", \
-"lässt sich übertragen auf" oder "passt thematisch dazu".
+Rules:
+- Language: English
+- Style: Journalistic, analytical, concrete, no filler
+- Thematic grouping: Combine related sources into 2-5 thematic sections. Do \
+NOT create one section per source.
+- Preferred section order: optional takeaway callout directly below the H2, \
+then narrative synthesis, then a Connections callout (if useful), then a \
+source list at the end of the section
+- Icons: 🎙️ before podcast sources, 📖 before book sources
+- Links: ONLY external URLs (readwise.io, share.snipd.com, original source \
+URLs). NO Obsidian wikilinks ([[...]]).
+- Callout syntax: > [!tip] for takeaways, > [!example] for connections
+- If a section has a clear core point, state it first as a short takeaway \
+callout and explain it in the prose afterward.
+- Every section MUST end with `**Sources:**`, followed by a flat bullet list \
+of all relevant sources for that section. One source per bullet. Do not hide \
+sources inside the prose.
+- For connections, every bullet MUST link the target article clearly in the \
+format `[Title](URL): Explanation`. Use the provided `Link` of the target \
+source.
+- For `**Sources:**`, use the format `[Title (Author)](URL)`. Prefer the \
+provided `Source list link` (Readwise), and only fall back to `Link` if it is \
+missing.
+- Connections: phrase relationships in natural English. Do NOT use raw schema \
+labels like extends, contradicts, supports, applies_to, or relates_to in the \
+final text. Use short, natural phrasing such as "deepens the point", "stands \
+in contrast", "supports this view", "applies the idea", or "connects to it \
+thematically".
 """
 
 
 def _relationship_type_hint(relationship_type: str) -> str:
-    """Map schema relationship types to natural-language German hints."""
+    """Map schema relationship types to natural-language English hints."""
     if not relationship_type:
-        return "steht inhaltlich in Beziehung zu"
+        return "connects to"
 
     normalized = relationship_type.strip().lower()
-    return RELATIONSHIP_TYPE_LABELS.get(normalized, "steht inhaltlich in Beziehung zu")
+    return RELATIONSHIP_TYPE_LABELS.get(normalized, "connects to")
 
 
 def _preferred_link(source_url: str | None, readwise_url: str | None) -> str:
@@ -115,18 +114,18 @@ def _build_prompt(data: Dict[str, Any]) -> str:
     type_parts = []
     for stype, count in sorted(stats["source_types"].items()):
         if stype == "book":
-            type_parts.append(f"{count} 📖 Buch" if count == 1 else f"{count} 📖 Bücher")
+            type_parts.append(f"{count} 📖 book" if count == 1 else f"{count} 📖 books")
         elif stype == "podcast":
-            type_parts.append(f"{count} 🎙️ Podcast" + ("s" if count > 1 else ""))
+            type_parts.append(f"{count} 🎙️ podcast" + ("s" if count > 1 else ""))
         else:
-            type_parts.append(f"{count} Artikel")
+            type_parts.append(f"{count} article" + ("s" if count > 1 else ""))
     type_str = ", ".join(type_parts)
 
     lines = [
-        f"Erstelle eine Knowledge Summary für den Zeitraum {period['start']} bis {period['end']}.",
-        f"Statistik: {stats['total_highlights']} Highlights aus {stats['total_sources']} Quellen ({type_str}), {stats['total_relationships']} Verbindungen.",
+        f"Create a Knowledge Summary for the period {period['start']} to {period['end']}.",
+        f"Stats: {stats['total_highlights']} highlights from {stats['total_sources']} sources ({type_str}), {stats['total_relationships']} connections.",
         "",
-        "=== QUELLEN ===",
+        "=== SOURCES ===",
     ]
 
     # Sources with knowledge cards
@@ -135,11 +134,11 @@ def _build_prompt(data: Dict[str, Any]) -> str:
         preferred_link = _preferred_link(src.get("source_url"), src.get("readwise_url"))
         sources_list_link = _preferred_sources_list_link(src.get("readwise_url"), src.get("source_url"))
         lines.append(f"\n### {icon}{src['title']} ({src['author']})")
-        lines.append(f"Typ: {src['type']}")
+        lines.append(f"Type: {src['type']}")
         if preferred_link:
             lines.append(f"Link: {preferred_link}")
         if sources_list_link:
-            lines.append(f"Quellenlink: {sources_list_link}")
+            lines.append(f"Source list link: {sources_list_link}")
 
         for chunk in src["chunks"]:
             kc = chunk.get("knowledge_card", {})
@@ -153,30 +152,29 @@ def _build_prompt(data: Dict[str, Any]) -> str:
 
     # Relationships
     if relationships:
-        lines.append("\n=== VERBINDUNGEN ===")
+        lines.append("\n=== CONNECTIONS ===")
         for rel in relationships:
             icon = ""
             if "snipd.com" in (rel.get("target_source_url") or ""):
                 icon = "🎙️ "
             url = _preferred_link(rel.get("target_source_url"), rel.get("target_readwise_url"))
             lines.append(
-                f"- {rel['from_title']} → Beziehungshinweis: "
+                f"- {rel['from_title']} -> relationship hint: "
                 f"{_relationship_type_hint(rel.get('relationship_type', ''))} "
-                f"mit {icon}[{rel['target_title']}]({url}) ({rel.get('target_author', '')}): "
+                f"with {icon}[{rel['target_title']}]({url}) ({rel.get('target_author', '')}): "
                 f"{rel.get('explanation', '')}"
             )
 
-    lines.append("\n=== ANWEISUNGEN ===")
+    lines.append("\n=== INSTRUCTIONS ===")
     lines.append(
-        "Generiere NUR den Markdown-Body (OHNE Frontmatter, OHNE die H1-Überschrift, "
-        "OHNE die Statistik-Zeile). Beginne direkt mit dem ersten thematischen H2-Abschnitt. "
-        "Wenn du einen Takeaway-Callout nutzt, setze ihn direkt unter die H2 und vor den Fließtext. "
-        "Im Abschnitt `Verbindungen` soll jede Bullet einen eindeutig verlinkten Artikel im Format "
-        "`[Titel](URL): Erklärung` enthalten. "
-        "Beende jeden Abschnitt mit `**Quellen:**` und einer Bullet-Liste aller zu diesem Abschnitt "
-        "gehörenden Quellen. Gib diese Quellen als `[Titel (Autor)](URL)` aus und verwende dafür "
-        "bevorzugt `Quellenlink` (Readwise), sonst `Link`. "
-        "Ende mit der Fußzeile: *Generiert aus N Quellen via kx-hub am [Datum] · M Cross-Source-Verbindungen (K 🎙️ Podcasts)*"
+        "Generate ONLY the Markdown body (WITHOUT frontmatter, WITHOUT the H1 title, "
+        "WITHOUT the stats line). Start directly with the first thematic H2 section. "
+        "If you use a takeaway callout, place it directly below the H2 and before the prose. "
+        "In the `Connections` section, every bullet should contain a clearly linked article in the format "
+        "`[Title](URL): Explanation`. "
+        "End every section with `**Sources:**` and a bullet list of all sources belonging to that section. "
+        "Render those sources as `[Title (Author)](URL)` and prefer `Source list link` (Readwise), otherwise `Link`. "
+        "End with the footer: *Generated from N sources via kx-hub on [date] · M cross-source connections (K 🎙️ podcasts)*"
     )
 
     return "\n".join(lines)
@@ -209,31 +207,32 @@ def _build_header(data: Dict[str, Any]) -> str:
     start = dt.strptime(period["start"], "%Y-%m-%d")
     end = dt.strptime(period["end"], "%Y-%m-%d")
 
-    months_de = {
-        1: "Jan", 2: "Feb", 3: "Mär", 4: "Apr", 5: "Mai", 6: "Jun",
-        7: "Jul", 8: "Aug", 9: "Sep", 10: "Okt", 11: "Nov", 12: "Dez",
+    months_en = {
+        1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+        7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
     }
 
-    start_str = f"{start.day}. {months_de[start.month]}"
-    end_str = f"{end.day}. {months_de[end.month]} {end.year}"
+    start_str = f"{start.day}. {months_en[start.month]}"
+    end_str = f"{end.day}. {months_en[end.month]} {end.year}"
 
     # Source type breakdown
     type_parts = []
     st = stats["source_types"]
     if st.get("book"):
         n = st["book"]
-        type_parts.append(f"{n} Buch" if n == 1 else f"{n} Bücher")
+        type_parts.append(f"{n} book" if n == 1 else f"{n} books")
     if st.get("article"):
-        type_parts.append(f"{st['article']} Artikel")
+        n = st["article"]
+        type_parts.append(f"{n} article" if n == 1 else f"{n} articles")
     if st.get("podcast"):
         n = st["podcast"]
-        type_parts.append(f"{n} 🎙️ Podcast" + ("s" if n > 1 else ""))
+        type_parts.append(f"{n} 🎙️ podcast" + ("s" if n > 1 else ""))
     type_str = ", ".join(type_parts)
 
     header = f"# Knowledge Summary: {start_str} – {end_str}\n"
-    header += f"\n**{stats['total_highlights']} neue Highlights** aus {stats['total_sources']} Quellen ({type_str})"
+    header += f"\n**{stats['total_highlights']} new highlights** from {stats['total_sources']} sources ({type_str})"
     if stats["total_relationships"] > 0:
-        header += f" · **{stats['total_relationships']} Verbindungen**"
+        header += f" · **{stats['total_relationships']} connection" + ("s" if stats["total_relationships"] != 1 else "") + "**"
 
     return header
 

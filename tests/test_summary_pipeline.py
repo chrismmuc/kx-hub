@@ -554,29 +554,29 @@ class TestBuildHeader:
         header = _build_header(data)
         assert header.startswith("# Knowledge Summary:")
         assert "23. Feb" in header
-        assert "2. Mär 2026" in header
+        assert "2. Mar 2026" in header
 
     def test_highlight_count(self):
         data = _make_pipeline_data()
         header = _build_header(data)
-        assert "**3 neue Highlights**" in header
+        assert "**3 new highlights**" in header
 
     def test_source_types(self):
         data = _make_pipeline_data()
         header = _build_header(data)
-        assert "1 Artikel" in header
-        assert "1 🎙️ Podcast" in header
+        assert "1 article" in header
+        assert "1 🎙️ podcast" in header
 
     def test_connections_count(self):
         data = _make_pipeline_data()
         header = _build_header(data)
-        assert "**1 Verbindungen**" in header
+        assert "**1 connection**" in header
 
     def test_no_connections_when_zero(self):
         data = _make_pipeline_data()
         data["stats"]["total_relationships"] = 0
         header = _build_header(data)
-        assert "Verbindungen" not in header
+        assert "connection" not in header
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +598,7 @@ class TestBuildPrompt:
     def test_contains_relationships(self):
         data = _make_pipeline_data()
         prompt = _build_prompt(data)
-        assert "vertieft oder erweitert" in prompt
+        assert "deepens the point" in prompt
         assert "extends" not in prompt
         assert "Old AI Paper" in prompt
         assert "https://example.com/old-ai-paper" in prompt
@@ -614,18 +614,18 @@ class TestBuildPrompt:
         data = _make_pipeline_data()
         prompt = _build_prompt(data)
         assert "Link: https://example.com/ai" in prompt
-        assert "Quellenlink: https://readwise.io/bookreview/111" in prompt
+        assert "Source list link: https://readwise.io/bookreview/111" in prompt
         assert "https://share.snipd.com/ep/123" in prompt
 
     def test_instructions_at_end(self):
         data = _make_pipeline_data()
         prompt = _build_prompt(data)
-        assert "ANWEISUNGEN" in prompt
-        assert "OHNE Frontmatter" in prompt
-        assert "direkt unter die H2" in prompt
-        assert "**Quellen:**" in prompt
-        assert "Titel (Autor)" in prompt
-        assert "Quellenlink" in prompt
+        assert "INSTRUCTIONS" in prompt
+        assert "WITHOUT frontmatter" in prompt
+        assert "directly below the H2" in prompt
+        assert "**Sources:**" in prompt
+        assert "Title (Author)" in prompt
+        assert "Source list link" in prompt
 
 
 class TestPreferredLink:
@@ -646,11 +646,11 @@ class TestPreferredSourcesListLink:
 
 class TestRelationshipTypeHint:
     def test_maps_known_schema_labels(self):
-        assert _relationship_type_hint("extends") == "vertieft oder erweitert"
-        assert _relationship_type_hint("relates_to") == "steht inhaltlich in Beziehung zu"
+        assert _relationship_type_hint("extends") == "deepens the point"
+        assert _relationship_type_hint("relates_to") == "connects to"
 
     def test_falls_back_for_unknown_labels(self):
-        assert _relationship_type_hint("unknown") == "steht inhaltlich in Beziehung zu"
+        assert _relationship_type_hint("unknown") == "connects to"
 
 
 # ---------------------------------------------------------------------------
@@ -725,7 +725,7 @@ class TestGenerateSummary:
 
         call_args = mock_client.generate.call_args
         assert call_args.kwargs["system_prompt"] is not None
-        assert "Deutsch" in call_args.kwargs["system_prompt"]
+        assert "Language: English" in call_args.kwargs["system_prompt"]
 
 
 # ---------------------------------------------------------------------------
@@ -794,7 +794,7 @@ class TestInlineFormat:
 
 class TestSlugify:
     def test_basic(self):
-        result = _slugify("Knowledge Summary: 23. Feb – 2. Mär 2026")
+        result = _slugify("Knowledge Summary: 23. Feb – 2. Mar 2026")
         assert "knowledge-summary" in result
         assert result.startswith("knowledge")
 

@@ -78,13 +78,13 @@ def _extract_title(data: dict) -> str:
     period = data["period"]
     from datetime import datetime as dt
 
-    months_de = {
-        1: "Jan", 2: "Feb", 3: "Mär", 4: "Apr", 5: "Mai", 6: "Jun",
-        7: "Jul", 8: "Aug", 9: "Sep", 10: "Okt", 11: "Nov", 12: "Dez",
+    months_en = {
+        1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+        7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
     }
     start = dt.strptime(period["start"], "%Y-%m-%d")
     end = dt.strptime(period["end"], "%Y-%m-%d")
-    return f"Knowledge Summary: {start.day}. {months_de[start.month]} – {end.day}. {months_de[end.month]} {end.year}"
+    return f"Knowledge Summary: {start.day}. {months_en[start.month]} – {end.day}. {months_en[end.month]} {end.year}"
 
 
 def _save_summary(
