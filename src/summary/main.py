@@ -15,12 +15,12 @@ import functions_framework
 # Support both package imports (local/tests) and flat imports (Cloud Functions)
 try:
     from .cover_image import extract_themes, generate_cover_image, upload_html_to_gcs, upload_to_gcs
-    from .data_pipeline import collect_summary_data
+    from .data_pipeline import collect_summary_data, fetch_previous_summaries, extract_recurring_themes
     from .delivery import _markdown_to_html, deliver_to_reader
     from .generator import generate_summary as generate_summary_text
 except ImportError:
     from cover_image import extract_themes, generate_cover_image, upload_html_to_gcs, upload_to_gcs
-    from data_pipeline import collect_summary_data
+    from data_pipeline import collect_summary_data, fetch_previous_summaries, extract_recurring_themes
     from delivery import _markdown_to_html, deliver_to_reader
     from generator import generate_summary as generate_summary_text
 
@@ -147,6 +147,16 @@ def generate_summary(request):
         # Story 9.1: Data collection
         data = collect_summary_data(days=days, limit=limit)
 
+        # Story 9.6: Fetch recurring themes from previous summaries (non-fatal)
+        recurring_themes: list = []
+        try:
+            previous_summaries = fetch_previous_summaries(data["period"])
+            recurring_themes = extract_recurring_themes(previous_summaries)
+            if recurring_themes:
+                logger.info(f"Recurring themes: {recurring_themes}")
+        except Exception as e:
+            logger.warning(f"Recurring themes fetch failed (non-fatal): {e}")
+
         if not data.get("sources"):
             return {
                 "status": "success",
@@ -156,7 +166,7 @@ def generate_summary(request):
             }
 
         # Story 9.2: LLM generation
-        result = generate_summary_text(data, model=model)
+        result = generate_summary_text(data, model=model, recurring_themes=recurring_themes or None)
 
         title = _extract_title(data)
         now = datetime.now(timezone.utc)
@@ -179,7 +189,7 @@ def generate_summary(request):
                 themes = extract_themes(result["markdown"])
                 image_bytes = generate_cover_image(themes, data["period"])
                 ts = now.strftime("%Y%m%d_%H%M%S")
-                image_url = upload_to_gcs(image_bytes, f"{ts}_cover.png")
+                image_url = upload_to_gcs(image_bytes, f"images/{ts}_cover.png")
                 logger.info(f"Cover image uploaded: {image_url}")
                 response["image_url"] = image_url
             except Exception as e:
@@ -191,7 +201,7 @@ def generate_summary(request):
             try:
                 ts = now.strftime("%Y%m%d_%H%M%S")
                 html_body = _markdown_to_html(result["markdown"])
-                html_url = upload_html_to_gcs(html_body, title, f"{ts}_summary.html", image_url)
+                html_url = upload_html_to_gcs(html_body, title, f"summaries/{ts}_summary.html", image_url)
                 logger.info(f"HTML page uploaded: {html_url}")
                 response["html_url"] = html_url
             except Exception as e:

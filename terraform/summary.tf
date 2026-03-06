@@ -149,7 +149,7 @@ resource "google_cloud_run_service_iam_member" "summary_scheduler_invoker" {
 
 # Public bucket for weekly summary cover images (1 image/week)
 resource "google_storage_bucket" "summary_images" {
-  name     = "kx-hub-summary-images"
+  name     = "kx-hub-content"
   location = var.region
 
   uniform_bucket_level_access = true

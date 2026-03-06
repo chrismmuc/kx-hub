@@ -73,7 +73,7 @@ def _get_bucket():
     from google.cloud import storage
 
     client = storage.Client(project=GCP_PROJECT)
-    return client.bucket("kx-hub-summary-images")
+    return client.bucket("kx-hub-content")
 
 
 def upload_to_gcs(image_bytes: bytes, blob_name: str) -> str:
