@@ -308,26 +308,21 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 15.1 | **Topic Classifier** - Gemini Flash klassifiziert jede Source nach Themenbereich; Allowlist (Tech/AI/Engineering/Management) → nur diese Sources in den Newsletter | Planned |
-| 15.2 | **Hot News Research Agent** - Vertex AI ADK Agent mit Google Search Grounding recherchiert "Top AI & Software News der Woche"; strukturierter Output: 3-5 Items mit Titel, Summary, Relevanz | Planned |
+| 15.1+15.2 | **ADK Curation & Research Agent** - Ein ADK Agent auf Vertex AI Agent Engine: filtert Sources kontextuell (kein Regelwerk), recherchiert Hot News via Google Search. Keine explizite Allowlist/Denylist — der Agent urteilt autonom über Grenzfälle | Planned |
 | 15.3 | **Newsletter Generator** - Kombiniert gefilterte KX-Highlights + Hot News zu externem Newsletter; englisch, professioneller Ton; HTML + Plain Text Output | Planned |
 | 15.4 | **Mailing List & Delivery** - Firestore `newsletter_subscribers` Collection, Subscribe/Unsubscribe Cloud Function Endpoints, Double-Opt-In, Brevo API für Versand, Cloud Scheduler (wöchentlich) | Planned |
 
 **Key Design Decisions:**
-- **Filter-Ansatz:** Source-Level-Klassifizierung am Anfang der Pipeline (nicht Post-Processing der privaten Summary) — genauer, auch wenn ~2x Compute
-- **Kein Agent-Framework für Filter:** Gemini Flash direkt (einfacher, günstiger); Agent ADK nur für News Research (braucht Web-Zugriff via Google Search)
+- **ADK Agent statt Regelwerk:** Filter + News-Recherche als ein ADK Agent auf Vertex AI Agent Engine — kein Hardcode von Relevanz-Kriterien, Grenzfälle werden kontextuell entschieden
+- **Filter am Anfang:** Sources werden vor dem Generator gefiltert (nicht aus privater Summary destilliert) — sauberer Input, kein Themen-Blending
 - **Newsletter ≠ Private Summary:** Eigener Generator mit anderem Prompt und Ton (extern, englisch)
-- **Mailing List:** Firestore + Brevo (kein eigener SMTP-Server); Brevo Free Tier reicht für Start
-- **Erweiterbar:** Schema und Infrastruktur vorbereitet für Wachstum (Segmente, Paid Tier bei Brevo)
+- **Mailing List:** Brevo Free Tier (300 Emails/Tag) + Firestore-Spiegel; Brevo Starter ($9/Monat) für Wachstum
 
 **Cost Impact:**
-- Gemini Flash (Classifier, 4x/Monat): ~$0.01/Monat
-- Vertex AI ADK Agent (4x/Monat, 5-10 Search calls): ~$0.05/Monat
+- ADK Curation & Research Agent (4x/Monat, Gemini Pro multi-turn + Search): ~$0.30–0.40/Monat
 - Gemini Pro (Newsletter Generator, 4x/Monat): ~$0.06/Monat
-- Brevo Free Tier (bis 300/Tag): $0
-- Firestore (Subscriber Collection): $0 (Free Tier)
-- Cloud Functions: $0 (Free Tier)
-- **Gesamt: ~$0.12/Monat**
+- Brevo Free Tier: $0 · Firestore + Cloud Functions: $0 (Free Tier)
+- **Gesamt: ~$0.36–0.46/Monat**
 
 See [epics/epic15.md](epics/epic15.md) for full details.
 

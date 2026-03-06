@@ -19,33 +19,47 @@
 ### 1. Filter-Ansatz: Source-Level vs. Post-Processing
 
 **Option A: Source-Level-Klassifizierung** ← **Gewählt**
-- Gemini Flash klassifiziert jede Source beim Einstieg in die Newsletter-Pipeline
-- Nur als extern-relevant eingestufte Sources werden an den Generator übergeben
-- Vorteil: Präzise Kontrolle, keine Themen-Blending durch den Generator
-- Nachteil: ~2x LLM-Aufrufe (classify + generate)
+- Sources werden vor dem Generator gefiltert, nicht aus der privaten Summary destilliert
+- Vorteil: kein Themen-Blending im Generator; sauberer Input
+- Nachteil: ~2x Compute-Schritte
 
 **Option B: Post-Processing der privaten Summary**
 - Bestehende private Summary als Input, LLM soll "nur Tech-Teil" extrahieren
-- Nachteil: LLM neigt dazu, Themen zu vermischen; Kontext aus Nicht-Tech-Quellen beeinflusst Formulierungen
+- Nachteil: LLM-Kontext wird durch persönliche Themen beeinflusst, Resultate unzuverlässig
 
-**Entscheidung:** Option A — mehr Compute, aber deutlich zuverlässiger. Bei 10-20 Sources/Woche
-kosten die Classifier-Calls ~$0.001 (Gemini Flash).
+**Entscheidung:** Option A.
 
-### 2. Agent-Ansatz für Hot News: ADK vs. direktes Gemini Grounding
+### 2. Filter + Research: Explizite Logik vs. ADK Agent
 
-**Option A: Vertex AI ADK Agent** mit Google Search Tool
-- Volle Kontrolle: Agent kann mehrere Suchanfragen planen und kombinieren
-- Deployment auf Vertex AI Agent Engine (managed) oder Cloud Run
-- Komplexer zu deployen, aber flexibler
+**Option A: Explizite LLM-Calls** (ursprünglicher Entwurf)
+- Gemini Flash: jede Source mit Allowlist/Denylist + Konfidenz-Schwellwert klassifizieren
+- Festes Query-Template für News-Recherche
+- Problem: du musst selbst Grenzfälle pflegen — "Ist Decision-Making-Psychologie Tech oder Personal?", "Ist dieser VC-Artikel Management oder Lifestyle?" — als Regeln hinschreiben
 
-**Option B: Gemini direkt mit Google Search Grounding** ← **Gewählt für MVP**
-- Ein einziger Gemini-API-Call mit `google_search` Grounding aktiviert
-- Deutlich simpler: kein Agent-Framework, kein separates Deployment
-- Vertex AI unterstützt Grounding nativ in `GenerationConfig`
-- Einschränkung: Keine multi-step reasoning; Gemini entscheidet selbst welche Searches nötig sind
+**Option B: Vertex AI ADK Agent** ← **Gewählt**
+- Ein Agent erhält alle Sources + aktuelles Datum als Kontext
+- Goal: *"Select which of these sources are relevant for an external tech audience, and research what was hot in AI/software this week"*
+- Der Agent reasoning über Grenzfälle autonom — keine Allowlist, kein Schwellwert
+- Tools: `google_search` (built-in ADK Tool) für Hot News
+- Deployment: Vertex AI Agent Engine (managed, kein eigenes Infra)
+- **Kern-Vorteil:** Die Bewertungslogik steckt im LLM-Reasoning, nicht in Code — wartungsärmer, robuster bei Grenzfällen
 
-**Migration-Pfad:** Beginne mit Gemini Grounding (MVP, Story 15.2). Falls die Qualität nicht ausreicht
-oder komplexere Recherche-Logik benötigt wird, migriere auf Vertex AI ADK Agent (Story 15.2b).
+**Warum ADK besser passt als direktes Grounding:**
+- Grounding = ein einzelner LLM-Call mit passiver Search-Nutzung
+- ADK Agent = multi-step: plant Suchanfragen, evaluiert Ergebnisse, entscheidet selbstständig was "hot" ist
+- Kein Hardcode von "3-5 Items", "sortiert nach Relevanz" — das entscheidet der Agent
+- Kein Hardcode von Relevanz-Kriterien für den Filter — der Agent argumentiert kontextuell
+
+**Kosten-Vergleich:**
+| Ansatz | Kosten/Woche |
+|--------|-------------|
+| Gemini Flash (Classifier) + Gemini Pro (Grounding) | ~$0.03 |
+| ADK Agent (Gemini Pro, multi-turn) | ~$0.06–0.10 |
+
+Delta ~$0.03–0.07/Woche = ~$0.15–0.30/Monat. Akzeptabel für deutlich weniger Code-Komplexität.
+
+**Deployment:** Vertex AI Agent Engine (managed). Kein Cloud Run Container nötig,
+kein Session-Management — der Agent ist stateless (wöchentlicher Batch-Job).
 
 ### 3. Newsletter-Delivery: E-Mail-Dienst
 
@@ -80,28 +94,30 @@ Subscribe/Unsubscribe Endpoints in Cloud Functions (leichtgewichtig, beide Syste
 
 ---
 
-## Topic Allowlist / Denylist
+## Agent-Ziel (statt Allowlist/Denylist)
 
-### Extern-relevante Themen (Allowlist)
+Statt expliziter Regellisten wird der Agent mit einem Ziel-Prompt instruiert:
+
 ```
-technology, software engineering, artificial intelligence, machine learning,
-large language models, developer tools, cloud computing, system design,
-engineering management, technical leadership, product management,
-innovation, startup, venture capital, business strategy, organizational design,
-data science, security, open source, API design, architecture
+You are a newsletter curator for a weekly tech newsletter called "Weekly Reading Notes".
+
+Your audience: software engineers, engineering managers, and tech leaders.
+
+Given the sources read this week, your tasks:
+1. Select sources that would be interesting and relevant for this external tech audience.
+   Use your judgment — focus on software, AI/ML, engineering, management, leadership,
+   product, and related tech topics. Exclude personal topics like parenting, marriage,
+   sports, self-help, etc. For borderline cases (e.g. psychology applied to engineering
+   teams), include them if the professional angle is dominant.
+2. Research the most important AI and software news from this week using the search tool.
+   Find 3-5 genuinely significant developments, not just hype.
+
+Return structured output: filtered_sources + hot_news_items.
 ```
 
-### Nicht für externen Newsletter (Denylist)
-```
-parenting, family, marriage, relationships, religion, spirituality,
-sports, fitness, nutrition, cooking, self-help, personal finance,
-psychology (personal), mindfulness, meditation, personal productivity
-(non-tech), travel, fashion, real estate
-```
-
-**Classifier-Prompt:** Gemini Flash bekommt Titel + Author + Knowledge Card Summary und
-klassifiziert in: `tech` | `management` | `mixed` | `personal`. Nur `tech` und `management`
-kommen in den Newsletter; `mixed` nur wenn der Tech-Anteil > 60%.
+**Bewusste Entscheidung:** Keine harte Allowlist/Denylist — der Agent argumentiert kontextuell.
+Ein Artikel über "Stoizismus für Tech-Manager" wäre in einer Regel-basierten Welt "Philosophie → exclude",
+mit Agent-Reasoning: "professional context, relevant for management audience → include".
 
 ---
 
@@ -111,90 +127,84 @@ kommen in den Newsletter; `mixed` nur wenn der Tech-Anteil > 60%.
 Cloud Scheduler (wöchentlich, Sa 08:00 UTC)
   │
   ▼
-Cloud Function: newsletter_generator
+Cloud Function: newsletter_orchestrator
   │
-  ├─ 1. Fetch recent chunks (last 7 days) ← reuse from Epic 9 data_pipeline
+  ├─ 1. Fetch recent sources (last 7 days) ← reuse Epic 9 data_pipeline
   │
-  ├─ 2. Topic Classifier (Story 15.1)
-  │      └─ Gemini Flash: classify each source
-  │      └─ Filter: keep tech + management sources only
+  ├─ 2. ADK Curation & Research Agent (Stories 15.1 + 15.2)
+  │      └─ Vertex AI Agent Engine (managed, stateless)
+  │      └─ Model: Gemini Pro
+  │      └─ Tool: google_search (built-in ADK)
+  │      └─ Input: sources as context + week date
+  │      └─ Output: {filtered_sources: [...], hot_news: [...]}
+  │      (Agent decides autonomously: what's relevant? what's hot?)
   │
-  ├─ 3. Hot News Research (Story 15.2)
-  │      └─ Gemini Pro + Google Search Grounding
-  │      └─ Query: "Top AI and software engineering news this week [date]"
-  │      └─ Output: 3-5 structured news items
-  │
-  ├─ 4. Newsletter Generator (Story 15.3)
+  ├─ 3. Newsletter Generator (Story 15.3)
   │      └─ Gemini Pro: compose external newsletter
-  │      └─ Input: filtered sources + hot news
+  │      └─ Input: filtered_sources + hot_news
   │      └─ Output: HTML + plain text
   │
-  └─ 5. Delivery (Story 15.4)
+  └─ 4. Delivery (Story 15.4)
          └─ Brevo API: send to subscriber list
-         └─ Firestore: log delivery metadata
-         └─ Save newsletter to Firestore `newsletters` collection
+         └─ Firestore: log newsletter + delivery metadata
 ```
 
 ---
 
 ## Stories
 
-### Story 15.1: Topic Classifier
+### Story 15.1 + 15.2: ADK Curation & Research Agent (kombiniert)
 
-**Ziel:** LLM-basierte Klassifizierung jeder Source in Themenbereiche; Filterung auf extern-relevante Topics.
+**Ziel:** Ein ADK Agent übernimmt Filterung UND News-Recherche — keine expliziten Bewertungsregeln nötig.
 
-**Tasks:**
-1. `classify_sources(sources: List[Source]) -> List[ClassifiedSource]`
-   - Input: Source-Liste aus Epic 9 data_pipeline
-   - LLM: Gemini Flash (`gemini-2.5-flash`)
-   - Batch-Verarbeitung: alle Sources in einem Call (Kosten-Optimierung)
-   - Output: jede Source mit `topic_category` (`tech` | `management` | `mixed` | `personal`) und `topic_confidence` (0.0-1.0)
-2. `filter_external_sources(classified: List[ClassifiedSource]) -> List[Source]`
-   - Behalte: `tech`, `management`, `mixed` (wenn confidence > 0.6)
-   - Verwerfe: `personal`
-3. Classifier-Prompt: Titel + Author + Knowledge Card Summary → Kategorie
-4. Tests: Mock LLM, Filter-Logik, Edge Cases (leere Liste, alle personal)
+**Warum kombiniert:** Filter und Recherche sind zwei Seiten derselben redaktionellen Entscheidung.
+Der Agent kann sie in einem Reasoning-Schritt verbinden: "Was aus meinem Lesen ist relevant für
+meine Tech-Audience — und was lief in der Tech-Welt, das ich möglicherweise nicht gelesen habe?"
 
-**Acceptance Criteria:**
-- Sources korrekt klassifiziert (manuell verifiziert an 10-Beispiel-Set)
-- Personal-Themen zuverlässig herausgefiltert
-- Batch-Call: alle Sources in ≤ 2 LLM-Calls (unabhängig von Source-Anzahl)
-- Performance: < 5s für 20 Sources
-
-**Kosten:** ~$0.001/Batch (Gemini Flash)
-
----
-
-### Story 15.2: Hot News Research Agent
-
-**Ziel:** Gemini mit Google Search Grounding recherchiert wöchentlich die wichtigsten AI & Software-Neuigkeiten.
-
-**MVP-Ansatz:** Gemini Pro mit `google_search` Grounding (kein ADK Agent nötig)
+**Tech Setup:**
+- Framework: [Google ADK](https://google.github.io/adk-docs/) (Python)
+- Deployment: Vertex AI Agent Engine (managed runtime, kein eigener Container)
+- Model: `gemini-3.1-pro-preview` (Reasoning-Qualität nötig)
+- Tool: `google_search` (ADK built-in Tool, kein API Key nötig)
+- Session: stateless (kein Gedächtnis zwischen Runs — jede Woche frisch)
 
 **Tasks:**
-1. `research_hot_news(week_end_date: str) -> List[NewsItem]`
-   - Model: `gemini-3.1-pro-preview` mit Google Search Grounding aktiviert
-   - Query: `"Top AI, machine learning and software engineering news week of {date}"`
-   - Output-Schema: `List[NewsItem]` mit `title`, `summary` (2-3 Sätze), `source_url`, `why_relevant`
-   - Max 5 Items, sortiert nach Relevanz
-2. Structured output via Gemini JSON mode
-3. Fallback: wenn Search Grounding fehlschlägt, 0 Hot News (Newsletter geht trotzdem raus)
-4. Tests: Mock Gemini response, Schema-Validierung
+1. ADK Agent definieren (`src/newsletter/curation_agent.py`):
+   ```python
+   from google.adk.agents import Agent
+   from google.adk.tools import google_search
 
-**Vertex AI ADK Migration (Story 15.2b, Optional):**
-Wenn Qualität nicht ausreichend oder multi-step Research gewünscht:
-- ADK Agent mit `google_search` Tool + `KXHub search` Tool
-- Agent plant eigenständig mehrere Suchanfragen
-- Deployment auf Vertex AI Agent Engine oder Cloud Run
-- Aufwand: ~1-2 Tage zusätzlich
+   curation_agent = Agent(
+       name="newsletter_curator",
+       model="gemini-3.1-pro-preview",
+       tools=[google_search],
+       instruction=CURATOR_SYSTEM_PROMPT,
+   )
+   ```
+2. Agent-Prompt (`CURATOR_SYSTEM_PROMPT`):
+   - Beschreibt Audience und Ziel (Tech/Engineering/Management)
+   - Instruiert explizit: Grenzfälle mit Urteilsvermögen entscheiden, kein hartes Regelwerk
+   - Definiert Output-Schema (JSON): `{filtered_sources, hot_news}`
+3. Deployment auf Vertex AI Agent Engine:
+   ```python
+   from vertexai.preview import reasoning_engines
+   app = reasoning_engines.AdkApp(agent=curation_agent, enable_tracing=True)
+   agent_engine = reasoning_engines.ReasoningEngine.create(app, ...)
+   ```
+4. Orchestrator ruft Agent auf: `agent_engine.query(input={"sources": [...], "week": "2026-03-07"})`
+5. Output-Schema validieren (Pydantic): `CurationResult(filtered_sources, hot_news)`
+6. Fallback: wenn Agent-Call fehlschlägt → alle Sources ungefiltert an Generator übergeben,
+   Hot News leer lassen (Newsletter erscheint trotzdem)
+7. Tests: Mock Agent Engine response, Schema-Validierung, Fallback-Verhalten
 
 **Acceptance Criteria:**
-- 3-5 relevante News-Items pro Woche
-- Kein Crash bei Search-Grounding-Fehler (graceful fallback)
-- Structured output ist schema-konform
-- Keine Halluzinationen: alle URLs sind echte, verlinkte Quellen aus Search-Ergebnissen
+- Persönliche Themen (Erziehung, Sport, Ehe) werden zuverlässig ausgeschlossen
+- Grenzfälle (z.B. Stoa-Artikel für Manager) werden kontextuell korrekt entschieden
+- 3-5 Hot News Items pro Woche mit echten, verifizierbaren URLs
+- Agent-Call < 30s (Vertex AI Agent Engine Latenz)
+- Graceful Fallback bei Agent-Fehler
 
-**Kosten:** ~$0.02/Batch (Gemini Pro + Search Grounding calls)
+**Kosten:** ~$0.06–0.10/Woche (Gemini Pro, multi-turn Agent reasoning + Search calls)
 
 ---
 
