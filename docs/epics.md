@@ -1,6 +1,6 @@
 # Epics - kx-hub
 
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-03-06
 
 ---
 
@@ -123,6 +123,7 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 | 9.3 | **Reader Delivery** - Save summary to Readwise Reader with `ai-weekly-summary` tag, persist to Firestore `summaries` collection | ✅ Done |
 | 9.4 | **Obsidian Delivery** - Headless Sync via Cloud Run + GCS FUSE + Obsidian Sync | Planned |
 | 9.5 | **get_recent mit Connections** - Optional: MCP tool enhancement for interactive use | Optional |
+| 9.6 | **Recurring Themes Analysis** - Compare current week to previous N summaries, identify repeating themes, add longitudinal "Recurring Themes" section to summary | Planned |
 
 **Key Features:**
 - Narrative deutsche Texte mit thematischer Gruppierung (nicht 1:1 pro Source)
@@ -130,10 +131,12 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 - Podcast-Erkennung (🎙️ Snipd), Buch-Erkennung (📖)
 - Obsidian Callouts (`[!tip]`, `[!example]`) für Takeaways und Verbindungen
 - Externe Links (readwise.io, share.snipd.com, original URLs)
+- Story 9.6: Longitudinal "Recurring Themes" Abschnitt — Themen die in 2+ Vorwochen auftauchen, werden hervorgehoben
 
 **Phases:**
-1. MVP: Stories 9.1-9.3 (Reader Delivery)
+1. MVP: Stories 9.1-9.3 (Reader Delivery) ✅
 2. Rich: Story 9.4 (Obsidian Headless Sync)
+3. Longitudinal: Story 9.6 (Recurring Themes)
 
 See [epics/epic9.md](epics/epic9.md) for full details.
 
@@ -285,6 +288,43 @@ See [epics/epic13.md](epics/epic13.md) for full details.
 **Key Design:** No new infra or MCP tools. Modifies `generate_problem_queries()` in `recommendation_problems.py` — LLM path when evidence exists, template fallback on error. ~$0.03/year cost.
 
 See [epics/epic14.md](epics/epic14.md) for full details.
+
+---
+
+---
+
+## Epic 15: External Tech Newsletter 🚧
+
+**Goal:** Automatischer wöchentlicher Newsletter für externe Leser — gefiltert auf Tech/AI/Management-Themen, ergänzt durch KI-recherchierte Hot News der Woche. Delivery via Mailing-Liste.
+
+**Status:** Planned
+
+**Model/Tech Stack:**
+- Gemini Flash (Topic Classifier, ~$0.001/Batch)
+- Vertex AI ADK Agent + Google Search Grounding (Hot News Research)
+- Firestore (Subscriber-Liste)
+- Brevo API (E-Mail-Delivery, 300 Emails/Tag free tier)
+- Cloud Functions (Subscribe/Unsubscribe Endpoints)
+
+| Story | Description | Status |
+|-------|-------------|--------|
+| 15.1+15.2 | **ADK Curation & Research Agent** - Ein ADK Agent auf Vertex AI Agent Engine: filtert Sources kontextuell (kein Regelwerk), recherchiert Hot News via Google Search. Keine explizite Allowlist/Denylist — der Agent urteilt autonom über Grenzfälle | Planned |
+| 15.3 | **Newsletter Generator** - Kombiniert gefilterte KX-Highlights + Hot News zu externem Newsletter; englisch, professioneller Ton; HTML + Plain Text Output | Planned |
+| 15.4 | **Mailing List & Delivery** - Firestore `newsletter_subscribers` Collection, Subscribe/Unsubscribe Cloud Function Endpoints, Double-Opt-In, Brevo API für Versand, Cloud Scheduler (wöchentlich) | Planned |
+
+**Key Design Decisions:**
+- **ADK Agent statt Regelwerk:** Filter + News-Recherche als ein ADK Agent auf Vertex AI Agent Engine — kein Hardcode von Relevanz-Kriterien, Grenzfälle werden kontextuell entschieden
+- **Filter am Anfang:** Sources werden vor dem Generator gefiltert (nicht aus privater Summary destilliert) — sauberer Input, kein Themen-Blending
+- **Newsletter ≠ Private Summary:** Eigener Generator mit anderem Prompt und Ton (extern, englisch)
+- **Mailing List:** Brevo Free Tier (300 Emails/Tag) + Firestore-Spiegel; Brevo Starter ($9/Monat) für Wachstum
+
+**Cost Impact:**
+- ADK Curation & Research Agent (4x/Monat, Gemini Pro multi-turn + Search): ~$0.25–0.40/Monat
+- Gemini Pro (Newsletter Generator, 4x/Monat): ~$0.16/Monat
+- Brevo Free Tier: $0 · Firestore + Cloud Functions + Agent Engine: $0 (Free/Serverless)
+- **Gesamt: ~$0.40–0.55/Monat**
+
+See [epics/epic15.md](epics/epic15.md) for full details.
 
 ---
 

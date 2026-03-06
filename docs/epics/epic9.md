@@ -260,11 +260,45 @@ connections: 12
 
 ---
 
+### Story 9.6: Recurring Themes Analysis
+
+**Beschreibung:** Die Summary um eine longitudinale Perspektive erweitern: Themen, die in ≥ 2 der letzten N Wochen auftauchen, werden als "Recurring Themes"-Abschnitt hervorgehoben. Gibt dem Leser Kontext: Was beschäftigt mich dauerhaft?
+
+**Datenquelle:** Firestore `summaries` Collection (wird bereits von `main.py` via `_save_summary()` befüllt).
+
+**Tasks:**
+1. [ ] `fetch_previous_summaries(n_weeks: int = 4) -> List[Dict]` in `data_pipeline.py`
+   - Query: `summaries` Collection, sortiert nach `created_at` DESC, limit n_weeks
+   - Return: Liste von `{period, markdown, stats}` der letzten Wochen
+2. [ ] `extract_themes(summaries: List[Dict]) -> List[str]` — Themen-Extraktion
+   - Option A: H2-Überschriften aus dem Markdown der Vorwochen parsen (einfach, keine LLM-Kosten)
+   - Option B: Gemini Flash extrahiert Themen aus den Summaries (genauer, ~$0.001)
+   - Empfehlung: Option A als Start, Option B als Upgrade
+3. [ ] Theme-Matching: Vergleiche aktuelle Wochen-Themen mit extrahierten Vorwochen-Themen
+   - Einfaches String-Matching oder Embedding-Similarity (Embeddings sind bereits in der Pipeline)
+4. [ ] `_build_prompt()` in `generator.py` erweitern:
+   - Neuer Abschnitt `=== RECURRING THEMES ===` im Prompt
+   - Format: `"Theme X appeared in weeks: W1, W2, W3"`
+   - Instruktion an LLM: "If a theme recurs across multiple weeks, mention this continuity in the summary"
+5. [ ] Tests: Mock `summaries` Collection, Theme-Extraktion, Prompt-Erweiterung
+
+**Acceptance Criteria:**
+- [ ] Themen die in ≥ 2 der letzten 4 Wochen auftauchen werden erkannt
+- [ ] Summary enthält einen "Recurring Themes"-Hinweis wenn zutreffend
+- [ ] Kein Fehler wenn `summaries` Collection leer ist (erste Woche)
+- [ ] Performance: < 2s für Theme-Extraktion (4 Summaries)
+
+**Kosten:** ~$0/Monat (Option A, Markdown-Parsing) oder ~$0.004/Monat (Option B, Gemini Flash)
+
+**Status:** Planned
+
+---
+
 ## Nicht-Ziele
 
 - Keine Echtzeit-Notifications
 - Keine interaktive Email (Epic 5 / Story 3.6 gestrichen zugunsten Obsidian/Reader)
-- Kein eigener Email-Digest — Obsidian + Reader ersetzen Email als Kanal
+- Kein eigener Email-Digest für diese private Summary — Obsidian + Reader sind der Kanal hier (externer Newsletter: → Epic 15)
 - Keine Zusammenfassung jedes einzelnen Highlights — thematische Synthese
 
 ---
