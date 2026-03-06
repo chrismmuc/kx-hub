@@ -298,7 +298,7 @@ connections: 12
 
 - Keine Echtzeit-Notifications
 - Keine interaktive Email (Epic 5 / Story 3.6 gestrichen zugunsten Obsidian/Reader)
-- Kein eigener Email-Digest — Obsidian + Reader ersetzen Email als Kanal
+- Kein eigener Email-Digest für diese private Summary — Obsidian + Reader sind der Kanal hier (externer Newsletter: → Epic 15)
 - Keine Zusammenfassung jedes einzelnen Highlights — thematische Synthese
 
 ---
