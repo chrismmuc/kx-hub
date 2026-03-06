@@ -134,8 +134,9 @@ Cloud Function: newsletter_orchestrator
   ├─ 2. ADK Curation & Research Agent (Stories 15.1 + 15.2)
   │      └─ Vertex AI Agent Engine (managed, stateless)
   │      └─ Model: Gemini Pro
-  │      └─ Tool: google_search (built-in ADK)
-  │      └─ Input: sources as context + week date
+  │      └─ Tool: google_search (built-in ADK)                ← MVP
+  │      └─ Tool: kx_search → MCP Cloud Run (HTTP)            ← nach Dry-Run ergänzen
+  │      └─ Input: sources as context + week date [+ recurring themes]
   │      └─ Output: {filtered_sources: [...], hot_news: [...]}
   │      (Agent decides autonomously: what's relevant? what's hot?)
   │
@@ -522,22 +523,58 @@ Verbindet Epic 9 und Epic 15 elegant. Kein zusätzlicher LLM-Call nötig.
 
 ### C) kx_search als zweites Agent-Tool
 
-Zusätzlich zu `google_search` kann der Agent auch die eigene Wissensbasis durchsuchen:
+Zusätzlich zu `google_search` kann der Agent auch die eigene Wissensbasis durchsuchen.
+
+**Implementierung:** HTTP-Call auf den bestehenden MCP Cloud Run Server (einzige praktikable Option
+auf Vertex AI Agent Engine — lokale Module können nicht importiert werden):
 
 ```python
+import requests
+from google.auth import default
+from google.auth.transport.requests import Request
+from google.adk.tools import tool
+
+MCP_SERVER_URL = "https://mcp-server-xxx-uc.a.run.app"  # aus Env-Variable
+
 @tool
 def kx_search(query: str) -> str:
-    """Search the user's personal knowledge base for related content."""
-    # ruft bestehenden MCP vector search auf
-    ...
+    """Search the user's personal knowledge base for highlights and summaries
+    related to the given topic. Use this to check if the user has already read
+    about a news topic and to enrich hot news with personal context."""
+    creds, _ = default()
+    creds.refresh(Request())
+    resp = requests.post(
+        MCP_SERVER_URL,
+        json={"jsonrpc": "2.0", "method": "tools/call",
+              "params": {"name": "search_kb", "arguments": {"query": query, "limit": 5}}},
+        headers={"Authorization": f"Bearer {creds.token}"},
+        timeout=10,
+    )
+    results = resp.json().get("result", {}).get("results", [])
+    if not results:
+        return "No relevant results found in knowledge base."
+    lines = []
+    for r in results:
+        kc = r.get("knowledge_card", {})
+        lines.append(f"- [{r['title']}] by {r['author']}: {kc.get('summary', '')}")
+    return "\n".join(lines)
 
 curation_agent = Agent(tools=[google_search, kx_search], ...)
 ```
 
+**Infrastruktur-Voraussetzung:** Service Account des Agent Engine benötigt `roles/run.invoker`
+auf dem MCP Cloud Run Service (eine Terraform-Zeile).
+
 Der Agent kann dann: "Gibt es in meiner Wissensbasis schon Kontext zu diesem News-Thema?"
 → Hot News wird mit persönlichem Lesehintergrund angereichert. Unterscheidet den Newsletter
 fundamental von generischen AI-Aggregatoren.
-**Aufwand:** Gering (kx_search Wrapper um bestehende MCP-Logik). **Wirkung:** Hoch.
+
+**Aufwand:** Gering (~20 Zeilen Code + 1 IAM-Zeile Terraform). **Wirkung:** Hoch.
+
+**Sequenz (empfohlen):**
+1. MVP: Agent mit nur `google_search` deployen + Dry-Run starten
+2. Kuratierungsqualität reviewen (N Wochen)
+3. Nach stabilem Dry-Run: `kx_search` als zweites Tool ergänzen (1 Commit)
 
 ### D) Brevo Subscriber-Management: MVP vereinfachen
 

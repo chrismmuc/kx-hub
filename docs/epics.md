@@ -319,10 +319,10 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 - **Mailing List:** Brevo Free Tier (300 Emails/Tag) + Firestore-Spiegel; Brevo Starter ($9/Monat) für Wachstum
 
 **Cost Impact:**
-- ADK Curation & Research Agent (4x/Monat, Gemini Pro multi-turn + Search): ~$0.30–0.40/Monat
-- Gemini Pro (Newsletter Generator, 4x/Monat): ~$0.06/Monat
-- Brevo Free Tier: $0 · Firestore + Cloud Functions: $0 (Free Tier)
-- **Gesamt: ~$0.36–0.46/Monat**
+- ADK Curation & Research Agent (4x/Monat, Gemini Pro multi-turn + Search): ~$0.25–0.40/Monat
+- Gemini Pro (Newsletter Generator, 4x/Monat): ~$0.16/Monat
+- Brevo Free Tier: $0 · Firestore + Cloud Functions + Agent Engine: $0 (Free/Serverless)
+- **Gesamt: ~$0.40–0.55/Monat**
 
 See [epics/epic15.md](epics/epic15.md) for full details.
 
