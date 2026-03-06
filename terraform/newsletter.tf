@@ -126,6 +126,17 @@ resource "google_secret_manager_secret" "newsletter_agent_engine_id" {
   }
 }
 
+# Placeholder initial version so CF can reference 'latest' before deploy_agent.py runs.
+# The curation_agent.py gracefully degrades when value is "NOT_SET".
+resource "google_secret_manager_secret_version" "newsletter_agent_engine_id_placeholder" {
+  secret      = google_secret_manager_secret.newsletter_agent_engine_id.id
+  secret_data = "NOT_SET"
+
+  lifecycle {
+    ignore_changes = [secret_data]  # don't overwrite after deploy_agent.py sets the real value
+  }
+}
+
 # Cloud Scheduler job - weekly newsletter generation
 # Saturday 08:00 UTC = 09:00 CET / 10:00 CEST
 resource "google_cloud_scheduler_job" "newsletter_weekly" {
