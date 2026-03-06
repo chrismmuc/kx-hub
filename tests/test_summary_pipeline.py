@@ -1172,3 +1172,149 @@ class TestMainHandler:
 
         mock_gen.assert_called_once()
         assert mock_gen.call_args.kwargs["model"] == "gemini-2.5-flash"
+
+
+# ---------------------------------------------------------------------------
+# Story 9.6: Recurring Themes Tests
+# ---------------------------------------------------------------------------
+
+from src.summary.data_pipeline import fetch_previous_summaries, extract_recurring_themes
+
+
+class TestFetchPreviousSummaries:
+    def test_returns_summaries_excluding_current(self):
+        """Should skip the doc matching current_period start_end."""
+        current_period = {"start": "2026-03-01", "end": "2026-03-07"}
+        current_doc_id = "2026-03-01_2026-03-07"
+
+        mock_doc_current = MagicMock()
+        mock_doc_current.id = current_doc_id
+        mock_doc_current.to_dict.return_value = {"markdown": "## AI Agents\ntext"}
+
+        mock_doc_prev = MagicMock()
+        mock_doc_prev.id = "2026-02-22_2026-02-28"
+        mock_doc_prev.to_dict.return_value = {"markdown": "## AI Agents\ntext"}
+
+        mock_query = MagicMock()
+        mock_query.stream.return_value = iter([mock_doc_current, mock_doc_prev])
+
+        mock_collection = MagicMock()
+        mock_collection.order_by.return_value.limit.return_value = mock_query
+
+        with patch("src.summary.data_pipeline._get_db") as mock_get_db:
+            mock_get_db.return_value.collection.return_value = mock_collection
+            result = fetch_previous_summaries(current_period, limit=4)
+
+        assert len(result) == 1
+        assert result[0]["id"] == "2026-02-22_2026-02-28"
+
+    def test_empty_summaries_collection(self):
+        """Should return empty list when no summaries exist."""
+        mock_query = MagicMock()
+        mock_query.stream.return_value = iter([])
+
+        mock_collection = MagicMock()
+        mock_collection.order_by.return_value.limit.return_value = mock_query
+
+        with patch("src.summary.data_pipeline._get_db") as mock_get_db:
+            mock_get_db.return_value.collection.return_value = mock_collection
+            result = fetch_previous_summaries({"start": "2026-03-01", "end": "2026-03-07"})
+
+        assert result == []
+
+    def test_respects_limit(self):
+        """Should not return more than limit summaries."""
+        docs = []
+        for i in range(6):
+            doc = MagicMock()
+            doc.id = f"2026-02-{i:02d}_2026-02-{i+6:02d}"
+            doc.to_dict.return_value = {"markdown": f"## Theme {i}"}
+            docs.append(doc)
+
+        mock_query = MagicMock()
+        mock_query.stream.return_value = iter(docs)
+
+        mock_collection = MagicMock()
+        mock_collection.order_by.return_value.limit.return_value = mock_query
+
+        with patch("src.summary.data_pipeline._get_db") as mock_get_db:
+            mock_get_db.return_value.collection.return_value = mock_collection
+            result = fetch_previous_summaries({"start": "2026-03-01", "end": "2026-03-07"}, limit=4)
+
+        assert len(result) == 4
+
+
+class TestExtractRecurringThemes:
+    def test_returns_themes_above_threshold(self):
+        summaries = [
+            {"markdown": "## AI Agents\ntext\n## Developer Tools\ntext"},
+            {"markdown": "## AI Agents\ntext\n## Productivity\ntext"},
+            {"markdown": "## AI Agents\ntext\n## Developer Tools\ntext"},
+        ]
+        result = extract_recurring_themes(summaries, min_occurrences=2)
+        assert "AI Agents" in result
+        assert "Developer Tools" in result
+        assert "Productivity" not in result  # only appears once
+
+    def test_returns_empty_for_no_summaries(self):
+        assert extract_recurring_themes([]) == []
+
+    def test_returns_empty_when_no_threshold_met(self):
+        summaries = [
+            {"markdown": "## AI Agents\ntext"},
+            {"markdown": "## Different Topic\ntext"},
+        ]
+        result = extract_recurring_themes(summaries, min_occurrences=2)
+        assert result == []
+
+    def test_does_not_double_count_within_same_summary(self):
+        """Same H2 twice in one summary counts as 1 occurrence."""
+        summaries = [
+            {"markdown": "## AI Agents\ntext\n## AI Agents\nmore text"},
+            {"markdown": "## Other\ntext"},
+        ]
+        result = extract_recurring_themes(summaries, min_occurrences=2)
+        assert "AI Agents" not in result  # only 1 unique occurrence (same doc)
+
+    def test_ignores_summaries_without_markdown(self):
+        summaries = [{"no_markdown_key": "something"}, {"markdown": "## AI Agents\n"}]
+        result = extract_recurring_themes(summaries, min_occurrences=2)
+        assert result == []
+
+
+class TestBuildPromptWithRecurringThemes:
+    def test_recurring_themes_section_appears_in_prompt(self):
+        data = {
+            "period": {"start": "2026-03-01", "end": "2026-03-07", "days": 7},
+            "stats": {
+                "total_highlights": 5,
+                "total_sources": 2,
+                "total_relationships": 1,
+                "source_types": {"article": 2},
+            },
+            "sources": [],
+            "relationships": [],
+        }
+        recurring_themes = ["AI Agents", "Developer Productivity"]
+        prompt = _build_prompt(data, recurring_themes=recurring_themes)
+        assert "RECURRING THEMES" in prompt
+        assert "AI Agents" in prompt
+        assert "Developer Productivity" in prompt
+
+    def test_no_recurring_themes_section_when_empty(self):
+        data = {
+            "period": {"start": "2026-03-01", "end": "2026-03-07", "days": 7},
+            "stats": {
+                "total_highlights": 5,
+                "total_sources": 2,
+                "total_relationships": 0,
+                "source_types": {"article": 2},
+            },
+            "sources": [],
+            "relationships": [],
+        }
+        prompt = _build_prompt(data, recurring_themes=None)
+        assert "RECURRING THEMES" not in prompt
+
+        prompt_empty = _build_prompt(data, recurring_themes=[])
+        assert "RECURRING THEMES" not in prompt_empty

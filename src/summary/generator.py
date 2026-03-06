@@ -11,7 +11,7 @@ callouts, and external links.
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ def _preferred_sources_list_link(readwise_url: str | None, source_url: str | Non
     return source_url or ""
 
 
-def _build_prompt(data: Dict[str, Any]) -> str:
+def _build_prompt(data: Dict[str, Any], recurring_themes: List[str] | None = None) -> str:
     """Build the user prompt from pipeline data."""
     period = data["period"]
     stats = data["stats"]
@@ -125,8 +125,20 @@ def _build_prompt(data: Dict[str, Any]) -> str:
         f"Create a Knowledge Summary for the period {period['start']} to {period['end']}.",
         f"Stats: {stats['total_highlights']} highlights from {stats['total_sources']} sources ({type_str}), {stats['total_relationships']} connections.",
         "",
-        "=== SOURCES ===",
     ]
+
+    # Recurring themes context
+    if recurring_themes:
+        lines.append("=== RECURRING THEMES (last 4 weeks) ===")
+        for theme in recurring_themes:
+            lines.append(f"- {theme}")
+        lines.append(
+            "Note: Acknowledge continuity where natural — e.g. 'This week continues the thread on X'. "
+            "Do not force mentions. Skip if not organically relevant."
+        )
+        lines.append("")
+
+    lines.append("=== SOURCES ===")
 
     # Sources with knowledge cards
     for src in sources:
@@ -237,7 +249,11 @@ def _build_header(data: Dict[str, Any]) -> str:
     return header
 
 
-def generate_summary(data: Dict[str, Any], model: str | None = None) -> Dict[str, Any]:
+def generate_summary(
+    data: Dict[str, Any],
+    model: str | None = None,
+    recurring_themes: List[str] | None = None,
+) -> Dict[str, Any]:
     """
     Generate a weekly knowledge summary using Gemini 3.1 Pro.
 
@@ -266,7 +282,7 @@ def generate_summary(data: Dict[str, Any], model: str | None = None) -> Dict[str
     logger.info(f"Generating summary with {model_name}")
 
     client = _get_client(model_name)
-    prompt = _build_prompt(data)
+    prompt = _build_prompt(data, recurring_themes=recurring_themes)
 
     config = _GenerationConfig(
         temperature=0.7,

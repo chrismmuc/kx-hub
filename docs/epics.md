@@ -123,7 +123,7 @@ See [epics/epic7.md](epics/epic7.md) for full details.
 | 9.3 | **Reader Delivery** - Save summary to Readwise Reader with `ai-weekly-summary` tag, persist to Firestore `summaries` collection | ✅ Done |
 | 9.4 | **Obsidian Delivery** - Headless Sync via Cloud Run + GCS FUSE + Obsidian Sync | Planned |
 | 9.5 | **get_recent mit Connections** - Optional: MCP tool enhancement for interactive use | Optional |
-| 9.6 | **Recurring Themes Analysis** - Compare current week to previous N summaries, identify repeating themes, add longitudinal "Recurring Themes" section to summary | Planned |
+| 9.6 | **Recurring Themes Analysis** - Compare current week to previous N summaries, identify repeating themes, add longitudinal "Recurring Themes" section to summary | ✅ Done |
 
 **Key Features:**
 - Narrative deutsche Texte mit thematischer Gruppierung (nicht 1:1 pro Source)
@@ -297,7 +297,7 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 
 **Goal:** Automatischer wöchentlicher Newsletter für externe Leser — gefiltert auf Tech/AI/Management-Themen, ergänzt durch KI-recherchierte Hot News der Woche. Delivery via Mailing-Liste.
 
-**Status:** Planned
+**Status:** In Progress (Unit 2 Dry-Run deployed)
 
 **Model/Tech Stack:**
 - Gemini Flash (Topic Classifier, ~$0.001/Batch)
@@ -308,8 +308,8 @@ See [epics/epic14.md](epics/epic14.md) for full details.
 
 | Story | Description | Status |
 |-------|-------------|--------|
-| 15.1+15.2 | **ADK Curation & Research Agent** - Ein ADK Agent auf Vertex AI Agent Engine: filtert Sources kontextuell (kein Regelwerk), recherchiert Hot News via Google Search. Keine explizite Allowlist/Denylist — der Agent urteilt autonom über Grenzfälle | Planned |
-| 15.3 | **Newsletter Generator** - Kombiniert gefilterte KX-Highlights + Hot News zu externem Newsletter; englisch, professioneller Ton; HTML + Plain Text Output | Planned |
+| 15.1+15.2 | **ADK Curation & Research Agent** - Ein ADK Agent auf Vertex AI Agent Engine: filtert Sources kontextuell (kein Regelwerk), recherchiert Hot News via Google Search. Keine explizite Allowlist/Denylist — der Agent urteilt autonom über Grenzfälle | ✅ Done (Dry-Run, graceful fallback) |
+| 15.3 | **Newsletter Generator** - Kombiniert gefilterte KX-Highlights + Hot News zu externem Newsletter; englisch, professioneller Ton; HTML + Plain Text Output | ✅ Done (Dry-Run) |
 | 15.4 | **Mailing List & Delivery** - Firestore `newsletter_subscribers` Collection, Subscribe/Unsubscribe Cloud Function Endpoints, Double-Opt-In, Brevo API für Versand, Cloud Scheduler (wöchentlich) | Planned |
 
 **Key Design Decisions:**

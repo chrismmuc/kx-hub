@@ -331,3 +331,62 @@ def collect_summary_data(days: int = 7, limit: int = 100) -> Dict[str, Any]:
         "sources": sources,
         "relationships": relationships,
     }
+
+
+# ---------------------------------------------------------------------------
+# Recurring Themes (Story 9.6)
+# ---------------------------------------------------------------------------
+
+def fetch_previous_summaries(current_period: dict, limit: int = 4) -> List[Dict[str, Any]]:
+    """
+    Fetch the N most recent previous summaries from Firestore,
+    excluding the current period's document.
+    """
+    db = _get_db()
+    current_doc_id = current_period["start"] + "_" + current_period["end"]
+    scan_limit = limit + 5  # fetch extra to account for possible current-week skip
+
+    summaries: List[Dict[str, Any]] = []
+    for doc in (
+        db.collection("summaries")
+        .order_by("created_at", direction=firestore.Query.DESCENDING)
+        .limit(scan_limit)
+        .stream()
+    ):
+        if doc.id == current_doc_id:
+            continue
+        data = doc.to_dict()
+        data["id"] = doc.id
+        summaries.append(data)
+        if len(summaries) >= limit:
+            break
+
+    logger.info(f"Fetched {len(summaries)} previous summaries for recurring theme analysis")
+    return summaries
+
+
+def extract_recurring_themes(
+    previous_summaries: List[Dict[str, Any]], min_occurrences: int = 2
+) -> List[str]:
+    """
+    Parse H2 headings from previous summaries and return themes that appear
+    in at least min_occurrences different summaries.
+    """
+    import re
+    from collections import Counter
+
+    theme_counter: Counter = Counter()
+    for summary in previous_summaries:
+        markdown = summary.get("markdown", "")
+        seen_in_this: set = set()
+        for heading in re.findall(r"^## (.+)$", markdown, re.MULTILINE):
+            cleaned = heading.strip()
+            if cleaned and cleaned not in seen_in_this:
+                theme_counter[cleaned] += 1
+                seen_in_this.add(cleaned)
+
+    recurring = [t for t, c in theme_counter.most_common() if c >= min_occurrences]
+    logger.info(
+        f"Found {len(recurring)} recurring themes from {len(previous_summaries)} summaries"
+    )
+    return recurring
