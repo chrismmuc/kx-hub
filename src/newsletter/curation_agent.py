@@ -290,7 +290,7 @@ def _batch_resolve_missing_urls(sources_to_resolve: list[dict]) -> dict[str, str
         )
 
         response = client.models.generate_content(
-            model="gemini-3.1-pro-preview",
+            model="gemini-3-flash-preview",
             contents=prompt,
             config=GenerateContentConfig(
                 tools=[Tool(google_search=GoogleSearch())],

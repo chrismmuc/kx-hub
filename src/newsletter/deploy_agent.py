@@ -38,7 +38,7 @@ def deploy(project: str, region: str) -> str:
     vertexai.init(project=project, location=region, staging_bucket="gs://kx-hub-content")
 
     agent = LlmAgent(
-        model="gemini-2.0-flash-001",
+        model="gemini-3-flash-preview",
         name="newsletter_curator",
         description="Curates tech newsletter from personal knowledge sources + web search",
         instruction=AGENT_INSTRUCTION,
