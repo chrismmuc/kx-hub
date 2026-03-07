@@ -108,14 +108,17 @@ def _parse_curation_result(text: str, fallback_sources: list[dict]) -> "Curation
         try:
             data = json.loads(json_match.group())
             filtered = [CuratedSource(**s) for s in data.get("filtered_sources", [])]
-            # Filter hot_news: drop items with grounding redirect or mailto URLs
+            # Clean hot_news URLs: follow grounding redirects, drop mailto/readwise
             hot_news = []
             for n in data.get("hot_news", []):
                 url = n.get("url", "")
-                if _is_valid_hot_news_url(url):
-                    hot_news.append(HotNewsItem(**n))
-                else:
+                if not _is_valid_hot_news_url(url):
                     logger.info(f"Filtered bad hot_news URL: {url!r} for '{n.get('title', '')}'")
+                    continue
+                if "vertexaisearch.cloud.google.com" in url:
+                    url = _follow_redirect(url)
+                    n = {**n, "url": url}
+                hot_news.append(HotNewsItem(**n))
             return CurationResult(
                 filtered_sources=filtered,
                 hot_news=hot_news,
@@ -147,6 +150,48 @@ def _fallback_curation(sources: list[dict]) -> "CurationResult":
         ))
 
     return CurationResult(filtered_sources=curated, hot_news=[], curator_notes="")
+
+
+def _verify_url(url: str) -> bool:
+    """Quick HEAD check to verify a URL is reachable. Returns True if OK."""
+    try:
+        import requests
+        resp = requests.head(
+            url, allow_redirects=True, timeout=4,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        ok = resp.status_code < 400
+        if not ok:
+            logger.debug(f"URL check failed ({resp.status_code}): {url}")
+        return ok
+    except Exception as e:
+        logger.debug(f"URL check error for {url}: {e}")
+        return False
+
+
+def _follow_redirect(url: str) -> str:
+    """Follow a redirect URL and return the final destination URL.
+    Tries HEAD first, falls back to GET if HEAD doesn't redirect.
+    Returns original URL on failure.
+    """
+    try:
+        import requests
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.head(url, allow_redirects=True, timeout=6, headers=headers)
+        final = resp.url
+        if final and final != url and "vertexaisearch" not in final:
+            logger.info(f"Redirect resolved: {url[:60]}... → {final}")
+            return final
+        # HEAD didn't redirect — try GET with stream to avoid downloading body
+        resp = requests.get(url, allow_redirects=True, timeout=6, headers=headers, stream=True)
+        resp.close()
+        final = resp.url
+        if final and final != url and "vertexaisearch" not in final:
+            logger.info(f"Redirect resolved (GET): {url[:60]}... → {final}")
+            return final
+    except Exception as e:
+        logger.debug(f"Redirect follow failed for {url[:60]}...: {e}")
+    return url
 
 
 def _is_valid_hot_news_url(url: str) -> bool:
@@ -325,6 +370,11 @@ def _resolve_filtered_source_urls(result: "CurationResult", original_sources: li
                 logger.info(f"Readwise URL unresolvable, will render as plain text: {url}")
                 resolved_url = ""
 
+        elif url.startswith("mailto:") or not url.startswith("http"):
+            # mailto: and other non-http URLs are unresolvable — render as plain text
+            logger.info(f"Non-HTTP URL, will render as plain text: {url}")
+            resolved_url = ""
+
         else:
             resolved_url = url
 
@@ -361,6 +411,15 @@ def _resolve_filtered_source_urls(result: "CurationResult", original_sources: li
                 src = src.model_copy(update=updates)
             final.append(src)
         resolved = final
+
+    # Verify all resolved URLs with a quick HEAD request — drop unreachable ones
+    verified = []
+    for src in resolved:
+        if src.url and not _verify_url(src.url):
+            logger.warning(f"URL unreachable, removing link for '{src.title}': {src.url}")
+            src = src.model_copy(update={"url": ""})
+        verified.append(src)
+    resolved = verified
 
     return result.model_copy(update={"filtered_sources": resolved})
 

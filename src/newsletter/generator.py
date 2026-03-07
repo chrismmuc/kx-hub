@@ -124,7 +124,7 @@ def generate_newsletter(
     body_text = response.text.strip()
 
     # Build HTML
-    html_body = _markdown_to_html(body_text)
+    html_body = _sanitize_html_links(_markdown_to_html(body_text))
     html = _HTML_TEMPLATE.format(
         subject=subject,
         title=title,
@@ -153,12 +153,37 @@ def _format_date_range(start: str, end: str) -> str:
         return f"{start} \u2013 {end}"
 
 
+def _sanitize_html_links(html: str) -> str:
+    """Strip obviously bad/hallucinated href values, converting links to plain text.
+
+    Removes: example.com, mailto:reader-forwarded-email, snipd.com, readwise.io.
+    """
+    import re
+    bad_patterns = [
+        r'example\.com',
+        r'mailto:reader-forwarded',
+        r'share\.snipd\.com',
+        r'readwise\.io',
+    ]
+    combined = "|".join(bad_patterns)
+
+    def _strip_link(m: re.Match) -> str:
+        href = m.group(1)
+        text = m.group(2)
+        if re.search(combined, href):
+            return text  # render as plain text, no link
+        return m.group(0)
+
+    return re.sub(r'<a href="([^"]+)">([^<]+)</a>', _strip_link, html)
+
+
 def _is_valid_external_url(url: str) -> bool:
-    """Return True only for genuine external HTTP URLs (not readwise.io, mailto:, empty)."""
+    """Return True only for genuine external HTTP URLs (not readwise.io, snipd.com, mailto:, empty)."""
     return (
         bool(url)
         and url.startswith("http")
         and "readwise.io" not in url
+        and "snipd.com" not in url
         and "mailto:" not in url
     )
 

@@ -266,6 +266,13 @@ def generate_newsletter_cf(request):
             f"{len(curation_result.hot_news)} hot news"
         )
 
+        # 2.5. Update source_urls with resolved URLs from curation (snipd → spotify/apple/youtube)
+        title_to_resolved = {s.title: s.url for s in curation_result.filtered_sources if s.url}
+        for src in sources:
+            title = src.get("title", "")
+            if title in title_to_resolved:
+                source_urls[src["source_id"]] = title_to_resolved[title]
+
         # 3. Generate newsletter
         newsletter = generate_newsletter(
             curation_result,
