@@ -23,6 +23,11 @@ cp "$SCRIPT_DIR/generator.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/models.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/requirements.txt" "$BUILD_DIR/"
 
+# Copy shared modules from summary
+cp "$SRC_DIR/summary/cover_image.py" "$BUILD_DIR/"
+cp "$SRC_DIR/summary/delivery.py" "$BUILD_DIR/"
+cp "$SRC_DIR/summary/data_pipeline.py" "$BUILD_DIR/"
+
 # Copy LLM abstraction layer
 cp "$SRC_DIR/llm/__init__.py" "$BUILD_DIR/llm/"
 cp "$SRC_DIR/llm/base.py" "$BUILD_DIR/llm/"

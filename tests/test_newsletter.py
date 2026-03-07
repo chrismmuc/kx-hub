@@ -178,11 +178,13 @@ class TestCurationAgent:
 
     def test_run_curation_no_agent_id_uses_fallback(self):
         sources = [_make_source()]
-        with patch.dict("os.environ", {}, clear=False):
-            # Remove agent ID if set
-            import os
-            os.environ.pop("NEWSLETTER_AGENT_ENGINE_ID", None)
-            result = run_curation(sources)
+        import os
+        os.environ.pop("NEWSLETTER_AGENT_ENGINE_ID", None)
+        mock_sm = MagicMock()
+        mock_sm.SecretManagerServiceClient.side_effect = Exception("no secret manager")
+        with patch.dict("sys.modules", {"google.cloud.secretmanager": mock_sm}):
+            with patch("src.newsletter.curation_agent._batch_resolve_missing_urls", return_value={}):
+                result = run_curation(sources)
         assert isinstance(result, CurationResult)
         assert len(result.filtered_sources) == len(sources)
 
@@ -563,7 +565,7 @@ class TestGeneratorPrompt:
             "from_source_id": "src-1",
             "from_title": "AI Article",
             "target_title": "Arch Guide",
-            "target_readwise_url": "https://readwise.io/target",
+            "target_source_url": "https://external.example.com/arch-guide",
             "relationship_type": "extends",
             "explanation": "Both discuss scalability",
         }]
@@ -573,7 +575,9 @@ class TestGeneratorPrompt:
         )
         assert "=== CONNECTIONS ===" in prompt
         assert "https://ai.example.com" in prompt
-        assert "https://readwise.io/target" in prompt
+        assert "https://external.example.com/arch-guide" in prompt
+        # readwise.io URLs must be filtered out of connections
+        assert "readwise.io" not in prompt
 
     def test_prompt_contains_grouping_instructions(self):
         curation = self._make_curation()

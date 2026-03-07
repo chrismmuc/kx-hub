@@ -20,6 +20,26 @@ logger = logging.getLogger(__name__)
 GCP_PROJECT = os.getenv("GCP_PROJECT", "kx-hub")
 GCP_REGION = os.getenv("GCP_REGION", "us-central1")
 
+# Known subscribed sources: maps lowercase title keywords → canonical external URL.
+# Used to resolve podcast/video URLs before falling back to Snipd page fetch or LLM search.
+KNOWN_SOURCES: dict[str, str] = {
+    "ai daily brief": "https://open.spotify.com/show/6ybj5HZdxOJFhkSuFfPcOK",
+    "dwarkesh": "https://podcasts.apple.com/us/podcast/dwarkesh-podcast/id1516093381",
+    "karpathy": "https://podcasts.apple.com/us/podcast/lex-fridman-podcast/id1434243584",
+    "armchair architects": "https://learn.microsoft.com/en-us/shows/armchair-architects/",
+    "hard fork": "https://open.spotify.com/show/44fllCS2FTFr2x1ouYYZs5",
+    "huberman": "https://open.spotify.com/show/79CkJF3UJTHFV8Dse3Oy0P",
+    "lex fridman": "https://open.spotify.com/show/2MAi0BvDc6GTFvKFPXnkCL",
+    "acquired": "https://open.spotify.com/show/7Fj0XEuUQLUqoMZQdsLXqp",
+    "latent space": "https://open.spotify.com/show/2p22p6RmMeEcPEME2KNYB5",
+    "practical ai": "https://open.spotify.com/show/1LaCr5TFAgYPK5qHjP3XDp",
+    "changelog": "https://open.spotify.com/show/5bBki72YeKSLUqyD94qg2k",
+    "software engineering daily": "https://open.spotify.com/show/6UNQ4oQTKZJJosrpnAOeEV",
+    "gradient dissent": "https://open.spotify.com/show/7o9r3fFig3MhTJwehXDbXm",
+    "twiml": "https://open.spotify.com/show/2sp5EL7s7EqxttxwwoJ3i7",
+    "machine learning street talk": "https://open.spotify.com/show/02e6Q8kH9pDkrsoBcPOFb3",
+}
+
 AGENT_INSTRUCTION = """\
 You are a tech newsletter curator for a senior software engineer audience.
 
@@ -88,7 +108,14 @@ def _parse_curation_result(text: str, fallback_sources: list[dict]) -> "Curation
         try:
             data = json.loads(json_match.group())
             filtered = [CuratedSource(**s) for s in data.get("filtered_sources", [])]
-            hot_news = [HotNewsItem(**n) for n in data.get("hot_news", [])]
+            # Filter hot_news: drop items with grounding redirect or mailto URLs
+            hot_news = []
+            for n in data.get("hot_news", []):
+                url = n.get("url", "")
+                if _is_valid_hot_news_url(url):
+                    hot_news.append(HotNewsItem(**n))
+                else:
+                    logger.info(f"Filtered bad hot_news URL: {url!r} for '{n.get('title', '')}'")
             return CurationResult(
                 filtered_sources=filtered,
                 hot_news=hot_news,
@@ -122,9 +149,35 @@ def _fallback_curation(sources: list[dict]) -> "CurationResult":
     return CurationResult(filtered_sources=curated, hot_news=[], curator_notes="")
 
 
-def _resolve_snipd_url(snipd_url: str) -> str:
-    """Fetch Snipd share page and extract original podcast URL (Spotify / YouTube / Apple).
-    Returns "" if nothing found — caller will render title without link.
+def _is_valid_hot_news_url(url: str) -> bool:
+    """Return True for genuine external URLs suitable for hot news.
+    Grounding redirect URLs (vertexaisearch) are accepted — they work, just unstable.
+    """
+    return (
+        bool(url)
+        and url.startswith("http")
+        and "mailto:" not in url
+        and "readwise.io" not in url
+    )
+
+
+def _match_known_source(title: str) -> str:
+    """Check KNOWN_SOURCES for a matching show URL by title keyword (case-insensitive).
+    Returns the show URL if matched, else "".
+    """
+    title_lower = title.lower()
+    for keyword, url in KNOWN_SOURCES.items():
+        if keyword in title_lower:
+            return url
+    return ""
+
+
+def _resolve_snipd_url(snipd_url: str, title: str = "") -> str:
+    """Resolve a Snipd share URL to an original podcast/video URL via page fetch.
+
+    Snipd pages are JS-rendered so this rarely succeeds. Unresolved sources
+    fall through to _batch_resolve_missing_urls (Gemini + Google Search).
+    Returns "" if page fetch finds nothing.
     """
     try:
         import requests
@@ -140,8 +193,8 @@ def _resolve_snipd_url(snipd_url: str) -> str:
             if m:
                 return m.group(0)
     except Exception as e:
-        logger.debug(f"Snipd URL resolution failed for {snipd_url}: {e}")
-    logger.info(f"Snipd URL unresolvable, will render as plain text: {snipd_url}")
+        logger.debug(f"Snipd page fetch failed for {snipd_url}: {e}")
+    logger.info(f"Snipd URL unresolvable from page, queuing for batch resolve: {snipd_url}")
     return ""
 
 
@@ -149,6 +202,89 @@ def _resolve_book_url(title: str, author: str) -> str:
     """Build an Amazon search URL for a book."""
     query = f"{title} {author}".strip()
     return f"https://www.amazon.com/s?k={quote_plus(query)}"
+
+
+def _batch_resolve_missing_urls(sources_to_resolve: list[dict]) -> dict[str, str]:
+    """Use Gemini with Google Search grounding to find URLs for unresolved sources.
+
+    Args:
+        sources_to_resolve: list of {"title": ..., "author": ..., "type": ...}
+
+    Returns:
+        dict mapping title → URL (empty string if not found)
+    """
+    if not sources_to_resolve:
+        return {}
+    try:
+        import os
+        from google import genai
+        from google.genai.types import GenerateContentConfig, GoogleSearch, Tool
+
+        client = genai.Client(
+            vertexai=True,
+            project=GCP_PROJECT,
+            location="global",
+        )
+
+        items = "\n".join(
+            f'- "{s["title"]}" ({s["type"]}) by {s["author"]}'
+            for s in sources_to_resolve
+        )
+        prompt = (
+            f"Search for the best direct URL for each of these podcast episodes, YouTube videos, and books.\n\n"
+            f"{items}\n\n"
+            f"For each item, search Google and return the most relevant URL you find.\n"
+            f"Podcasts: use Spotify episode URL, Apple Podcasts episode URL, or the show's official page.\n"
+            f"YouTube videos: use the youtube.com URL.\n"
+            f"Books: use Amazon product page URL.\n\n"
+            f"Return ONLY a JSON object (no markdown, no explanation):\n"
+            f"{{\"exact title here\": \"https://...\"}}\n"
+            f"Use the exact titles as keys. Do NOT return empty strings — include the best URL you found."
+        )
+
+        response = client.models.generate_content(
+            model="gemini-3.1-pro-preview",
+            contents=prompt,
+            config=GenerateContentConfig(
+                tools=[Tool(google_search=GoogleSearch())],
+            ),
+        )
+        text = response.text.strip()
+        logger.info(f"Batch URL resolution raw response (first 800 chars): {text[:800]}")
+
+        # Strip markdown code fences if present
+        text_clean = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
+        text_clean = re.sub(r"\s*```$", "", text_clean, flags=re.MULTILINE).strip()
+
+        m = re.search(r"\{.*\}", text_clean, re.DOTALL)
+        if m:
+            data = json.loads(m.group())
+            logger.info(f"Batch URL resolution parsed: {data}")
+            # Filter out grounding redirect URLs (unstable) and empty values
+            clean = {}
+            for k, v in data.items():
+                if isinstance(v, str) and v and "vertexaisearch.cloud.google.com" not in v:
+                    clean[k] = v
+            logger.info(f"Batch URL resolution final: {clean}")
+            return clean
+        else:
+            logger.warning(f"Batch URL resolution: no JSON found in response")
+    except Exception as e:
+        logger.warning(f"Batch URL resolution via Gemini grounding failed: {e}")
+    return {}
+
+
+def _infer_type_from_url(url: str, current_type: str) -> str:
+    """Correct source_type based on the resolved URL."""
+    if not url:
+        return current_type
+    if "youtube.com" in url or "youtu.be" in url:
+        return "video"
+    if "open.spotify.com/episode" in url or "podcasts.apple.com" in url:
+        return "podcast"
+    if "amazon.com" in url:
+        return "book"
+    return current_type
 
 
 def _resolve_filtered_source_urls(result: "CurationResult", original_sources: list[dict]) -> "CurationResult":
@@ -175,7 +311,7 @@ def _resolve_filtered_source_urls(result: "CurationResult", original_sources: li
         url = src.url
 
         if "snipd.com" in url:
-            resolved_url = _resolve_snipd_url(url)
+            resolved_url = _resolve_snipd_url(url, title=src.title)
 
         elif "readwise.io" in url:
             # Try original source_url first
@@ -192,10 +328,39 @@ def _resolve_filtered_source_urls(result: "CurationResult", original_sources: li
         else:
             resolved_url = url
 
+        updates: dict = {}
         if resolved_url != url:
             logger.info(f"URL resolved: {url!r} → {resolved_url!r}")
-            src = src.model_copy(update={"url": resolved_url})
+            updates["url"] = resolved_url
+        # Fix source_type based on resolved URL
+        corrected_type = _infer_type_from_url(resolved_url, src.source_type)
+        if corrected_type != src.source_type:
+            logger.info(f"Type corrected: {src.source_type!r} → {corrected_type!r} for '{src.title}'")
+            updates["source_type"] = corrected_type
+        if updates:
+            src = src.model_copy(update=updates)
         resolved.append(src)
+
+    # Batch-resolve remaining empty URLs via Gemini + Google Search grounding
+    unresolved = [
+        {"title": src.title, "author": src.author, "type": src.source_type}
+        for src in resolved
+        if not src.url
+    ]
+    if unresolved:
+        llm_urls = _batch_resolve_missing_urls(unresolved)
+        final = []
+        for src in resolved:
+            if not src.url and src.title in llm_urls and llm_urls[src.title]:
+                new_url = llm_urls[src.title]
+                logger.info(f"LLM-resolved URL for '{src.title}': {new_url}")
+                updates = {"url": new_url}
+                corrected = _infer_type_from_url(new_url, src.source_type)
+                if corrected != src.source_type:
+                    updates["source_type"] = corrected
+                src = src.model_copy(update=updates)
+            final.append(src)
+        resolved = final
 
     return result.model_copy(update={"filtered_sources": resolved})
 

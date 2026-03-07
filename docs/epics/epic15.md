@@ -51,6 +51,7 @@
 - Kein Hardcode von Relevanz-Kriterien für den Filter — der Agent argumentiert kontextuell
 
 **Kosten-Vergleich:**
+
 | Ansatz | Kosten/Woche |
 |--------|-------------|
 | Gemini Flash (Classifier) + Gemini Pro (Grounding) | ~$0.03 |

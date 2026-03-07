@@ -29,7 +29,7 @@ def _ensure_llm_imports():
         _GenerationConfig = GenerationConfig
 
 
-NEWSLETTER_GENERATOR_MODEL = os.getenv("NEWSLETTER_GENERATOR_MODEL", "gemini-2.0-flash-001")
+NEWSLETTER_GENERATOR_MODEL = os.getenv("NEWSLETTER_GENERATOR_MODEL", "gemini-3-flash-preview")
 
 try:
     from src.summary.delivery import _markdown_to_html
@@ -153,6 +153,16 @@ def _format_date_range(start: str, end: str) -> str:
         return f"{start} \u2013 {end}"
 
 
+def _is_valid_external_url(url: str) -> bool:
+    """Return True only for genuine external HTTP URLs (not readwise.io, mailto:, empty)."""
+    return (
+        bool(url)
+        and url.startswith("http")
+        and "readwise.io" not in url
+        and "mailto:" not in url
+    )
+
+
 _REL_TYPE_HINTS = {
     "extends": "deepens the point of",
     "contradicts": "stands in contrast to",
@@ -221,6 +231,11 @@ def _build_generator_prompt(
             hint = _REL_TYPE_HINTS.get(rel.get("relationship_type", "").lower(), "connects to")
             from_url = (source_urls or {}).get(rel.get("from_source_id", ""), "")
             target_url = rel.get("target_readwise_url") or rel.get("target_source_url", "")
+            # Filter out internal/invalid URLs (readwise.io, mailto:, empty)
+            if not _is_valid_external_url(from_url):
+                from_url = ""
+            if not _is_valid_external_url(target_url):
+                target_url = ""
             from_part = (
                 f"[{rel['from_title']}]({from_url})" if from_url
                 else f"\"{rel['from_title']}\""
@@ -237,12 +252,13 @@ def _build_generator_prompt(
         "=== INSTRUCTIONS ===",
         "Write the newsletter body in Markdown. Follow this exact structure:",
         "",
-        "1. Personal intro (3-5 sentences, NO section header).",
+        "1. Personal intro (2-3 sentences, NO section header).",
         "   Start with 'Hi everyone, ...'",
         "   Tone: warm, personal, slightly humorous.",
         "   If PREVIOUS ISSUE is provided, briefly reference last week's topic.",
-        "   END the intro with the ONE overarching insight or thesis from this week's reading",
-        "   — the thing you'd tell a colleague over coffee. This replaces a separate takeaway section.",
+        "   After the intro sentences, add the ONE overarching insight or thesis as a callout box:",
+        "   > [!tip] This week's takeaway",
+        "   > One sharp sentence — the thing you'd tell a colleague over coffee.",
         "",
         "2. ## Hot in AI & Software This Week",
         "   1-2 compact sentences summarizing the overall theme or mood of this week's news.",

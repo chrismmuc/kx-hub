@@ -35,11 +35,11 @@ def deploy(project: str, region: str) -> str:
         from curation_agent import AGENT_INSTRUCTION
 
     print(f"Initializing Vertex AI: project={project}, region={region}")
-    vertexai.init(project=project, location=region)
+    vertexai.init(project=project, location=region, staging_bucket="gs://kx-hub-content")
 
     agent = LlmAgent(
-        model="gemini-2.0-flash",
-        name="newsletter-curator",
+        model="gemini-2.0-flash-001",
+        name="newsletter_curator",
         description="Curates tech newsletter from personal knowledge sources + web search",
         instruction=AGENT_INSTRUCTION,
         tools=[google_search],
