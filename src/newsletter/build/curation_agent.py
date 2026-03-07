@@ -153,19 +153,21 @@ def _fallback_curation(sources: list[dict]) -> "CurationResult":
 
 
 def _verify_url(url: str) -> bool:
-    """Quick HEAD check to verify a URL is reachable. Returns True if OK."""
+    """Quick HEAD check to verify a URL is reachable.
+
+    Only fails on connection errors / timeouts — NOT on 4xx responses.
+    Many real URLs (Twitter/X, paywalled sites) return 403/401 to automated
+    HEAD requests but are perfectly valid in a browser.
+    """
     try:
         import requests
-        resp = requests.head(
+        requests.head(
             url, allow_redirects=True, timeout=4,
             headers={"User-Agent": "Mozilla/5.0"},
         )
-        ok = resp.status_code < 400
-        if not ok:
-            logger.debug(f"URL check failed ({resp.status_code}): {url}")
-        return ok
+        return True  # reachable — even 4xx means server exists
     except Exception as e:
-        logger.debug(f"URL check error for {url}: {e}")
+        logger.warning(f"URL unreachable (connection error), removing link: {url} — {e}")
         return False
 
 
