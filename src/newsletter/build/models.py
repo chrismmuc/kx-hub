@@ -9,6 +9,7 @@ class CuratedSource(BaseModel):
     source_type: str  # article, book, podcast
     summary: str
     reason: str = ""
+    author: str = ""
 
 
 class HotNewsItem(BaseModel):
@@ -35,3 +36,4 @@ class NewsletterDraft(BaseModel):
     period_end: str
     gcs_url: str = ""
     reader_url: str = ""
+    image_url: str = ""

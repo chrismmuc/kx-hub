@@ -22,6 +22,13 @@ except ImportError:
     from generator import generate_newsletter
     from models import NewsletterDraft
 
+try:
+    from src.summary.cover_image import extract_themes, generate_cover_image, upload_to_gcs as upload_image_to_gcs
+    from src.summary.data_pipeline import fetch_relationships_for_sources
+except ImportError:
+    from cover_image import extract_themes, generate_cover_image, upload_to_gcs as upload_image_to_gcs
+    from data_pipeline import fetch_relationships_for_sources
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -64,8 +71,12 @@ def _load_config() -> dict:
     return defaults
 
 
-def _fetch_recent_sources(days: int = 7, limit: int = 50) -> list[dict]:
-    """Fetch recent kb_items from Firestore for newsletter curation."""
+def _fetch_recent_sources(days: int = 7, limit: int = 50) -> tuple[list[dict], dict[str, list]]:
+    """Fetch recent kb_items from Firestore for newsletter curation.
+
+    Returns:
+        (sources, chunks_by_source) — sources for curation, raw chunks for relationship fetch.
+    """
     from google.cloud import firestore
 
     db = _get_db()
@@ -86,7 +97,7 @@ def _fetch_recent_sources(days: int = 7, limit: int = 50) -> list[dict]:
         data["id"] = doc.id
         chunks.append(data)
 
-    # Group by source_id and build source list
+    # Group by source_id (keep raw chunks for relationship fetching)
     chunks_by_source: dict[str, list] = {}
     for chunk in chunks:
         sid = chunk.get("source_id", "unknown")
@@ -120,7 +131,20 @@ def _fetch_recent_sources(days: int = 7, limit: int = 50) -> list[dict]:
         })
 
     logger.info(f"Fetched {len(sources)} sources for newsletter ({days} days)")
-    return sources
+    return sources, chunks_by_source
+
+
+def _fetch_relationships(source_ids: list[str], chunks_by_source: dict, source_titles: dict) -> list[dict]:
+    """Fetch cross-source relationships for newsletter sources (non-fatal)."""
+    try:
+        rels = fetch_relationships_for_sources(source_ids, chunks_by_source)
+        for rel in rels:
+            rel["from_title"] = source_titles.get(rel["from_source_id"], "Unknown")
+        logger.info(f"Fetched {len(rels)} relationships for newsletter")
+        return rels
+    except Exception as e:
+        logger.warning(f"Relationship fetch failed (non-fatal): {e}")
+        return []
 
 
 def _upload_to_gcs(html: str, blob_name: str) -> str:
@@ -155,6 +179,28 @@ def _deliver_to_reader(html: str, plain_text: str, title: str, api_key: str) -> 
     return {"status": "failed", "status_code": response.status_code}
 
 
+def _fetch_previous_newsletter() -> dict | None:
+    """Fetch the most recent newsletter draft from Firestore (non-fatal)."""
+    try:
+        from google.cloud import firestore
+        db = _get_db()
+        query = (
+            db.collection("newsletter_drafts")
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(1)
+        )
+        for doc in query.stream():
+            data = doc.to_dict()
+            return {
+                "subject": data.get("subject", ""),
+                "period_start": data.get("period_start", ""),
+                "period_end": data.get("period_end", ""),
+            }
+    except Exception as e:
+        logger.warning(f"Failed to fetch previous newsletter (non-fatal): {e}")
+    return None
+
+
 def _save_draft(draft: NewsletterDraft) -> str:
     """Save newsletter draft to Firestore and return doc_id."""
     db = _get_db()
@@ -186,6 +232,7 @@ def generate_newsletter_cf(request):
         days = request_json.get("days", config["days"])
         limit = request_json.get("limit", config["limit"])
         dry_run = request_json.get("dry_run", config.get("dry_run", True))
+        skip_image = request_json.get("skip_image", False)
 
         now = datetime.now(timezone.utc)
         period = {
@@ -195,10 +242,22 @@ def generate_newsletter_cf(request):
 
         logger.info(f"Generating newsletter: days={days}, limit={limit}, dry_run={dry_run}")
 
-        # 1. Fetch recent sources
-        sources = _fetch_recent_sources(days=days, limit=limit)
+        # 1. Fetch recent sources + raw chunks for relationship query
+        sources, chunks_by_source = _fetch_recent_sources(days=days, limit=limit)
         if not sources:
             return {"status": "success", "message": "No sources found for period"}
+
+        # 1.5. Fetch cross-source relationships (non-fatal)
+        source_titles = {s["source_id"]: s["title"] for s in sources}
+        source_urls = {s["source_id"]: s.get("source_url") or s.get("readwise_url", "") for s in sources}
+        author_lookup = {
+            s.get("source_url") or s.get("readwise_url", ""): s.get("author", "")
+            for s in sources
+        }
+        relationships = _fetch_relationships(list(chunks_by_source.keys()), chunks_by_source, source_titles)
+
+        # 1.6. Fetch previous newsletter for intro context (non-fatal)
+        previous_issue = _fetch_previous_newsletter()
 
         # 2. Curation agent
         curation_result = run_curation(sources)
@@ -208,13 +267,46 @@ def generate_newsletter_cf(request):
         )
 
         # 3. Generate newsletter
-        newsletter = generate_newsletter(curation_result, period)
+        newsletter = generate_newsletter(
+            curation_result,
+            period,
+            relationships=relationships,
+            previous_issue=previous_issue,
+            source_urls=source_urls,
+            author_lookup=author_lookup,
+        )
+
+        # 3.5. Cover image (non-fatal, skippable via skip_image=true for fast testing)
+        ts = now.strftime("%Y%m%d_%H%M%S")
+        image_url = ""
+        if not skip_image:
+            try:
+                themes = extract_themes(newsletter["plain_text"])
+                image_bytes = generate_cover_image(themes, period)
+                image_url = upload_image_to_gcs(image_bytes, f"newsletter/images/{ts}_cover.png")
+                logger.info(f"Cover image uploaded: {image_url}")
+            except Exception as e:
+                logger.warning(f"Cover image generation failed (non-fatal): {e}")
+
+        # Inject cover image into HTML (after <h1>title</h1><p class="subtitle">...)
+        html_final = newsletter["html"]
+        if image_url:
+            img_tag = (
+                f'<img src="{image_url}" alt="" '
+                f'style="width:100%;max-height:280px;object-fit:cover;'
+                f'border-radius:8px;margin:0 0 24px">'
+            )
+            nl_title = newsletter.get("title", newsletter["subject"])
+            html_final = newsletter["html"].replace(
+                f'<h1>{nl_title}</h1>',
+                f'{img_tag}\n<h1>{nl_title}</h1>',
+                1,
+            )
 
         # 4. Upload to GCS
-        ts = now.strftime("%Y%m%d_%H%M%S")
         gcs_url = ""
         try:
-            gcs_url = _upload_to_gcs(newsletter["html"], f"newsletter/{ts}_newsletter.html")
+            gcs_url = _upload_to_gcs(html_final, f"newsletter/{ts}_newsletter.html")
             logger.info(f"Newsletter uploaded to GCS: {gcs_url}")
         except Exception as e:
             logger.warning(f"GCS upload failed (non-fatal): {e}")
@@ -225,7 +317,7 @@ def generate_newsletter_cf(request):
             try:
                 api_key = _get_secret("readwise-api-key")
                 reader_result = _deliver_to_reader(
-                    newsletter["html"],
+                    html_final,
                     newsletter["plain_text"],
                     newsletter["subject"],
                     api_key,
@@ -236,17 +328,18 @@ def generate_newsletter_cf(request):
 
         # 6. Save draft to Firestore
         draft = NewsletterDraft(
-            html=newsletter["html"],
+            html=html_final,
             plain_text=newsletter["plain_text"],
             subject=newsletter["subject"],
-            curated_sources=curation_result.filtered_sources,
-            hot_news=curation_result.hot_news,
+            curated_sources=[s.model_dump() for s in curation_result.filtered_sources],
+            hot_news=[n.model_dump() for n in curation_result.hot_news],
             dry_run=dry_run,
             created_at=now.isoformat(),
             period_start=period["start"],
             period_end=period["end"],
             gcs_url=gcs_url,
             reader_url=reader_url,
+            image_url=image_url,
         )
         draft_id = _save_draft(draft)
 
@@ -258,6 +351,7 @@ def generate_newsletter_cf(request):
             "hot_news_count": len(curation_result.hot_news),
             "gcs_url": gcs_url,
             "reader_url": reader_url,
+            "image_url": image_url,
             "dry_run": dry_run,
         }
 

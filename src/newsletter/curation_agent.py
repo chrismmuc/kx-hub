@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+from urllib.parse import quote_plus
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,84 @@ def _fallback_curation(sources: list[dict]) -> "CurationResult":
     return CurationResult(filtered_sources=curated, hot_news=[], curator_notes="")
 
 
+def _resolve_snipd_url(snipd_url: str) -> str:
+    """Fetch Snipd share page and extract original podcast URL (Spotify / YouTube / Apple).
+    Returns "" if nothing found — caller will render title without link.
+    """
+    try:
+        import requests
+        resp = requests.get(snipd_url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        text = resp.text
+        for pattern in [
+            r'https://open\.spotify\.com/episode/[a-zA-Z0-9]+',
+            r'https://(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_\-]+',
+            r'https://youtu\.be/[a-zA-Z0-9_\-]+',
+            r'https://podcasts\.apple\.com/[^\s"\'<>&]+',
+        ]:
+            m = re.search(pattern, text)
+            if m:
+                return m.group(0)
+    except Exception as e:
+        logger.debug(f"Snipd URL resolution failed for {snipd_url}: {e}")
+    logger.info(f"Snipd URL unresolvable, will render as plain text: {snipd_url}")
+    return ""
+
+
+def _resolve_book_url(title: str, author: str) -> str:
+    """Build an Amazon search URL for a book."""
+    query = f"{title} {author}".strip()
+    return f"https://www.amazon.com/s?k={quote_plus(query)}"
+
+
+def _resolve_filtered_source_urls(result: "CurationResult", original_sources: list[dict]) -> "CurationResult":
+    """Post-process: resolve snipd/readwise/internal URLs to direct external URLs.
+
+    - snipd.com → Spotify / YouTube / Apple (or "" if unresolvable)
+    - readwise.io (all types) → source_url from original data; for books → Amazon search
+    - Any remaining internal/unresolvable URL → ""
+    URL "" means: render title as plain text without hyperlink.
+    """
+    # Build lookup: title → source_url and author from original sources
+    source_url_by_title: dict[str, str] = {}
+    author_by_title: dict[str, str] = {}
+    for s in original_sources:
+        title = s.get("title", "")
+        raw_url = s.get("source_url", "") or ""
+        # Only keep genuinely external URLs
+        if raw_url and "readwise.io" not in raw_url and "snipd.com" not in raw_url:
+            source_url_by_title[title] = raw_url
+        author_by_title[title] = s.get("author", "")
+
+    resolved = []
+    for src in result.filtered_sources:
+        url = src.url
+
+        if "snipd.com" in url:
+            resolved_url = _resolve_snipd_url(url)
+
+        elif "readwise.io" in url:
+            # Try original source_url first
+            direct = source_url_by_title.get(src.title, "")
+            if direct:
+                resolved_url = direct
+            elif src.source_type == "book":
+                author = src.author or author_by_title.get(src.title, "")
+                resolved_url = _resolve_book_url(src.title, author)
+            else:
+                logger.info(f"Readwise URL unresolvable, will render as plain text: {url}")
+                resolved_url = ""
+
+        else:
+            resolved_url = url
+
+        if resolved_url != url:
+            logger.info(f"URL resolved: {url!r} → {resolved_url!r}")
+            src = src.model_copy(update={"url": resolved_url})
+        resolved.append(src)
+
+    return result.model_copy(update={"filtered_sources": resolved})
+
+
 def run_curation(sources: list[dict]) -> "CurationResult":
     """
     Run the newsletter curation agent.
@@ -133,9 +212,25 @@ def run_curation(sources: list[dict]) -> "CurationResult":
     """
     agent_engine_id = os.getenv("NEWSLETTER_AGENT_ENGINE_ID", "")
 
+    # Env var may be stale placeholder "NOT_SET" — read live from Secret Manager
+    if not agent_engine_id or agent_engine_id == "NOT_SET":
+        try:
+            from google.cloud import secretmanager as sm
+            sm_client = sm.SecretManagerServiceClient()
+            name = f"projects/{GCP_PROJECT}/secrets/newsletter-agent-engine-id/versions/latest"
+            resp = sm_client.access_secret_version(request={"name": name})
+            agent_engine_id = resp.payload.data.decode("UTF-8").strip()
+            if agent_engine_id == "NOT_SET":
+                agent_engine_id = ""
+            logger.info(f"Loaded agent engine ID from Secret Manager: {bool(agent_engine_id)}")
+        except Exception as e:
+            logger.warning(f"Could not read agent engine ID from Secret Manager: {e}")
+            agent_engine_id = ""
+
     if not agent_engine_id:
         logger.info("No NEWSLETTER_AGENT_ENGINE_ID configured — using fallback curation")
-        return _fallback_curation(sources)
+        result = _fallback_curation(sources)
+        return _resolve_filtered_source_urls(result, sources)
 
     try:
         import vertexai
@@ -151,18 +246,30 @@ def run_curation(sources: list[dict]) -> "CurationResult":
             user_id="newsletter-generator",
             message=prompt,
         ):
-            # ADK AgentEngine returns content events
-            if hasattr(event, "content") and event.content:
-                for part in event.content.parts:
+            # Event is a dict: {"content": {"parts": [{"text": "..."}]}, ...}
+            if isinstance(event, dict):
+                content = event.get("content") or {}
+                for part in (content.get("parts") or []):
+                    if isinstance(part, dict) and part.get("text"):
+                        result_text += part["text"]
+            elif isinstance(event, str):
+                result_text += event
+            elif hasattr(event, "text") and event.text:
+                result_text += event.text
+            elif hasattr(event, "content") and event.content:
+                for part in (getattr(event.content, "parts", None) or []):
                     if hasattr(part, "text") and part.text:
                         result_text += part.text
 
+        logger.info(f"Agent raw response length: {len(result_text)} chars")
         if not result_text:
             logger.warning("Agent returned empty response, using fallback")
-            return _fallback_curation(sources)
-
-        return _parse_curation_result(result_text, sources)
+            result = _fallback_curation(sources)
+        else:
+            result = _parse_curation_result(result_text, sources)
+        return _resolve_filtered_source_urls(result, sources)
 
     except Exception as e:
         logger.warning(f"Curation agent failed: {e}. Using fallback.")
-        return _fallback_curation(sources)
+        result = _fallback_curation(sources)
+        return _resolve_filtered_source_urls(result, sources)
